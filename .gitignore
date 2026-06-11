@@ -1,0 +1,21 @@
+# Godot 4+ specific
+.godot/
+*.import
+*.uid
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Export
+export/
+build/
