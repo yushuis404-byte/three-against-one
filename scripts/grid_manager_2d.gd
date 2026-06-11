@@ -3,6 +3,8 @@ extends Node2D
 ## v12: 三阵营领地 + 三野外缓冲区 + 中央巨龙山体 + 周围资源带 + 无尽之海
 ## 2.5D 渲染：_draw() + draw_rect() —— 无独立节点，性能最优
 
+@onready var resource_mgr: Node2D = $"../ResourceManager2D"
+
 const GRID_SIZE := 56    # 陆地网格（6阶段管线使用）
 const GRID_COLS := 100   # 总网格宽（陆地+左右海洋）
 const GRID_ROWS := 56    # 总网格高
@@ -102,7 +104,11 @@ func _generate_terrain() -> void:
 	_phase5_impassable()
 	_phase6_assign_terrain()
 
-	# Step 7: 扩展至 100x56，居中放置，左右填海洋
+	# Place resources on 56x56 land grid
+	resource_mgr.init_grid(GRID_SIZE)
+	resource_mgr.place_resources(zone_grid, terrain_grid, GRID_SIZE)
+
+	# Expand to 100x56, center land, fill sides with ocean
 	var expanded_terrain: Array = []
 	var expanded_zone: Array = []
 	for y in range(GRID_ROWS):
@@ -121,6 +127,9 @@ func _generate_terrain() -> void:
 
 	terrain_grid = expanded_terrain
 	zone_grid = expanded_zone
+
+	# Expand resource grid to match expanded terrain
+	resource_mgr.expand_grid(GRID_COLS, GRID_ROWS, LAND_OFFSET_X)
 
 
 # ============================================================
