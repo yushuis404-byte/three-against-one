@@ -1,12 +1,16 @@
 extends Node2D
-## 56×56 开放世界地形生成器 (2D)
+## 100×56 开放世界地形生成器 (2D)
 ## v12: 三阵营领地 + 三野外缓冲区 + 中央巨龙山体 + 周围资源带 + 无尽之海
 ## 2.5D 渲染：_draw() + draw_rect() —— 无独立节点，性能最优
 
-const GRID_SIZE := 56
+const GRID_SIZE := 56    # 陆地网格（6阶段管线使用）
+const GRID_COLS := 100   # 总网格宽（陆地+左右海洋）
+const GRID_ROWS := 56    # 总网格高
+const LAND_OFFSET_X := 22  # 陆地左偏移，居中放置
 const TILE_SIZE := 32.0  # 像素
 
-var center := Vector2(27.5, 27.5)
+var center := Vector2(27.5, 27.5)          # 陆地中心（管线使用）
+var grid_center := Vector2((GRID_COLS - 1) * 0.5, (GRID_ROWS - 1) * 0.5)  # 全网格中心
 
 # ========== 巨龙山体参数 ==========
 const NEST_RADIUS := 1.5
@@ -14,19 +18,19 @@ const MOUNT_RADIUS := 5.3
 const RESOURCE_OUTER := 9.5
 
 # ========== 阵营种子点 ==========
-const ELF_SEED   := Vector2(10, 10)
-const DWARF_SEED := Vector2(10, 46)
-const ORC_SEED   := Vector2(46, 46)
+const ELF_SEED   := Vector2(13, 13)
+const DWARF_SEED := Vector2(13, 43)
+const ORC_SEED   := Vector2(43, 43)
 
-# 出生点十字簇（每阵营 5 格）
+# 出生点十字簇（每阵营 5 格，陆地坐标，渲染时自动偏移）
 const ELF_SPAWN: Array[Vector2i] = [
-	Vector2i(9, 10), Vector2i(10, 9), Vector2i(10, 10), Vector2i(10, 11), Vector2i(11, 10),
+	Vector2i(12, 13), Vector2i(13, 12), Vector2i(13, 13), Vector2i(13, 14), Vector2i(14, 13),
 ]
 const DWARF_SPAWN: Array[Vector2i] = [
-	Vector2i(9, 46), Vector2i(10, 45), Vector2i(10, 46), Vector2i(10, 47), Vector2i(11, 46),
+	Vector2i(12, 43), Vector2i(13, 42), Vector2i(13, 43), Vector2i(13, 44), Vector2i(14, 43),
 ]
 const ORC_SPAWN: Array[Vector2i] = [
-	Vector2i(45, 46), Vector2i(46, 45), Vector2i(46, 46), Vector2i(46, 47), Vector2i(47, 46),
+	Vector2i(39, 35), Vector2i(40, 34), Vector2i(40, 35), Vector2i(40, 36), Vector2i(41, 35),
 ]
 
 # ========== 区域分类阈值 ==========
@@ -69,14 +73,14 @@ var zone_grid: Array = []
 
 
 func _ready() -> void:
-	print("[Grid2D] 生成 v12 开放世界地图 (56x56)...")
+	print("[Grid2D] 生成 v12 开放世界地图 (100x56)...")
 	_generate_terrain()
 	queue_redraw()
 	_print_stats()
 
 
 # ============================================================
-# 生成管线 —— 6 阶段分层掩码
+# 生成管线 —— 6 阶段分层掩码 + 扩展
 # ============================================================
 
 func _generate_terrain() -> void:
@@ -97,6 +101,26 @@ func _generate_terrain() -> void:
 	_phase4_territories()
 	_phase5_impassable()
 	_phase6_assign_terrain()
+
+	# Step 7: 扩展至 100x56，居中放置，左右填海洋
+	var expanded_terrain: Array = []
+	var expanded_zone: Array = []
+	for y in range(GRID_ROWS):
+		var trow: Array = []
+		var zrow: Array = []
+		for x in range(GRID_COLS):
+			trow.append(TerrainData.Terrain.WATER)
+			zrow.append(ZoneTag.OCEAN)
+		expanded_terrain.append(trow)
+		expanded_zone.append(zrow)
+
+	for y in range(GRID_SIZE):
+		for x in range(GRID_SIZE):
+			expanded_terrain[y][x + LAND_OFFSET_X] = terrain_grid[y][x]
+			expanded_zone[y][x + LAND_OFFSET_X] = zone_grid[y][x]
+
+	terrain_grid = expanded_terrain
+	zone_grid = expanded_zone
 
 
 # ============================================================
@@ -158,6 +182,9 @@ func _phase3_ocean() -> void:
 	const NE_BOOST := 3.5
 	const NOISE_AMPLITUDE := 2.0
 	const SHELF_BAND := 2.0
+	const CORNER_ROUNDING := 4.0
+	const ROUNDING_POWER := 1.5
+	const ROUNDING_NOISE := 0.3
 
 	for y in range(GRID_SIZE):
 		for x in range(GRID_SIZE):
@@ -168,6 +195,11 @@ func _phase3_ocean() -> void:
 
 			var edge := float(min(min(x, y), min(GRID_SIZE - 1 - x, GRID_SIZE - 1 - y)))
 			var angle := atan2(y - center.y, x - center.x)
+
+			# 椭圆化：沿对角方向加深切割，使陆地近似椭圆
+			var diagonal_factor := pow(abs(sin(angle * 2.0)), ROUNDING_POWER)
+			var rounding_noise := _simple_hash(x, y, 999) * ROUNDING_NOISE * diagonal_factor
+			edge -= (diagonal_factor + rounding_noise) * CORNER_ROUNDING
 
 			# NE bulge
 			var ne_factor := _angular_proximity(angle, deg_to_rad(45.0), deg_to_rad(40.0))
@@ -484,18 +516,18 @@ func _draw() -> void:
 	var ts := TILE_SIZE - 2.0
 	var half := ts / 2.0
 
-	for y in range(GRID_SIZE):
-		for x in range(GRID_SIZE):
+	for y in range(GRID_ROWS):
+		for x in range(GRID_COLS):
 			var t: int = terrain_grid[y][x]
 			if t == TerrainData.Terrain.VOID:
 				continue
 
 			var color := TerrainData.get_color(t as TerrainData.Terrain)
 
-			# 水域深度渐变
+			# 水域深度渐变（基于距海洋边缘距离）
 			if t == TerrainData.Terrain.WATER:
-				var edge := float(min(min(x, y), min(GRID_SIZE - 1 - x, GRID_SIZE - 1 - y)))
-				var depth_factor := clampf(1.0 - edge / 9.0, 0.0, 1.0)
+				var edge_dist := float(min(min(x, y), min(GRID_COLS - 1 - x, GRID_ROWS - 1 - y)))
+				var depth_factor := clampf(1.0 - edge_dist / 12.0, 0.0, 1.0)
 				var deep_blue := Color(0.04, 0.15, 0.35, 1.0)
 				color = color.lerp(deep_blue, depth_factor * 0.7)
 			var world_pos := grid_to_world(x, y)
@@ -516,15 +548,15 @@ func _draw_spawn_markers() -> void:
 	const SPAWN_COLOR := Color(1.0, 0.15, 0.15, 0.9)
 
 	for cell in ELF_SPAWN:
-		var pos := grid_to_world(cell.x, cell.y)
+		var pos := grid_to_world(cell.x + LAND_OFFSET_X, cell.y)
 		draw_circle(pos, SPAWN_RADIUS, SPAWN_COLOR)
 
 	for cell in DWARF_SPAWN:
-		var pos := grid_to_world(cell.x, cell.y)
+		var pos := grid_to_world(cell.x + LAND_OFFSET_X, cell.y)
 		draw_circle(pos, SPAWN_RADIUS, SPAWN_COLOR)
 
 	for cell in ORC_SPAWN:
-		var pos := grid_to_world(cell.x, cell.y)
+		var pos := grid_to_world(cell.x + LAND_OFFSET_X, cell.y)
 		draw_circle(pos, SPAWN_RADIUS, SPAWN_COLOR)
 
 
@@ -535,14 +567,14 @@ func _draw_spawn_markers() -> void:
 func _print_stats() -> void:
 	var counts: Dictionary = {}
 	var zone_counts: Dictionary = {}
-	for y in range(GRID_SIZE):
-		for x in range(GRID_SIZE):
+	for y in range(GRID_ROWS):
+		for x in range(GRID_COLS):
 			var t: int = terrain_grid[y][x]
 			counts[t] = counts.get(t, 0) + 1
 			var z: int = zone_grid[y][x]
 			zone_counts[z] = zone_counts.get(z, 0) + 1
 
-	print("\n========== v12 开放世界地形统计 (2D) ==========")
+	print("\n========== v12 开放世界地形统计 (100x56) ==========")
 	for t: int in counts:
 		var name: String = TerrainData.get_terrain_name(t as TerrainData.Terrain)
 		print("  %s: %d 格" % [name, counts[t]])
@@ -590,10 +622,10 @@ func _print_stats() -> void:
 	print("  资源带: %d 格" % zone_counts.get(ZoneTag.RESOURCE_RING, 0))
 	print("  阵营领地合计: %d 格" % territory_total)
 	print("  缓冲区合计: %d 格" % buffer_total)
-	print("  海洋: %d 格" % water_total)
+	print("  陆地海洋: %d 格" % water_total)
 	print("  不可到达(VOID+散落): %d 格" % (void_total + impassable_total))
-	var total_rendered := GRID_SIZE * GRID_SIZE - void_total
-	print("  渲染格数: %d / %d" % [total_rendered, GRID_SIZE * GRID_SIZE])
+	var total_rendered := GRID_COLS * GRID_ROWS - void_total
+	print("  渲染格数: %d / %d" % [total_rendered, GRID_COLS * GRID_ROWS])
 	print("============================================\n")
 
 
@@ -602,13 +634,13 @@ func _print_stats() -> void:
 # ============================================================
 
 func get_terrain_at(x: int, y: int) -> int:
-	if x < 0 or x >= GRID_SIZE or y < 0 or y >= GRID_SIZE:
+	if x < 0 or x >= GRID_COLS or y < 0 or y >= GRID_ROWS:
 		return TerrainData.Terrain.VOID
 	return terrain_grid[y][x]
 
 
 func grid_to_world(grid_x: int, grid_y: int) -> Vector2:
-	var world_offset := Vector2(-center.x * TILE_SIZE, -center.y * TILE_SIZE)
+	var world_offset := Vector2(-grid_center.x * TILE_SIZE, -grid_center.y * TILE_SIZE)
 	return Vector2(
 		grid_x * TILE_SIZE + world_offset.x,
 		grid_y * TILE_SIZE + world_offset.y
@@ -617,15 +649,15 @@ func grid_to_world(grid_x: int, grid_y: int) -> Vector2:
 
 func get_rendered_count() -> int:
 	var count := 0
-	for y in range(GRID_SIZE):
-		for x in range(GRID_SIZE):
+	for y in range(GRID_ROWS):
+		for x in range(GRID_COLS):
 			if terrain_grid[y][x] != TerrainData.Terrain.VOID:
 				count += 1
 	return count
 
 
 func world_to_grid(world_pos: Vector2) -> Vector2i:
-	var world_offset := Vector2(-center.x * TILE_SIZE, -center.y * TILE_SIZE)
+	var world_offset := Vector2(-grid_center.x * TILE_SIZE, -grid_center.y * TILE_SIZE)
 	var gx := int(roundf((world_pos.x - world_offset.x) / TILE_SIZE))
 	var gy := int(roundf((world_pos.y - world_offset.y) / TILE_SIZE))
 	return Vector2i(gx, gy)

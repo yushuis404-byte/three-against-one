@@ -4,7 +4,7 @@ extends Camera2D
 
 const PAN_BUTTON := KEY_SPACE
 const ZOOM_SPEED := 0.08
-const ZOOM_MIN := Vector2(0.3, 0.3)
+const ZOOM_MIN := Vector2(0.5, 0.5)
 const ZOOM_MAX := Vector2(2.5, 2.5)
 const ZOOM_DEFAULT := Vector2(1.0, 1.0)
 const PAN_SPEED := 1.0
@@ -12,11 +12,13 @@ const SMOOTH_SPEED := 12.0
 
 # 地图边界（世界坐标）
 const TILE_SIZE := 32.0
-const GRID_SIZE := 56
-const GRID_EXTENT := GRID_SIZE / 2.0 * TILE_SIZE  # 896
+const GRID_COLS := 100
+const GRID_ROWS := 56
+const GRID_EXTENT_X := GRID_COLS / 2.0 * TILE_SIZE  # 1600
+const GRID_EXTENT_Y := GRID_ROWS / 2.0 * TILE_SIZE  # 896
 const MARGIN := 200.0
-const BOUNDS_MIN := Vector2(-GRID_EXTENT - MARGIN, -GRID_EXTENT - MARGIN)
-const BOUNDS_MAX := Vector2(GRID_EXTENT + MARGIN, GRID_EXTENT + MARGIN)
+const BOUNDS_MIN := Vector2(-GRID_EXTENT_X - MARGIN, -GRID_EXTENT_Y - MARGIN)
+const BOUNDS_MAX := Vector2(GRID_EXTENT_X + MARGIN, GRID_EXTENT_Y + MARGIN)
 
 var _panning := false
 var _target_zoom := ZOOM_DEFAULT
