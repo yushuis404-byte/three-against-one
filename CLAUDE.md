@@ -7,7 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Three asymmetric factions (Dwarf/Elf/Orc) on a shared hex-less grid map with resources, tech trees, fog of war, and PvP/PvE combat.
 
 ## Current Status
-v0.2 prototype — 100×56 terrain generation with 16:9 ocean, elliptical landmass, 173 resource points with diamond markers, Space+LMB pan/zoom camera. Game logic (turns, combat, tech) is unimplemented.
+v0.2 prototype — 100×56 terrain generation with war fog, 173 resource points, Space+LMB pan/zoom camera. Architecture modularized into independent nodes. Game logic (turns, combat, tech) is unimplemented.
+
+## Known GDScript Quirks
+- `var x := arr[i]` fails when `arr` is untyped Array (returns Variant). Fix: use `var x: Type = arr[i]`.
+- Similarly, `for v in [1, 2, 3]` yields Variant — use `var v: int = ...` or wrap in `int()`.
+- All indentation uses **tabs**, not spaces. Edit accordingly.
+- Line endings: some files use CRLF, some LF. Godot handles both.
 
 ## Commands
 - **Open project**: Open `project.godot` in Godot 4.6 editor
@@ -25,41 +31,49 @@ v0.2 prototype — 100×56 terrain generation with 16:9 ocean, elliptical landma
 Main (Node2D) — main.gd (game state controller)
 ├── GameCamera (Camera2D) — camera_controller_2d.gd
 ├── GameBoard (Node2D)
-│   └── GridManager2D (Node2D) — grid_manager_2d.gd
+│   ├── GridManager2D (Node2D)      — grid_manager_2d.gd (terrain gen + draw)
+│   ├── ResourceManager2D (Node2D)  — resource_manager_2d.gd (resources)
+│   └── FogOfWar2D (Node2D)         — fog_of_war_2d.gd (war fog)
 └── UI (CanvasLayer)
     └── DebugLabel (Label)
 ```
 
-### Core Scripts (all GDScript, no third-party dependencies)
+Draw order: GridManager2D (terrain) → ResourceManager2D (diamonds, only on visible tiles) → FogOfWar2D (black overlay on top). Each sibling has independent `_draw()` and `_unhandled_input()`.
 
-| Script | Role |
-|--------|------|
-| `scripts/main.gd` | Game state machine (LOADING→PLAYING→TURN_RESOLVE→GAME_OVER). Connects grid_manager resource hover signal to DebugLabel. |
-| `scripts/grid_manager_2d.gd` | 100×56 terrain + resource generation (8-phase pipeline). Draws everything via `_draw()` — no tile nodes. Drives the entire map. |
-| `scripts/camera_controller_2d.gd` | Stardew Valley-style camera: Space+LMB drag pan, scroll zoom. Clamps to map bounds. |
-| `scripts/terrain_data.gd` | `class_name TerrainData` — 12 terrain types with colors, passability, buildability. Global enum/data singleton. |
+### Core Scripts (all GDScript, Godot 4.6)
 
-### Terrain Generation Pipeline (8 Phases in grid_manager_2d)
+| Script | Lines | Role |
+|--------|-------|------|
+| `scripts/grid_manager_2d.gd` | 672 | 6-phase terrain generation (mountain → ring → ocean → territories → impassable → assign terrain), terrain `_draw()`, spawn markers, coordinate utils, hash/noise, expansion to 100×56. Delegates resource placement to ResourceManager2D. |
+| `scripts/resource_manager_2d.gd` | 260 | ResourceType enum, RESOURCE_DEFS table (14 types, 173 total), resource_grid, deterministic placement, diamond `_draw()`, hover signal. Queries FogOfWar2D to only show diamonds on visible tiles. |
+| `scripts/fog_of_war_2d.gd` | 102 | Per-player float fog grids (0.0=visible, 0.5=fogged), 3×3 smoothing for edge gradients, reveal_area/explore_area/get_fog API. |
+| `scripts/main.gd` | 47 | Game state machine, connects resource_hovered signal to DebugLabel, sets initial fog reveals. |
+| `scripts/camera_controller_2d.gd` | 101 | Space+LMB drag pan, scroll zoom, clamp to map bounds. |
+| `scripts/terrain_data.gd` | 60 | `class_name TerrainData` — 12 terrain types with colors, passability, buildability. Global enum/data singleton. |
 
-All phases operate on a 56×56 land grid. Step 7 expands to 100×56 (16:9).
+### Terrain Generation Pipeline (6 Phases + expansion in grid_manager_2d)
+
+All phases operate on a 56×56 land grid, then expanded to 100×56 (16:9).
 
 1. **Mountain** — central volcano/dragon nest, 3 corridor paths, scattered ruins
-2. **Resource ring** — band around the mountain
+2. **Resource ring** — band around the mountain (ZoneTag only, terrain assigned in Phase 6)
 3. **Ocean** — edge-based threshold + continental noise + **elliptical corner rounding** (`CORNER_ROUNDING=4.0`), bays, peninsulas, fuzzy coastline
-4. **Territories** — Voronoi-like 3-faction split with competition-ratio blending → 9 `ZoneTag` regions (3 faction + 3 buffer + mountain + ring + ocean)
+4. **Territories** — Voronoi-like 3-faction split with competition-ratio blending → 9 `ZoneTag` regions
 5. **Scattered impassable** — ~120 random uncrossable tiles
 6. **Assign terrain** — faction/buffer/resource terrain coloring per ZoneTag
-7. **Place resources** — 14 resource types (173 total), deterministic placement per zone constraints
-8. **Expand** — blit 56×56 land to center of 100×56 grid, fill sides with ocean (WATER)
 
-### Grid & Resource Data Model
+After Phase 6, ResourceManager2D places resources, then the 56×56 grid is expanded to 100×56.
 
-**Grid**: `terrain_grid[y][x]` — `TerrainData.Terrain` enum values. Outer loop y (rows), inner x (cols).
-**Zone**: `zone_grid[y][x]` — parallel `ZoneTag` enum (9 region types).
-**Resources**: `resource_grid[y][x]` — parallel `ResourceType` enum (14 types, 0=NONE).
-**World coords**: `grid_to_world(x, y)` → centered `Vector2`; `world_to_grid(world_pos)` → `Vector2i`.
+### Grid Data Model
 
-All generation is **deterministic** — uses `_simple_hash(x, y, seed)` for noise and Fisher-Yates shuffle (no Godot RNG). Same inputs always produce the same map.
+| Grid | In | Type | Size |
+|------|----|------|------|
+| `terrain_grid[y][x]` | GridManager2D | `TerrainData.Terrain` enum | 100×56 |
+| `zone_grid[y][x]` | GridManager2D | `ZoneTag` enum (local) | 100×56 |
+| `resource_grid[y][x]` | ResourceManager2D | `ResourceType` enum (local) | 100×56 |
+| `fog_grids[player][y][x]` | FogOfWar2D | float (0.0–0.5) | 3 × 100×56 |
+
+All grids use outer loop y (rows), inner x (cols). All generation is **deterministic** via `_simple_hash(x, y, seed)`.
 
 ### ZoneTag Regions
 
@@ -79,7 +93,7 @@ All generation is **deterministic** — uses `_simple_hash(x, y, seed)` for nois
 
 Gold Mine(18), Ancient Forest(16), Quarry(15), Fertile Plain(15), Iron Mine(14), Magic Node(14), Ancient Tree(13), Rune Stone(13), Abandoned Post(12), Star Crystal(12), World Tree Root(12), Dragon Crystal(10), Hot Spring(3), Ancient Relic(2).
 
-Placed per faction zone + buffer zone distributions. Rendered as colored diamond markers on the map.
+Rendered as colored diamond markers only on tiles where `FogOfWar2D.get_fog(player, x, y) == 0.0`.
 
 ### Key Constants
 - Grid: 100×56 (16:9), 56×56 land centered at LAND_OFFSET_X=22, 32px tiles
@@ -89,8 +103,10 @@ Placed per faction zone + buffer zone distributions. Rendered as colored diamond
 
 ## Development Notes
 - All rendering uses `_draw()` + `draw_rect()` — no TileMap nodes, no sprite atlases
-- Player spawns: Elf at (12,13)..(14,13), Dwarf at (12,43)..(14,43), Orc at (39,35)..(41,35) — all in land coords, offset by LAND_OFFSET_X at render time
-- Signal-based hover: `grid_manager.resource_hovered(text)` → `main.gd` → `DebugLabel`
+- Player spawns (land coords, offset by LAND_OFFSET_X=22 at render): Elf at (12,13)..(14,13), Dwarf at (12,43)..(14,43), Orc at (39,35)..(41,35)
+- Signal chain: `ResourceManager2D.resource_hovered(text)` → `main.gd` → `DebugLabel`
+- Node reference across siblings: use `get_parent().get_node("TargetNode")` instead of `@onready` when the target is later in tree order (avoids init-order race)
+- Fog is float-based (0.0=visible, 0.5=fogged) with 3×3 neighborhood smoothing for edge gradients
 - Input mappings: camera_zoom_in/out (scroll), select (LMB), end_turn (Spacebar)
 - MSAA 2× enabled in rendering settings
 - No design doc files should be edited by code — they are reference only

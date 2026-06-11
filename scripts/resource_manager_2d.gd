@@ -191,6 +191,10 @@ func _draw() -> void:
 			var rt: int = resource_grid[y][x]
 			if rt == ResourceType.NONE:
 				continue
+			# 迷雾遮挡 → 不画资源菱形
+			var fog_mgr = get_parent().get_node("FogOfWar2D")
+			if fog_mgr and fog_mgr.get_fog(0, x, y) > 0.0:
+				continue
 			var color: Color = RESOURCE_DEFS[rt - 1][3]
 			color.a = 0.85
 			var pos := _grid_to_world(x, y)

@@ -20,6 +20,13 @@ func _setup_game() -> void:
 	var tile_count: int = grid_manager.get_rendered_count()
 	debug_label.text = "Three Against One v0.1 | 2.5D 开放世界 | %d 格\n空格+鼠标左键拖拽 平移 | 滚轮 缩放" % tile_count
 	resource_manager.resource_hovered.connect(_on_resource_hovered)
+
+	# 初始视野：揭示三阵营出生点周围
+	var fog_mgr = $GameBoard/FogOfWar2D
+	fog_mgr.reveal_area(0, 35, 13, 2)  # 精灵
+	fog_mgr.reveal_area(0, 35, 43, 2)  # 矮人
+	fog_mgr.reveal_area(0, 62, 35, 2)  # 兽人
+	fog_mgr.queue_redraw()
 	print("[Main] 2.5D 游戏就绪")
 
 
