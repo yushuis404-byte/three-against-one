@@ -11,8 +11,20 @@ var land_offset_x := 22
 var grid_center := Vector2(49.5, 27.5)
 var resource_grid: Array = []
 var _last_hovered: Vector2i = Vector2i(-1, -1)
+var _turn_manager: Node = null
 
 signal resource_hovered(text: String)
+
+
+func set_turn_manager(tm: Node) -> void:
+	_turn_manager = tm
+	if tm:
+		tm.player_turn_started.connect(_on_player_turn_started)
+
+
+func _on_player_turn_started(_player: int) -> void:
+	queue_redraw()
+
 
 # ========== 资源类型枚举 ==========
 
@@ -193,7 +205,8 @@ func _draw() -> void:
 				continue
 			# 迷雾遮挡 → 不画资源菱形
 			var fog_mgr = get_parent().get_node("FogOfWar2D")
-			if fog_mgr and fog_mgr.get_fog(0, x, y) > 0.0:
+			var viewer: int = _turn_manager.current_player if _turn_manager else 0
+			if fog_mgr and fog_mgr.get_fog(viewer, x, y) > 0.0:
 				continue
 			var color: Color = RESOURCE_DEFS[rt - 1][3]
 			color.a = 0.85

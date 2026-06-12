@@ -153,6 +153,9 @@ func count_buildings(faction: int, name_filter: String = "") -> int:
 			count += 1
 	return count
 
+func get_all_buildings() -> Array:
+	return _buildings.duplicate()
+
 
 # ========== 绘制 ==========
 

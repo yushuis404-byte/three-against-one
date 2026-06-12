@@ -9,6 +9,8 @@ extends Node2D
 @onready var unit_manager: Node2D = $GameBoard/UnitManager2D
 @onready var building_manager: Node2D = $GameBoard/BuildingManager2D
 @onready var turn_label: Label = $UI/TurnLabel
+@onready var resource_tracker: Node = $GameBoard/ResourceTracker
+@onready var resource_panel: Panel = $UI/ResourcePanel
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
@@ -46,6 +48,7 @@ func _setup_game() -> void:
 	fog_mgr.fog_updated.connect(_on_fog_updated)
 	# 建筑系统初始化
 	fog_mgr.set_turn_manager(turn_manager)
+	resource_manager.set_turn_manager(turn_manager)
 	building_manager.set_turn_manager(turn_manager)
 	building_manager.building_hovered.connect(_on_resource_hovered)
 	_place_initial_buildings()
@@ -59,6 +62,11 @@ func _setup_game() -> void:
 	# 单位系统初始化
 	unit_manager.set_turn_manager(turn_manager)
 	unit_manager.place_initial_units()
+	# 资源追踪系统初始化
+	resource_tracker.set_turn_manager(turn_manager)
+	resource_tracker.set_building_manager(building_manager)
+	resource_tracker.resources_updated.connect(_on_resources_updated)
+	_init_resource_labels()
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
@@ -131,6 +139,7 @@ func _on_player_turn_started(player: int) -> void:
 	turn_label.text = "第 %d 回合 · %s" % [turn_manager.round_number, FACTION_NAMES[player]]
 	turn_label.label_settings = _make_label_settings(FACTION_COLORS[player])
 	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], turn_manager.get_ap(player)]
+	resource_tracker.update_display(player)
 
 
 func _on_round_ended(round: int) -> void:
@@ -139,8 +148,26 @@ func _on_round_ended(round: int) -> void:
 
 
 func _on_ap_changed(player: int, ap: int) -> void:
-	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], ap]
+	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], turn_manager.get_ap(player)]
+	resource_tracker.update_display(player)
 
+
+func _init_resource_labels() -> void:
+	## 将 UI 面板中的 Label 引用传给 resource_tracker
+	var panel: Panel = resource_panel
+	if not panel:
+		return
+	var key_map := {"Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore"}
+	for node_name in key_map:
+		var label: Label = panel.get_node("VBox/Label" + node_name)
+		if label:
+			resource_tracker.set_resource_label(key_map[node_name], label)
+	resource_tracker.set_faction_label(panel.get_node("VBox/FactionLabel"))
+
+
+func _on_resources_updated(_player: int) -> void:
+	var cp: int = turn_manager.current_player
+	resource_tracker.update_display(cp)
 
 func _make_label_settings(color: Color) -> LabelSettings:
 	var s := LabelSettings.new()
