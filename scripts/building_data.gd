@@ -51,7 +51,9 @@ static func town_hall() -> BuildingData:
 		"主城", BuildingCategory.TOWN_HALL, Vector2i(2, 2),
 		500, 0, 0, 0, 0,
 		40, {},
-		[TerrainData.Terrain.PLAIN_DWARF],
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC],
 		1, "阵营核心，每阵营限 1 座，HP40 ATK5，淘汰条件"
 	)
 

@@ -14,6 +14,19 @@ var current_player := 0
 
 signal fog_updated(player: int)
 
+var _turn_manager: Node = null
+
+
+func set_turn_manager(tm: Node) -> void:
+	_turn_manager = tm
+	if tm:
+		tm.player_turn_started.connect(_on_player_turn_started)
+
+
+func _on_player_turn_started(player: int) -> void:
+	current_player = player
+	queue_redraw()
+
 # 渐隐动画追踪 [player]{Vector2i: elapsed}
 var _fading_out: Array = [{}, {}, {}]
 const FADE_DURATION := 0.3

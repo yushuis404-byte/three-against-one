@@ -49,7 +49,12 @@ func _init_grid() -> void:
 func set_turn_manager(tm: Node) -> void:
 	_turn_manager = tm
 	if tm:
+		tm.player_turn_started.connect(_on_player_turn_started)
 		tm.round_ended.connect(_on_round_ended)
+
+
+func _on_player_turn_started(_player: int) -> void:
+	queue_redraw()
 
 
 # ========== Building 数据 API ==========
@@ -167,28 +172,30 @@ func _draw() -> void:
 			var all_fogged := true
 			var tiles := _get_footprint_tiles(origin, fp)
 			for t in tiles:
-				if _fog_mgr.get_fog(0, t.x, t.y) <= 0.0:
+				var viewer: int = _turn_manager.current_player if _turn_manager else 0
+				if _fog_mgr.get_fog(viewer, t.x, t.y) <= 0.0:
 					all_fogged = false
 					break
 			if all_fogged:
 				continue
 
 		var world_origin := _grid_to_world(origin.x, origin.y)
+		var top_left := Vector2(world_origin.x - tile_size * 0.5, world_origin.y - tile_size * 0.5)
 		var w := fp.x * tile_size
 		var h := fp.y * tile_size
 
 		# 选中高亮
 		if is_selected:
-			draw_rect(Rect2(world_origin.x - 2, world_origin.y - 2, w + 4, h + 4),
+			draw_rect(Rect2(top_left.x - 2, top_left.y - 2, w + 4, h + 4),
 				SELECT_COLOR, false, 3.0)
 
 		# 建筑底色方块
 		var color: Color = FACTION_COLORS[faction]
 		color.a = BUILDING_ALPHA
-		draw_rect(Rect2(world_origin.x, world_origin.y, w, h), color, true)
+		draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
 
 		# 描边
-		draw_rect(Rect2(world_origin.x, world_origin.y, w, h),
+		draw_rect(Rect2(top_left.x, top_left.y, w, h),
 			Color.BLACK, false, 1.5)
 
 		# 建筑名称文字
@@ -197,8 +204,8 @@ func _draw() -> void:
 		var label := data.name
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
 		var label_pos := Vector2(
-			world_origin.x + w / 2.0 - text_size.x / 2.0,
-			world_origin.y + h / 2.0 + fsize / 3.0
+			top_left.x + w / 2.0 - text_size.x / 2.0,
+			top_left.y + h / 2.0 + fsize / 3.0
 		)
 		draw_string(font, label_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
@@ -206,8 +213,8 @@ func _draw() -> void:
 		var hp_label := "HP:%d" % b["hp"]
 		var hp_size := font.get_string_size(hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9)
 		var hp_pos := Vector2(
-			world_origin.x + w - hp_size.x - 2,
-			world_origin.y + h - 3
+			top_left.x + w - hp_size.x - 2,
+			top_left.y + h - 3
 		)
 		draw_string(font, hp_pos, hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
 

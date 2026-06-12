@@ -28,8 +28,8 @@ func _setup_game() -> void:
 	# 初始视野：揭示三阵营出生点周围
 	var fog_mgr = $GameBoard/FogOfWar2D
 	fog_mgr.reveal_area_immediate(0, 35, 13, 2)  # 精灵
-	fog_mgr.reveal_area_immediate(0, 35, 43, 2)  # 矮人
-	fog_mgr.reveal_area_immediate(0, 62, 35, 2)  # 兽人
+	fog_mgr.reveal_area_immediate(1, 35, 43, 2)  # 矮人
+	fog_mgr.reveal_area_immediate(2, 62, 35, 2)  # 兽人
 	fog_mgr.queue_redraw()
 	print("[Main] 2.5D 游戏就绪")
 
@@ -44,8 +44,8 @@ func _setup_game() -> void:
 
 	# 联通信號：迷雾动画完成后重算领土
 	fog_mgr.fog_updated.connect(_on_fog_updated)
-
 	# 建筑系统初始化
+	fog_mgr.set_turn_manager(turn_manager)
 	building_manager.set_turn_manager(turn_manager)
 	building_manager.building_hovered.connect(_on_resource_hovered)
 	_place_initial_buildings()
@@ -85,12 +85,13 @@ const FACTION_SPAWNS := [
 
 
 func _place_initial_buildings() -> void:
-	## 每阵营：1 座主城（2×2）+ 伐木场 + 采石场 + 农场
-	var infra_queue := [
-		BuildingData.infra_lumber_camp(),
-		BuildingData.infra_quarry(),
-		BuildingData.infra_farm(),
-	]
+	## 每阵营：1 座主城（2×2）+ 1 座特色资源建筑
+	## 精灵→伐木场，矮人→采石场，兽人→农场
+	var faction_buildings := {
+		0: BuildingData.infra_lumber_camp(),
+		1: BuildingData.infra_quarry(),
+		2: BuildingData.infra_farm(),
+	}
 	for s in FACTION_SPAWNS:
 		var p: int = s["player"]
 		var origin: Vector2i = s["th_origin"]
@@ -98,21 +99,18 @@ func _place_initial_buildings() -> void:
 		# 主城
 		building_manager.place_building(BuildingData.town_hall(), p, origin)
 
-		# 资源建筑：在主城旁尝试偏移位置放置
-		# 尝试主城四周空地（避免与单位出生格 y=13/43/35 重叠）
+		# 特色资源建筑：在主城旁尝试偏移位置放置
+		var infra: BuildingData = faction_buildings[p]
 		var offsets := [
 			Vector2i(-1, 0), Vector2i(2, 0),
 			Vector2i(0, -1),
 			Vector2i(-1, 1), Vector2i(2, 1),
 			Vector2i(-1, -1), Vector2i(2, -1),
 		]
-		var placed := 0
 		for off in offsets:
-			if placed >= infra_queue.size():
-				break
 			var cand := Vector2i(origin.x + off.x, origin.y + off.y)
-			if building_manager.place_building(infra_queue[placed], p, cand):
-				placed += 1
+			if building_manager.place_building(infra, p, cand):
+				break
 
 
 const FACTION_NAMES := ["精灵", "矮人", "兽人"]
