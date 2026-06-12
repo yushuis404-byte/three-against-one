@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://cusehjhmocsbj" path="res://scripts/territory_manager_2d.gd" id="6_territory"]
 [ext_resource type="Script" path="res://scripts/turn_manager_2d.gd" id="7_turn"]
 [ext_resource type="Script" path="res://scripts/unit_manager_2d.gd" id="8_unit"]
+[ext_resource type="Script" path="res://scripts/building_manager_2d.gd" id="9_build"]
 
 [node name="Main" type="Node2D" unique_id=488890058]
 script = ExtResource("2_main")
@@ -31,6 +32,9 @@ script = ExtResource("6_territory")
 
 [node name="TurnManager2D" type="Node" parent="GameBoard"]
 script = ExtResource("7_turn")
+
+[node name="BuildingManager2D" type="Node2D" parent="GameBoard"]
+script = ExtResource("9_build")
 
 [node name="UnitManager2D" type="Node2D" parent="GameBoard"]
 script = ExtResource("8_unit")

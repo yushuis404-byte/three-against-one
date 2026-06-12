@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Three asymmetric factions (Dwarf/Elf/Orc) on a shared hex-less grid map with resources, tech trees, fog of war, and PvP/PvE combat.
 
 ## Current Status
-v0.2 prototype — 100×56 terrain generation with war fog (0.3s fade animation), territorial borders, 173 resource points, Space+LMB pan/zoom camera. Hotseat turn system (Tab cycles Elf→Dwarf→Orc with +6AP/round, cap 12), unit system (3 types per faction: worker/scout/guard with BFS movement, fog-on-move reveal). Architecture modularized into independent nodes.
+v0.3 prototype — 100×56 terrain generation with war fog (0.3s fade animation), territorial borders, 173 resource points, Space+LMB pan/zoom camera. Hotseat turn system (Tab cycles Elf→Dwarf→Orc with +6AP/round, cap 12), unit system (3 types per faction: worker/scout/guard with BFS movement, fog-on-move reveal), **building system (11 generic building types with footprint system and turn-based production)**. Architecture modularized into independent nodes.
 
 ## Known GDScript Quirks
 - `var x := arr[i]` fails when `arr` is untyped Array (returns Variant). Fix: use `var x: Type = arr[i]`.
@@ -36,6 +36,7 @@ Main (Node2D) — main.gd (game state controller)
 │   ├── FogOfWar2D (Node2D)           — fog_of_war_2d.gd (war fog + fade animation)
 │   ├── TerritoryManager2D (Node2D)   — territory_manager_2d.gd (BFS territory + borders)
 │   ├── TurnManager2D (Node)          — turn_manager_2d.gd (hotseat turn + AP system)
+│   ├── BuildingManager2D (Node2D)    — building_manager_2d.gd (building placement + production)
 │   └── UnitManager2D (Node2D)        — unit_manager_2d.gd (unit placement, selection, movement)
 └── UI (CanvasLayer)
     ├── DebugLabel (Label)            — top-left debug info
@@ -53,9 +54,11 @@ Draw order: GridManager2D → ResourceManager2D → TerritoryManager2D → UnitM
 | `scripts/fog_of_war_2d.gd` | 167 | Per-player float fog grids (0.0=explored, 0.7=unexplored), 3×3 smoothing for edge gradients, 0.3s fade animation on first reveal, reveal_area/reveal_area_immediate/is_explored API, `fog_updated(player)` signal. |
 | `scripts/territory_manager_2d.gd` | 164 | BFS flood-fill territory from town halls through explored+passable tiles. `owner_grid[y][x]` (-1/0/1/2), border line rendering (2.5px faction colors), `recalc_territory(player)`, `get_cell_owner()`/`is_territory()` API. |
 | `scripts/turn_manager_2d.gd` | 80 | Hotseat round-based turn system. 3 players (Elf→Dwarf→Orc→round end), +6AP/round cap 12. Signals: `round_started`, `player_turn_started/ended`, `round_ended`, `ap_changed`. `spend_ap(player, amount)` returns false if insufficient. |
-| `scripts/unit_data.gd` | 41 | `class_name UnitData` — template data (name, category, move/atk/hp/vision/food_cost). Static factory methods: `worker()`, `scout()`, `guard()`. `get_faction_name(faction)`. |
-| `scripts/unit_manager_2d.gd` | 354 | Unit storage (Array[Dictionary] with id/data/grid_pos/hp/flags), BFS reachable-tile calculation, AP-cost movement, fog reveal on move. Renders faction-colored circles with Chinese name + HP. LMB select/move/deselect interaction. |
-| `scripts/main.gd` | 119 | Game state machine (LOADING/PLAYING/TURN_RESOLVE/GAME_OVER). Initializes all subsystems in order. Connects turn signals to faction-colored TurnLabel UI. Faction name/color constants. |
+| `scripts/unit_data.gd` | 41 | `class_name UnitData` — template data (name, category, move/atk/hp/vision/food_cost). Static factory methods: `worker()`, `scout()`, `guard()`. |
+| `scripts/unit_manager_2d.gd` | 358 | Unit storage (Array[Dictionary] with id/data/grid_pos/hp/flags), BFS reachable-tile calculation, AP-cost movement, fog reveal on move. Renders faction-colored circles with Chinese name + HP. LMB select/move/deselect interaction. |
+| `scripts/building_data.gd` | 154 | `class_name BuildingData` — 11 building template types with footprint, cost, HP, production, terrain compatibility. Static factory methods for all generic buildings. |
+| `scripts/building_manager_2d.gd` | 292 | Building placement with footprint validation, `building_grid[y][x]`, faction-colored rect rendering, `round_ended` production, mouse hover/select interaction. See Building System section. |
+| `scripts/main.gd` | 166 | Game state machine (LOADING/PLAYING/TURN_RESOLVE/GAME_OVER). Initializes all subsystems in order. Connects turn signals to faction-colored TurnLabel UI. Faction name/color constants. `_place_initial_buildings()` for initial building setup. |
 | `scripts/camera_controller_2d.gd` | 101 | Space+LMB drag pan, scroll zoom, clamp to map bounds. |
 | `scripts/terrain_data.gd` | 60 | `class_name TerrainData` — 12 terrain types with colors, passability, buildability. Global enum/data singleton. |
 
@@ -79,6 +82,7 @@ After Phase 6, ResourceManager2D places resources, then the 56×56 grid is expan
 | `terrain_grid[y][x]` | GridManager2D | `TerrainData.Terrain` enum | 100×56 |
 | `zone_grid[y][x]` | GridManager2D | `ZoneTag` enum (local) | 100×56 |
 | `resource_grid[y][x]` | ResourceManager2D | `ResourceType` enum (local) | 100×56 |
+| `building_grid[y][x]` | BuildingManager2D | int (building_id or -1) | 100×56 |
 | `fog_grids[player][y][x]` | FogOfWar2D | float (0.0–0.7) | 3 × 100×56 |
 | `owner_grid[y][x]` | TerritoryManager2D | int (-1/0/1/2) | 100×56 |
 
@@ -100,6 +104,37 @@ Each faction starts with 3 units: 1 worker (move1/atk0/hp3/vision1), 1 scout (mo
 - **Selection**: LMB on own unit → white selection circle + translucent reachable-tile highlights. LMB on reachable tile → move (AP deducted). LMB elsewhere → deselect.
 - **Movement**: BFS from unit position with `move_max` depth. Skips impassable terrain and occupied tiles. Path length = AP cost. After moving, calls `fog_mgr.reveal_area(player, x, y, unit.vision)`.
 - **Fog interaction**: Units are rendered below fog overlay (visible through fog in prototype). Movement reveals fog at the destination position based on unit's vision stat.
+
+### Building System (`BuildingManager2D` + `BuildingData`)
+
+11 generic building types all factions share (no faction-specific buildings yet). Buildings are placed on the grid with a **footprint** system (`footprint: Vector2i`), stored in `building_grid[y][x]` where multi-tile buildings write the same `building_id` to all occupied cells.
+
+**Footprint sizes (current):**
+- Town Hall: **2×2** (阵营核心)
+- Barracks Lv1, all resource buildings: **1×1** (Barracks upgrade path: 1×1→2×1→2×2)
+
+**Key data per building:** name, category, cost (gold/wood/stone/iron/food), hp_max, production dict (e.g. `{ "wood": 3 }`), terrain_compatibility (Array of `TerrainData.Terrain`), max_per_faction, footprint.
+
+**Initial placement** (in `main.gd._place_initial_buildings()`):
+- Each faction: 1 Town Hall (2×2, near spawn) + 1 Lumber Camp + 1 Quarry + 1 Farm (placed at nearby empty tiles)
+- Buildings placed BEFORE units to avoid overlap
+
+**Turn integration:**
+- `round_ended` signal → `_on_round_ended()` iterates all buildings, prints production to console
+- Future: connect to resource system when C1 Resource Manager is implemented
+
+**Unit interaction:**
+- `UnitManager2D._is_tile_empty()` checks `BuildingManager2D.is_tile_occupied()` — units cannot walk through buildings
+- Buildings render below units but above territory borders
+
+**Placement validation** (`_can_place()`):
+1. All footprint tiles must be in faction's territory (TerritoryManager2D.get_cell_owner)
+2. All footprint tiles must have compatible terrain (BuildingData.terrain_compatibility)
+3. All footprint tiles must be empty (no existing building)
+4. Must not exceed max_per_faction limit
+
+**11 building types:**
+Town Hall(2×2), Lumber Camp, Quarry, Farm, Warehouse, Mine(iron), Extraction Tower, Ancient Wood Harvest, Barracks Lv1, Scout Post, Gold Mine Shaft
 
 ### ZoneTag Regions
 
@@ -137,6 +172,8 @@ Rendered as colored diamond markers only on tiles where `FogOfWar2D.get_fog(play
 - Bounds: x=[-1800, 1800], y=[-1096, 1096] (200px margin)
 
 ## Development Notes
+- **Godot executable**: `C:\tools\godot\Godot_v4.6.2-stable_win64_console.exe` (or `..._win64.exe` for GUI). Downloaded locally for automated validation.
+- **Validation**: `Godot_v4.6.2-stable_win64_console.exe --path . --headless --check-only` to check for GDScript parse errors without launching window.
 - All rendering uses `_draw()` + `draw_rect()` — no TileMap nodes, no sprite atlases
 - Player spawns (land coords, offset by LAND_OFFSET_X=22 at render): Elf at (12,13)..(14,13), Dwarf at (12,43)..(14,43), Orc at (39,35)..(41,35)
 - Signal chain: `ResourceManager2D.resource_hovered(text)` → `main.gd` → `DebugLabel`

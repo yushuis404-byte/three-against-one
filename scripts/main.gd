@@ -7,6 +7,7 @@ extends Node2D
 @onready var debug_label: Label = $UI/DebugLabel
 @onready var turn_manager: Node = $GameBoard/TurnManager2D
 @onready var unit_manager: Node2D = $GameBoard/UnitManager2D
+@onready var building_manager: Node2D = $GameBoard/BuildingManager2D
 @onready var turn_label: Label = $UI/TurnLabel
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
@@ -44,6 +45,11 @@ func _setup_game() -> void:
 	# 联通信號：迷雾动画完成后重算领土
 	fog_mgr.fog_updated.connect(_on_fog_updated)
 
+	# 建筑系统初始化
+	building_manager.set_turn_manager(turn_manager)
+	building_manager.building_hovered.connect(_on_resource_hovered)
+	_place_initial_buildings()
+
 	# 回合系统初始化
 	turn_manager.round_started.connect(_on_round_started)
 	turn_manager.player_turn_started.connect(_on_player_turn_started)
@@ -68,6 +74,45 @@ func _on_resource_hovered(text: String) -> void:
 		debug_label.text = ""
 	else:
 		debug_label.text = text
+
+
+# 三阵营出生点坐标（领土系统 seed）
+const FACTION_SPAWNS := [
+	{ "player": 0, "th_pos": Vector2i(35, 13), "th_origin": Vector2i(34, 11) },
+	{ "player": 1, "th_pos": Vector2i(35, 43), "th_origin": Vector2i(34, 41) },
+	{ "player": 2, "th_pos": Vector2i(62, 35), "th_origin": Vector2i(61, 33) },
+]
+
+
+func _place_initial_buildings() -> void:
+	## 每阵营：1 座主城（2×2）+ 伐木场 + 采石场 + 农场
+	var infra_queue := [
+		BuildingData.infra_lumber_camp(),
+		BuildingData.infra_quarry(),
+		BuildingData.infra_farm(),
+	]
+	for s in FACTION_SPAWNS:
+		var p: int = s["player"]
+		var origin: Vector2i = s["th_origin"]
+
+		# 主城
+		building_manager.place_building(BuildingData.town_hall(), p, origin)
+
+		# 资源建筑：在主城旁尝试偏移位置放置
+		# 尝试主城四周空地（避免与单位出生格 y=13/43/35 重叠）
+		var offsets := [
+			Vector2i(-1, 0), Vector2i(2, 0),
+			Vector2i(0, -1),
+			Vector2i(-1, 1), Vector2i(2, 1),
+			Vector2i(-1, -1), Vector2i(2, -1),
+		]
+		var placed := 0
+		for off in offsets:
+			if placed >= infra_queue.size():
+				break
+			var cand := Vector2i(origin.x + off.x, origin.y + off.y)
+			if building_manager.place_building(infra_queue[placed], p, cand):
+				placed += 1
 
 
 const FACTION_NAMES := ["精灵", "矮人", "兽人"]

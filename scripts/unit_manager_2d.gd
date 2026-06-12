@@ -331,9 +331,14 @@ func _is_tile_passable(gx: int, gy: int) -> bool:
 
 func _is_tile_empty(gx: int, gy: int) -> bool:
 	var pos := Vector2i(gx, gy)
+	# 单位占用检查
 	for u in _units:
 		if u["grid_pos"] == pos:
 			return false
+	# 建筑占用检查
+	var bmgr = get_parent().get_node("BuildingManager2D")
+	if bmgr and bmgr.is_tile_occupied(gx, gy):
+		return false
 	return true
 
 
