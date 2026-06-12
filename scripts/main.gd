@@ -5,6 +5,8 @@ extends Node2D
 @onready var grid_manager: Node2D = $GameBoard/GridManager2D
 @onready var resource_manager: Node2D = $GameBoard/ResourceManager2D
 @onready var debug_label: Label = $UI/DebugLabel
+@onready var turn_manager: Node = $GameBoard/TurnManager2D
+@onready var unit_manager: Node2D = $GameBoard/UnitManager2D
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
@@ -41,6 +43,17 @@ func _setup_game() -> void:
 	# 联通信號：迷雾动画完成后重算领土
 	fog_mgr.fog_updated.connect(_on_fog_updated)
 
+	# 回合系统初始化
+	turn_manager.start_game()
+	turn_manager.round_started.connect(_on_round_started)
+	turn_manager.player_turn_started.connect(_on_player_turn_started)
+	turn_manager.round_ended.connect(_on_round_ended)
+	turn_manager.ap_changed.connect(_on_ap_changed)
+
+	# 单位系统初始化
+	unit_manager.set_turn_manager(turn_manager)
+	unit_manager.place_initial_units()
+
 
 func _on_fog_updated(player: int) -> void:
 	var territory_mgr = $GameBoard/TerritoryManager2D
@@ -54,10 +67,34 @@ func _on_resource_hovered(text: String) -> void:
 		debug_label.text = text
 
 
+func _on_round_started(round: int) -> void:
+	var names := ["精灵", "矮人", "兽人"]
+	debug_label.text = "第 %d 回合\n%s 行动中 (AP: %d)" % [\
+		round, names[turn_manager.current_player], turn_manager.get_ap(turn_manager.current_player)]
+
+
+func _on_player_turn_started(player: int) -> void:
+	var names := ["精灵", "矮人", "兽人"]
+	debug_label.text = "第 %d 回合 · %s (AP: %d)" % [\
+		turn_manager.round_number, names[player], turn_manager.get_ap(player)]
+
+
+func _on_round_ended(round: int) -> void:
+	debug_label.text = "第 %d 回合结束 — 结算中..." % round
+
+
+func _on_ap_changed(player: int, ap: int) -> void:
+	var names := ["精灵", "矮人", "兽人"]
+	debug_label.text = "第 %d 回合 · %s (AP: %d)" % [\
+		turn_manager.round_number, names[player], ap]
+
+
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("end_turn"):
 		_on_end_turn()
 
 
 func _on_end_turn() -> void:
-	print("[Main] 结束回合 (待实现)")
+	if current_state != GameState.PLAYING:
+		return
+	turn_manager.end_player_turn(turn_manager.current_player)
