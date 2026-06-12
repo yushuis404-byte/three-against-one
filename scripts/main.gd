@@ -7,6 +7,7 @@ extends Node2D
 @onready var debug_label: Label = $UI/DebugLabel
 @onready var turn_manager: Node = $GameBoard/TurnManager2D
 @onready var unit_manager: Node2D = $GameBoard/UnitManager2D
+@onready var turn_label: Label = $UI/TurnLabel
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
@@ -20,7 +21,7 @@ func _ready() -> void:
 func _setup_game() -> void:
 	current_state = GameState.PLAYING
 	var tile_count: int = grid_manager.get_rendered_count()
-	debug_label.text = "Three Against One v0.1 | 2.5D 开放世界 | %d 格\n空格+鼠标左键拖拽 平移 | 滚轮 缩放" % tile_count
+	debug_label.text = "Three Against One v0.1 | 2.5D 开放世界 | %d 格\n空格+鼠标左键拖拽 平移 | 滚轮 缩放 | Enter/Tab 结束回合" % tile_count
 	resource_manager.resource_hovered.connect(_on_resource_hovered)
 
 	# 初始视野：揭示三阵营出生点周围
@@ -44,7 +45,6 @@ func _setup_game() -> void:
 	fog_mgr.fog_updated.connect(_on_fog_updated)
 
 	# 回合系统初始化
-	turn_manager.start_game()
 	turn_manager.round_started.connect(_on_round_started)
 	turn_manager.player_turn_started.connect(_on_player_turn_started)
 	turn_manager.round_ended.connect(_on_round_ended)
@@ -53,6 +53,9 @@ func _setup_game() -> void:
 	# 单位系统初始化
 	unit_manager.set_turn_manager(turn_manager)
 	unit_manager.place_initial_units()
+
+	# 所有信号就绪后启动第一回合
+	turn_manager.start_game()
 
 
 func _on_fog_updated(player: int) -> void:
@@ -67,31 +70,49 @@ func _on_resource_hovered(text: String) -> void:
 		debug_label.text = text
 
 
+const FACTION_NAMES := ["精灵", "矮人", "兽人"]
+const FACTION_COLORS := [
+	Color(0.18, 0.60, 0.15),
+	Color(0.80, 0.65, 0.10),
+	Color(0.80, 0.25, 0.15),
+]
+
+
 func _on_round_started(round: int) -> void:
-	var names := ["精灵", "矮人", "兽人"]
-	debug_label.text = "第 %d 回合\n%s 行动中 (AP: %d)" % [\
-		round, names[turn_manager.current_player], turn_manager.get_ap(turn_manager.current_player)]
+	var p: int = turn_manager.current_player
+	turn_label.text = "第 %d 回合 · %s" % [round, FACTION_NAMES[p]]
+	turn_label.label_settings = _make_label_settings(FACTION_COLORS[p])
 
 
 func _on_player_turn_started(player: int) -> void:
-	var names := ["精灵", "矮人", "兽人"]
-	debug_label.text = "第 %d 回合 · %s (AP: %d)" % [\
-		turn_manager.round_number, names[player], turn_manager.get_ap(player)]
+	turn_label.text = "第 %d 回合 · %s" % [turn_manager.round_number, FACTION_NAMES[player]]
+	turn_label.label_settings = _make_label_settings(FACTION_COLORS[player])
+	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], turn_manager.get_ap(player)]
 
 
 func _on_round_ended(round: int) -> void:
-	debug_label.text = "第 %d 回合结束 — 结算中..." % round
+	turn_label.text = "第 %d 回合结束" % round
+	debug_label.text = "结算中..."
 
 
 func _on_ap_changed(player: int, ap: int) -> void:
-	var names := ["精灵", "矮人", "兽人"]
-	debug_label.text = "第 %d 回合 · %s (AP: %d)" % [\
-		turn_manager.round_number, names[player], ap]
+	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], ap]
+
+
+func _make_label_settings(color: Color) -> LabelSettings:
+	var s := LabelSettings.new()
+	s.font_size = 22
+	s.font_color = color
+	s.outline_size = 2
+	s.outline_color = Color(0, 0, 0, 0.6)
+	return s
 
 
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("end_turn"):
-		_on_end_turn()
+	# Enter 或 Tab 都可结束回合（Tab 在编辑器内嵌模式可能被截获）
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ENTER or event.keycode == KEY_TAB:
+			_on_end_turn()
 
 
 func _on_end_turn() -> void:

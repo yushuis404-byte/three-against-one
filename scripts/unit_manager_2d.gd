@@ -46,6 +46,7 @@ func place_initial_units() -> void:
 		{ "player": 1, "pos": Vector2i(35, 43), "name_offset": -2 },
 		{ "player": 2, "pos": Vector2i(62, 35), "name_offset": -3 },
 	]
+	var fog_mgr = get_parent().get_node("FogOfWar2D")
 	for s in spawns:
 		var p: int = s["player"]
 		var pos: Vector2i = s["pos"]
@@ -53,6 +54,13 @@ func place_initial_units() -> void:
 		_add_unit(p, UnitData.worker(), Vector2i(pos.x + offset, pos.y))
 		_add_unit(p, UnitData.scout(), Vector2i(pos.x + offset + 1, pos.y))
 		_add_unit(p, UnitData.guard(), Vector2i(pos.x + offset + 2, pos.y))
+
+		# 初始放置时揭示视野
+		for u in _units:
+			if u["faction"] != p:
+				continue
+			var upos: Vector2i = u["grid_pos"]
+			fog_mgr.reveal_area(p, upos.x, upos.y, u["data"].vision)
 
 
 func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:
@@ -201,6 +209,13 @@ func _move_selected_to(target: Vector2i) -> void:
 
 			u["grid_pos"] = target
 			u["has_moved"] = true
+
+			# 移动后揭示视野
+			var data: UnitData = u["data"]
+			var fog_mgr = get_parent().get_node("FogOfWar2D")
+			if fog_mgr:
+				var cp: int = _turn_manager.current_player
+				fog_mgr.reveal_area(cp, target.x, target.y, data.vision)
 
 			# 移动后自动取消选择
 			_clear_selection()

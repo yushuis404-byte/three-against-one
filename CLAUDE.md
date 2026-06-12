@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Three asymmetric factions (Dwarf/Elf/Orc) on a shared hex-less grid map with resources, tech trees, fog of war, and PvP/PvE combat.
 
 ## Current Status
-v0.2 prototype — 100×56 terrain generation with war fog (0.3s fade animation), territorial borders, 173 resource points, Space+LMB pan/zoom camera. Architecture modularized into independent nodes. Game logic (turns, combat, tech) is unimplemented.
+v0.2 prototype — 100×56 terrain generation with war fog (0.3s fade animation), territorial borders, 173 resource points, Space+LMB pan/zoom camera. Hotseat turn system (Tab cycles Elf→Dwarf→Orc with +6AP/round, cap 12), unit system (3 types per faction: worker/scout/guard with BFS movement, fog-on-move reveal). Architecture modularized into independent nodes.
 
 ## Known GDScript Quirks
 - `var x := arr[i]` fails when `arr` is untyped Array (returns Variant). Fix: use `var x: Type = arr[i]`.
@@ -34,12 +34,15 @@ Main (Node2D) — main.gd (game state controller)
 │   ├── GridManager2D (Node2D)        — grid_manager_2d.gd (terrain gen + draw)
 │   ├── ResourceManager2D (Node2D)    — resource_manager_2d.gd (resources)
 │   ├── FogOfWar2D (Node2D)           — fog_of_war_2d.gd (war fog + fade animation)
-│   └── TerritoryManager2D (Node2D)   — territory_manager_2d.gd (BFS territory + borders)
+│   ├── TerritoryManager2D (Node2D)   — territory_manager_2d.gd (BFS territory + borders)
+│   ├── TurnManager2D (Node)          — turn_manager_2d.gd (hotseat turn + AP system)
+│   └── UnitManager2D (Node2D)        — unit_manager_2d.gd (unit placement, selection, movement)
 └── UI (CanvasLayer)
-    └── DebugLabel (Label)
+    ├── DebugLabel (Label)            — top-left debug info
+    └── TurnLabel (Label)             — top-center turn indicator (faction-colored text)
 ```
 
-Draw order: GridManager2D (terrain) → ResourceManager2D (diamonds, only on visible tiles) → TerritoryManager2D (border lines) → FogOfWar2D (black overlay on top). Each sibling has independent `_draw()` and `_unhandled_input()`.
+Draw order: GridManager2D → ResourceManager2D → TerritoryManager2D → UnitManager2D → FogOfWar2D. Each sibling has independent `_draw()` and `_unhandled_input()`. Units render above territory borders but below the fog overlay.
 
 ### Core Scripts (all GDScript, Godot 4.6)
 
@@ -49,7 +52,10 @@ Draw order: GridManager2D (terrain) → ResourceManager2D (diamonds, only on vis
 | `scripts/resource_manager_2d.gd` | 260 | ResourceType enum, RESOURCE_DEFS table (14 types, 173 total), resource_grid, deterministic placement, diamond `_draw()`, hover signal. Queries FogOfWar2D to only show diamonds on visible tiles. |
 | `scripts/fog_of_war_2d.gd` | 167 | Per-player float fog grids (0.0=explored, 0.7=unexplored), 3×3 smoothing for edge gradients, 0.3s fade animation on first reveal, reveal_area/reveal_area_immediate/is_explored API, `fog_updated(player)` signal. |
 | `scripts/territory_manager_2d.gd` | 164 | BFS flood-fill territory from town halls through explored+passable tiles. `owner_grid[y][x]` (-1/0/1/2), border line rendering (2.5px faction colors), `recalc_territory(player)`, `get_cell_owner()`/`is_territory()` API. |
-| `scripts/main.gd` | 64 | Game state machine, initial fog reveals + town hall registration, connects fog_updated → territory recalc. |
+| `scripts/turn_manager_2d.gd` | 80 | Hotseat round-based turn system. 3 players (Elf→Dwarf→Orc→round end), +6AP/round cap 12. Signals: `round_started`, `player_turn_started/ended`, `round_ended`, `ap_changed`. `spend_ap(player, amount)` returns false if insufficient. |
+| `scripts/unit_data.gd` | 41 | `class_name UnitData` — template data (name, category, move/atk/hp/vision/food_cost). Static factory methods: `worker()`, `scout()`, `guard()`. `get_faction_name(faction)`. |
+| `scripts/unit_manager_2d.gd` | 354 | Unit storage (Array[Dictionary] with id/data/grid_pos/hp/flags), BFS reachable-tile calculation, AP-cost movement, fog reveal on move. Renders faction-colored circles with Chinese name + HP. LMB select/move/deselect interaction. |
+| `scripts/main.gd` | 119 | Game state machine (LOADING/PLAYING/TURN_RESOLVE/GAME_OVER). Initializes all subsystems in order. Connects turn signals to faction-colored TurnLabel UI. Faction name/color constants. |
 | `scripts/camera_controller_2d.gd` | 101 | Space+LMB drag pan, scroll zoom, clamp to map bounds. |
 | `scripts/terrain_data.gd` | 60 | `class_name TerrainData` — 12 terrain types with colors, passability, buildability. Global enum/data singleton. |
 
@@ -77,6 +83,23 @@ After Phase 6, ResourceManager2D places resources, then the 56×56 grid is expan
 | `owner_grid[y][x]` | TerritoryManager2D | int (-1/0/1/2) | 100×56 |
 
 All grids use outer loop y (rows), inner x (cols). All generation is **deterministic** via `_simple_hash(x, y, seed)`.
+
+### Turn System (`TurnManager2D`)
+
+Hotseat round-based: Elf(0) → Dwarf(1) → Orc(2) → round end → next round. Tab key ends current player's turn.
+
+- **AP**: Each player gains +6 AP per round (cap 12). Movement costs 1 AP per tile (prototype simplified). `spend_ap(player, amount)` returns false if insufficient.
+- **Signal order**: `round_started(round)` → `player_turn_started(player)` → `player_turn_ended(player)` (×3 per round) → `round_ended(round)` → loop.
+- `start_game()` must be called AFTER all signal connections are made, or the first signals are missed.
+- Connected to UnitManager2D for player turn start/end (resets has_moved/has_attacked flags, clears selection).
+
+### Unit System (`UnitManager2D` + `UnitData`)
+
+Each faction starts with 3 units: 1 worker (move1/atk0/hp3/vision1), 1 scout (move3/atk1/hp3/vision3), 1 guard (move1/atk3/hp6/vision1). All units stored in `_units: Array[Dictionary]`, rendered via `_draw()` as faction-colored circles.
+
+- **Selection**: LMB on own unit → white selection circle + translucent reachable-tile highlights. LMB on reachable tile → move (AP deducted). LMB elsewhere → deselect.
+- **Movement**: BFS from unit position with `move_max` depth. Skips impassable terrain and occupied tiles. Path length = AP cost. After moving, calls `fog_mgr.reveal_area(player, x, y, unit.vision)`.
+- **Fog interaction**: Units are rendered below fog overlay (visible through fog in prototype). Movement reveals fog at the destination position based on unit's vision stat.
 
 ### ZoneTag Regions
 
@@ -119,6 +142,8 @@ Rendered as colored diamond markers only on tiles where `FogOfWar2D.get_fog(play
 - Signal chain: `ResourceManager2D.resource_hovered(text)` → `main.gd` → `DebugLabel`
 - Node reference across siblings: use `get_parent().get_node("TargetNode")` instead of `@onready` when the target is later in tree order (avoids init-order race)
 - Fog is float-based (0.0=explored, 0.7=unexplored) with 3×3 neighborhood smoothing for edge gradients. First reveal triggers a 0.3s fade animation (lerp 0.7→0.0), then emits `fog_updated(player)` signal which triggers territory recalculation.
-- Input mappings: camera_zoom_in/out (scroll), select (LMB), end_turn (Spacebar)
+- Input mappings: camera_zoom_in/out (scroll), select (LMB), end_turn (Tab)
 - MSAA 2× enabled in rendering settings
 - No design doc files should be edited by code — they are reference only
+- Input handling in `main.gd` uses direct keycode checks (`event.keycode == KEY_ENTER or event.keycode == KEY_TAB`) rather than InputMap actions, because InputMap can be corrupted by script-based editing and Tab can be intercepted by the Godot editor's own shortcuts when running embedded
+- `dev-roadmap/` — local web-based development roadmap tool. Start with `start.bat` (Python backend + HTML frontend). Tracks module completion status and development notes in `state.json`.
