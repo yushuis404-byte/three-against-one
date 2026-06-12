@@ -16,6 +16,10 @@ run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://assets/icon.svg"
 
+[autoload]
+
+McpInteractionServer="*res://mcp_interaction_server.gd"
+
 [display]
 
 window/size/viewport_width=1920
@@ -48,7 +52,3 @@ end_turn={
 [rendering]
 
 anti_aliasing/quality/msaa_2d=2
-
-[autoload]
-
-McpInteractionServer="*res://mcp_interaction_server.gd"

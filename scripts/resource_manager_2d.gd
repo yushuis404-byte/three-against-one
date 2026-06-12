@@ -247,8 +247,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		_last_hovered = grid_pos
 		var rt: int = resource_grid[grid_pos.y][grid_pos.x]
 		if rt != ResourceType.NONE:
-			var name: String = RESOURCE_DEFS[rt - 1][1]
-			resource_hovered.emit(name)
+			var fog_mgr = get_parent().get_node("FogOfWar2D")
+			var viewer: int = _turn_manager.current_player if _turn_manager else 0
+			if fog_mgr and fog_mgr.get_fog(viewer, grid_pos.x, grid_pos.y) > 0.0:
+				resource_hovered.emit("")
+			else:
+				var name: String = RESOURCE_DEFS[rt - 1][1]
+				resource_hovered.emit(name)
 		else:
 			resource_hovered.emit("")
 

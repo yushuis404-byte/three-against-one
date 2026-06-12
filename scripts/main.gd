@@ -75,6 +75,7 @@ func _setup_game() -> void:
 func _on_fog_updated(player: int) -> void:
 	var territory_mgr = $GameBoard/TerritoryManager2D
 	territory_mgr.recalc_territory(player)
+	resource_manager.queue_redraw()
 
 
 func _on_resource_hovered(text: String) -> void:

@@ -263,7 +263,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		var cursor := get_global_mouse_position()
 		var gpos := _world_to_grid(cursor)
 		if gpos.x < 0 or gpos.x >= grid_cols or gpos.y < 0 or gpos.y >= grid_rows:
-			building_hovered.emit("")
 			return
 		var building := get_building_at(gpos)
 		if not building.is_empty():
@@ -274,8 +273,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				1: fname = "矮人"
 				2: fname = "兽人"
 			building_hovered.emit("%s · %s (HP:%d/%d)" % [fname, data.name, building["hp"], data.hp_max])
-		else:
-			building_hovered.emit("")
 
 
 func _select_building(bid: int) -> void:
