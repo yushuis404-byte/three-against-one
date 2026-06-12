@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Three asymmetric factions (Dwarf/Elf/Orc) on a shared hex-less grid map with resources, tech trees, fog of war, and PvP/PvE combat.
 
 ## Current Status
-v0.2 prototype — 100×56 terrain generation with war fog, 173 resource points, Space+LMB pan/zoom camera. Architecture modularized into independent nodes. Game logic (turns, combat, tech) is unimplemented.
+v0.2 prototype — 100×56 terrain generation with war fog (0.3s fade animation), territorial borders, 173 resource points, Space+LMB pan/zoom camera. Architecture modularized into independent nodes. Game logic (turns, combat, tech) is unimplemented.
 
 ## Known GDScript Quirks
 - `var x := arr[i]` fails when `arr` is untyped Array (returns Variant). Fix: use `var x: Type = arr[i]`.
@@ -31,14 +31,15 @@ v0.2 prototype — 100×56 terrain generation with war fog, 173 resource points,
 Main (Node2D) — main.gd (game state controller)
 ├── GameCamera (Camera2D) — camera_controller_2d.gd
 ├── GameBoard (Node2D)
-│   ├── GridManager2D (Node2D)      — grid_manager_2d.gd (terrain gen + draw)
-│   ├── ResourceManager2D (Node2D)  — resource_manager_2d.gd (resources)
-│   └── FogOfWar2D (Node2D)         — fog_of_war_2d.gd (war fog)
+│   ├── GridManager2D (Node2D)        — grid_manager_2d.gd (terrain gen + draw)
+│   ├── ResourceManager2D (Node2D)    — resource_manager_2d.gd (resources)
+│   ├── FogOfWar2D (Node2D)           — fog_of_war_2d.gd (war fog + fade animation)
+│   └── TerritoryManager2D (Node2D)   — territory_manager_2d.gd (BFS territory + borders)
 └── UI (CanvasLayer)
     └── DebugLabel (Label)
 ```
 
-Draw order: GridManager2D (terrain) → ResourceManager2D (diamonds, only on visible tiles) → FogOfWar2D (black overlay on top). Each sibling has independent `_draw()` and `_unhandled_input()`.
+Draw order: GridManager2D (terrain) → ResourceManager2D (diamonds, only on visible tiles) → TerritoryManager2D (border lines) → FogOfWar2D (black overlay on top). Each sibling has independent `_draw()` and `_unhandled_input()`.
 
 ### Core Scripts (all GDScript, Godot 4.6)
 
@@ -46,8 +47,9 @@ Draw order: GridManager2D (terrain) → ResourceManager2D (diamonds, only on vis
 |--------|-------|------|
 | `scripts/grid_manager_2d.gd` | 672 | 6-phase terrain generation (mountain → ring → ocean → territories → impassable → assign terrain), terrain `_draw()`, spawn markers, coordinate utils, hash/noise, expansion to 100×56. Delegates resource placement to ResourceManager2D. |
 | `scripts/resource_manager_2d.gd` | 260 | ResourceType enum, RESOURCE_DEFS table (14 types, 173 total), resource_grid, deterministic placement, diamond `_draw()`, hover signal. Queries FogOfWar2D to only show diamonds on visible tiles. |
-| `scripts/fog_of_war_2d.gd` | 102 | Per-player float fog grids (0.0=visible, 0.5=fogged), 3×3 smoothing for edge gradients, reveal_area/explore_area/get_fog API. |
-| `scripts/main.gd` | 47 | Game state machine, connects resource_hovered signal to DebugLabel, sets initial fog reveals. |
+| `scripts/fog_of_war_2d.gd` | 167 | Per-player float fog grids (0.0=explored, 0.7=unexplored), 3×3 smoothing for edge gradients, 0.3s fade animation on first reveal, reveal_area/reveal_area_immediate/is_explored API, `fog_updated(player)` signal. |
+| `scripts/territory_manager_2d.gd` | 164 | BFS flood-fill territory from town halls through explored+passable tiles. `owner_grid[y][x]` (-1/0/1/2), border line rendering (2.5px faction colors), `recalc_territory(player)`, `get_cell_owner()`/`is_territory()` API. |
+| `scripts/main.gd` | 64 | Game state machine, initial fog reveals + town hall registration, connects fog_updated → territory recalc. |
 | `scripts/camera_controller_2d.gd` | 101 | Space+LMB drag pan, scroll zoom, clamp to map bounds. |
 | `scripts/terrain_data.gd` | 60 | `class_name TerrainData` — 12 terrain types with colors, passability, buildability. Global enum/data singleton. |
 
@@ -71,7 +73,8 @@ After Phase 6, ResourceManager2D places resources, then the 56×56 grid is expan
 | `terrain_grid[y][x]` | GridManager2D | `TerrainData.Terrain` enum | 100×56 |
 | `zone_grid[y][x]` | GridManager2D | `ZoneTag` enum (local) | 100×56 |
 | `resource_grid[y][x]` | ResourceManager2D | `ResourceType` enum (local) | 100×56 |
-| `fog_grids[player][y][x]` | FogOfWar2D | float (0.0–0.5) | 3 × 100×56 |
+| `fog_grids[player][y][x]` | FogOfWar2D | float (0.0–0.7) | 3 × 100×56 |
+| `owner_grid[y][x]` | TerritoryManager2D | int (-1/0/1/2) | 100×56 |
 
 All grids use outer loop y (rows), inner x (cols). All generation is **deterministic** via `_simple_hash(x, y, seed)`.
 
@@ -88,6 +91,15 @@ All grids use outer loop y (rows), inner x (cols). All generation is **determini
 | RESOURCE_RING | Band around central mountain |
 | MOUNTAIN_NEST / MOUNTAIN_BODY / MOUNTAIN_PATH | Central mountain complex |
 | OCEAN | Outside the landmass |
+
+### Territory System (`TerritoryManager2D`)
+
+BFS flood-fill from town halls through explored+passable tiles. Player mapping: 0=Elf, 1=Dwarf, 2=Orc.
+
+- **`recalc_territory(player)`** — clears old ownership, BFS orthogonally from all town halls. Only enters tiles where `fog_mgr.is_explored(player, nx, ny)` AND `TerrainData.is_passable(terrain)`. Emits `territory_updated(player)`.
+- **Border rendering** — `_draw()` iterates owned tiles, checks 4 neighbors. If neighbor owner differs, draws 2.5px line along the shared edge. Colors: Elf green `#2e9926`, Dwarf gold `#cca619`, Orc red `#cc4026`.
+- **Town halls** — each faction starts with 1. Can build more (500g + T3 resource) for strategic redundancy. Each anchors a connected territory zone.
+- **Enemy on your territory** — auto-revealed (fog removed), combat if garrisoned. Enemy buildings on your tiles flip ownership to them — must be retaken.
 
 ### 14 Resource Types (173 total)
 
@@ -106,7 +118,7 @@ Rendered as colored diamond markers only on tiles where `FogOfWar2D.get_fog(play
 - Player spawns (land coords, offset by LAND_OFFSET_X=22 at render): Elf at (12,13)..(14,13), Dwarf at (12,43)..(14,43), Orc at (39,35)..(41,35)
 - Signal chain: `ResourceManager2D.resource_hovered(text)` → `main.gd` → `DebugLabel`
 - Node reference across siblings: use `get_parent().get_node("TargetNode")` instead of `@onready` when the target is later in tree order (avoids init-order race)
-- Fog is float-based (0.0=visible, 0.5=fogged) with 3×3 neighborhood smoothing for edge gradients
+- Fog is float-based (0.0=explored, 0.7=unexplored) with 3×3 neighborhood smoothing for edge gradients. First reveal triggers a 0.3s fade animation (lerp 0.7→0.0), then emits `fog_updated(player)` signal which triggers territory recalculation.
 - Input mappings: camera_zoom_in/out (scroll), select (LMB), end_turn (Spacebar)
 - MSAA 2× enabled in rendering settings
 - No design doc files should be edited by code — they are reference only

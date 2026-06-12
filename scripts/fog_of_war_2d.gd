@@ -1,6 +1,8 @@
 extends Node2D
 ## 战争迷雾系统 — 每玩家独立 fog 网格
-## float: 0.0=可见, 0.7=无视野(半透明遮罩)
+## float: 0.0=已探索, 0.7=未探索(半透明遮罩)
+##
+## 首次探索时触发 0.3s 渐隐动画，完成后发射 fog_updated 信号
 
 var grid_cols := 100
 var grid_rows := 56
@@ -10,7 +12,11 @@ var grid_center := Vector2(49.5, 27.5)
 var fog_grids: Array = []
 var current_player := 0
 
-signal fog_updated()
+signal fog_updated(player: int)
+
+# 渐隐动画追踪 [player]{Vector2i: elapsed}
+var _fading_out: Array = [{}, {}, {}]
+const FADE_DURATION := 0.3
 
 
 func _ready() -> void:
@@ -26,6 +32,39 @@ func _init_all_fog() -> void:
 				row.append(0.7)
 			grid.append(row)
 		fog_grids.append(grid)
+
+
+func _process(delta: float) -> void:
+	var changed_players: Dictionary = {}
+	for player in range(3):
+		var fading: Dictionary = _fading_out[player]
+		var still_fading: Dictionary = {}
+		for pos_key in fading:
+			var elapsed: float = fading[pos_key] + delta
+			var t := clampf(elapsed / FADE_DURATION, 0.0, 1.0)
+			var val := 0.7 * (1.0 - t)
+			var pos: Vector2i = pos_key
+			fog_grids[player][pos.y][pos.x] = val
+			if t >= 1.0:
+				fog_grids[player][pos.y][pos.x] = 0.0
+				changed_players[player] = true
+			else:
+				still_fading[pos_key] = elapsed
+		_fading_out[player] = still_fading
+
+	if not changed_players.is_empty():
+		queue_redraw()
+		for p in changed_players:
+			fog_updated.emit(p)
+
+	# 无活动动画时停止 _process
+	var any_active := false
+	for p in range(3):
+		if not _fading_out[p].is_empty():
+			any_active = true
+			break
+	if not any_active:
+		set_process(false)
 
 
 func _draw() -> void:
@@ -61,24 +100,49 @@ func _draw() -> void:
 
 # ========== 公共 API ==========
 
+func reveal_area(player: int, cx: int, cy: int, radius: int) -> void:
+	## 揭示区域并触发渐隐动画
+	var has_new := false
+	var fading: Dictionary = _fading_out[player]
+	for y in range(cy - radius, cy + radius + 1):
+		for x in range(cx - radius, cx + radius + 1):
+			if _in_bounds(x, y) and _manhattan_dist(x, y, cx, cy) <= radius:
+				if fog_grids[player][y][x] >= 0.7 and not fading.has(Vector2i(x, y)):
+					fading[Vector2i(x, y)] = 0.0
+					has_new = true
+	if has_new:
+		set_process(true)
+
+
 func reveal_tile(player: int, x: int, y: int) -> void:
+	## 揭示单个地块（无动画）
 	if _in_bounds(x, y):
 		fog_grids[player][y][x] = 0.0
 
 
-func reveal_area(player: int, cx: int, cy: int, radius: int) -> void:
+func reveal_area_immediate(player: int, cx: int, cy: int, radius: int) -> void:
+	## 揭示区域但不触发动画（用于初始设置）
+	var changed := false
 	for y in range(cy - radius, cy + radius + 1):
 		for x in range(cx - radius, cx + radius + 1):
 			if _in_bounds(x, y) and _manhattan_dist(x, y, cx, cy) <= radius:
-				fog_grids[player][y][x] = 0.0
+				if fog_grids[player][y][x] >= 0.7:
+					fog_grids[player][y][x] = 0.0
+					changed = true
+	if changed:
+		queue_redraw()
 
 
 func explore_area(player: int, cx: int, cy: int, radius: int) -> void:
-	for y in range(cy - radius, cy + radius + 1):
-		for x in range(cx - radius, cx + radius + 1):
-			if _in_bounds(x, y) and _manhattan_dist(x, y, cx, cy) <= radius:
-				if fog_grids[player][y][x] > 0.7:
-					fog_grids[player][y][x] = 0.7
+	## 依现有设计：无未探索态，故本函数仅保留接口
+	pass
+
+
+func is_explored(player: int, x: int, y: int) -> bool:
+	## 供 TerritoryManager 查询该格是否已被探索
+	if x < 0 or x >= grid_cols or y < 0 or y >= grid_rows:
+		return false
+	return fog_grids[player][y][x] <= 0.0
 
 
 func get_fog(player: int, x: int, y: int) -> float:

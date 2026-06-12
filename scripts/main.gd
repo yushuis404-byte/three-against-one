@@ -23,11 +23,28 @@ func _setup_game() -> void:
 
 	# 初始视野：揭示三阵营出生点周围
 	var fog_mgr = $GameBoard/FogOfWar2D
-	fog_mgr.reveal_area(0, 35, 13, 2)  # 精灵
-	fog_mgr.reveal_area(0, 35, 43, 2)  # 矮人
-	fog_mgr.reveal_area(0, 62, 35, 2)  # 兽人
+	fog_mgr.reveal_area_immediate(0, 35, 13, 2)  # 精灵
+	fog_mgr.reveal_area_immediate(0, 35, 43, 2)  # 矮人
+	fog_mgr.reveal_area_immediate(0, 62, 35, 2)  # 兽人
 	fog_mgr.queue_redraw()
 	print("[Main] 2.5D 游戏就绪")
+
+	# 领土系统初始化
+	var territory_mgr = $GameBoard/TerritoryManager2D
+	territory_mgr.add_town_hall(0, Vector2i(35, 13))  # 精灵
+	territory_mgr.add_town_hall(1, Vector2i(35, 43))  # 矮人
+	territory_mgr.add_town_hall(2, Vector2i(62, 35))  # 兽人
+	territory_mgr.recalc_territory(0)
+	territory_mgr.recalc_territory(1)
+	territory_mgr.recalc_territory(2)
+
+	# 联通信號：迷雾动画完成后重算领土
+	fog_mgr.fog_updated.connect(_on_fog_updated)
+
+
+func _on_fog_updated(player: int) -> void:
+	var territory_mgr = $GameBoard/TerritoryManager2D
+	territory_mgr.recalc_territory(player)
 
 
 func _on_resource_hovered(text: String) -> void:
