@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Three Against One — 开发路线图</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --card-bg: #0f3460;
+  --border: #2a4a7f;
+  --text: #e0e0e0;
+  --text-dim: #8899aa;
+  --accent: #e94560;
+  --done: #2ecc71;
+  --current: #f39c12;
+  --pending: #555;
+  --track-a: #3b82f6;
+  --track-b: #8b5cf6;
+  --track-c: #10b981;
+  --track-d: #f59e0b;
+  --track-e: #ef4444;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ====== Top Bar ====== */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar h1 {
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: linear-gradient(135deg, var(--track-a), var(--track-e));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.topbar .progress {
+  font-size: 13px;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 120px;
+}
+.topbar .progress strong { color: var(--text); }
+.topbar .status-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar .status-select select {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.topbar .stats {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  gap: 12px;
+}
+.topbar .stats span { white-space: nowrap; }
+.topbar .stats .s-done { color: var(--done); }
+.topbar .stats .s-current { color: var(--current); }
+
+.btn-save {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 5px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn-save:hover { background: var(--border); }
+.btn-save.saved { border-color: var(--done); color: var(--done); }
+
+/* ====== Phase Columns ====== */
+.phase-container {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  padding: 16px 20px;
+  min-width: 0;
+}
+@media (max-width: 1200px) {
+  .phase-container {
+    grid-template-columns: repeat(3, 1fr);
+    min-width: 900px;
+    overflow-x: auto;
+  }
+}
+@media (max-width: 700px) {
+  .phase-container {
+    grid-template-columns: repeat(2, 1fr);
+    min-width: auto;
+  }
+}
+
+.phase {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.phase-header {
+  padding: 10px 12px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+}
+.phase-header h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.phase-header .phase-ver {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.phase-body {
+  padding: 8px;
+  flex: 1;
+}
+.phase-progress-bar {
+  height: 3px;
+  background: var(--pending);
+  border-radius: 2px;
+  margin: 6px 8px 4px;
+  overflow: hidden;
+}
+.phase-progress-bar .fill {
+  height: 100%;
+  background: var(--done);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* ====== Track Group ====== */
+.track-group {
+  margin-bottom: 8px;
+}
+.track-label {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+.track-label.a { background: color-mix(in srgb, var(--track-a) 25%, transparent); color: var(--track-a); }
+.track-label.b { background: color-mix(in srgb, var(--track-b) 25%, transparent); color: var(--track-b); }
+.track-label.c { background: color-mix(in srgb, var(--track-c) 25%, transparent); color: var(--track-c); }
+.track-label.d { background: color-mix(in srgb, var(--track-d) 25%, transparent); color: var(--track-d); }
+.track-label.e { background: color-mix(in srgb, var(--track-e) 25%, transparent); color: var(--track-e); }
+
+/* ====== Module Card ====== */
+.card {
+  background: var(--card-bg);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  user-select: none;
+}
+.card:hover {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--card-bg) 85%, white);
+}
+.card.selected {
+  border-color: var(--current);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--current) 40%, transparent);
+}
+.card .top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card .status-icon { font-size: 12px; width: 16px; text-align: center; }
+.card .status-icon.done { color: var(--done); }
+.card .status-icon.current { color: var(--current); }
+.card .status-icon.pending { color: var(--pending); }
+.card .id {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  min-width: 22px;
+}
+.card .name {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.card .meta {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  display: flex;
+  gap: 8px;
+}
+.card .deps {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.card .deps .arrow { color: var(--accent); }
+
+/* ====== Notes Panel ====== */
+.notes-toggle {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  padding: 10px 6px;
+  cursor: pointer;
+  z-index: 90;
+  font-size: 18px;
+  color: var(--text-dim);
+  writing-mode: vertical-lr;
+  letter-spacing: 2px;
+}
+.notes-toggle:hover { color: var(--text); }
+
+.notes-panel {
+  position: fixed;
+  right: -340px;
+  top: 0;
+  width: 320px;
+  height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 200;
+  transition: right 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 20px rgba(0,0,0,0.3);
+}
+.notes-panel.open { right: 0; }
+.notes-panel .header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.notes-panel .header h3 { font-size: 14px; }
+.notes-panel .header .close {
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 20px;
+}
+.notes-panel .header .close:hover { color: var(--text); }
+.notes-panel .module-info {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.notes-panel .module-info strong { color: var(--text); }
+.notes-panel textarea {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  line-height: 1.6;
+}
+.notes-panel textarea::placeholder { color: var(--text-dim); }
+.notes-panel .footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+/* ====== Context Menu ====== */
+.context-menu {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  z-index: 300;
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: none;
+}
+.context-menu .item {
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.context-menu .item:hover { background: var(--card-bg); }
+.context-menu .item .dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ====== Dep Lines (SVG overlay) ====== */
+.dep-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ====== Scrollable wrapper ====== */
+.scroll-wrap {
+  overflow-x: auto;
+  padding-bottom: 40px;
+}
+
+/* ====== Empty state ====== */
+.empty-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 20px 8px;
+}
+
+/* ====== Toast ====== */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 18px;
+  font-size: 13px;
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <h1>Three Against One</h1>
+  <div class="progress">
+    当前进度: <strong id="currentLabel">—</strong>
+  </div>
+  <div class="status-select">
+    <span style="font-size:12px;color:var(--text-dim)">跳转:</span>
+    <select id="jumpSelect" onchange="jumpToModule(this.value)">
+      <option value="">— 选择模块 —</option>
+    </select>
+  </div>
+  <div class="stats">
+    <span class="s-done" id="statDone">✔ 0</span>
+    <span class="s-current" id="statCurrent">▶ 0</span>
+    <span id="statPending">○ 0</span>
+  </div>
+  <button class="btn-save" id="btnSave" onclick="saveState()">💾 保存</button>
+</div>
+
+<!-- Main Content -->
+<div class="scroll-wrap">
+  <div class="phase-container" id="phaseContainer"></div>
+</div>
+
+<!-- Notes Toggle -->
+<div class="notes-toggle" id="notesToggle" onclick="toggleNotes()">📝 笔记</div>
+
+<!-- Notes Panel -->
+<div class="notes-panel" id="notesPanel">
+  <div class="header">
+    <h3 id="notesTitle">笔记</h3>
+    <button class="close" onclick="toggleNotes()">✕</button>
+  </div>
+  <div class="module-info" id="notesModuleInfo">选择左侧一个模块开始记录</div>
+  <textarea id="notesText" placeholder="在此记录开发笔记、问题、待办事项&#10;&#10;提示: 笔记会自动保存到服务器"></textarea>
+  <div class="footer" id="notesSaved">—</div>
+</div>
+
+<!-- Context Menu -->
+<div class="context-menu" id="contextMenu">
+  <div class="item" onclick="setCardStatus('pending')"><span class="dot" style="background:var(--pending)"></span>○ 待开发</div>
+  <div class="item" onclick="setCardStatus('current')"><span class="dot" style="background:var(--current)"></span>▶ 进行中</div>
+  <div class="item" onclick="setCardStatus('done')"><span class="dot" style="background:var(--done)"></span>✔ 已完成</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ========== Data ==========
+const MODULES = [
+  // Phase 1 (v0.2) - 地图 + 基础
+  { id:"A1", name:"地形生成精调", phase:1, track:"A", trackName:"地图", hours:"2-3d", deps:[], status:"done" },
+  { id:"A2", name:"资源点放置",   phase:1, track:"A", trackName:"地图", hours:"1-2d", deps:["A1"], status:"done" },
+  { id:"A3", name:"迷雾系统",     phase:1, track:"A", trackName:"地图", hours:"3-4d", deps:["A1"], status:"done" },
+  { id:"A4", name:"领地系统",     phase:1, track:"A", trackName:"地图", hours:"1-2d", deps:["A1"], status:"done" },
+  { id:"B1", name:"状态机完善",   phase:1, track:"B", trackName:"核心", hours:"1d",   deps:[], status:"done" },
+  { id:"B2", name:"同步回合系统", phase:1, track:"B", trackName:"核心", hours:"3-4d", deps:[], status:"done" },
+  { id:"B3", name:"事件总线",     phase:1, track:"B", trackName:"核心", hours:"1-2d", deps:[], status:"pending" },
+  { id:"C1", name:"资源管理器",   phase:1, track:"C", trackName:"经济", hours:"2-3d", deps:["B3"], status:"pending" },
+
+  // Phase 2 (v0.3) - 经营建造
+  { id:"C2", name:"建筑系统",     phase:2, track:"C", trackName:"经济", hours:"4-5d", deps:["C1","A1"], status:"pending" },
+  { id:"C3", name:"单位系统",     phase:2, track:"C", trackName:"经济", hours:"3-4d", deps:["C1","A1"], status:"done" },
+  { id:"C4", name:"科技树",       phase:2, track:"C", trackName:"经济", hours:"4-5d", deps:["C1"], status:"pending" },
+  { id:"C5", name:"哥布林交易",   phase:2, track:"C", trackName:"经济", hours:"1-2d", deps:["C1","A1"], status:"pending" },
+
+  // Phase 3 (v0.4) - 战斗
+  { id:"D1", name:"PvP战斗",      phase:3, track:"D", trackName:"战斗", hours:"3-4d", deps:["C2","C3"], status:"pending" },
+  { id:"D2", name:"攻城系统",     phase:3, track:"D", trackName:"战斗", hours:"2-3d", deps:["D1"], status:"pending" },
+  { id:"D3", name:"掠夺系统",     phase:3, track:"D", trackName:"战斗", hours:"1-2d", deps:["D1"], status:"pending" },
+  { id:"D4", name:"中立生物",     phase:3, track:"D", trackName:"战斗", hours:"2-3d", deps:["C2","C3","A1"], status:"pending" },
+  { id:"E1", name:"外交系统",     phase:3, track:"E", trackName:"上层", hours:"1-2d", deps:["C1"], status:"pending" },
+
+  // Phase 4 (v0.5) - 终局
+  { id:"D5", name:"巨龙系统",     phase:4, track:"D", trackName:"战斗", hours:"2-3d", deps:["D4","C4"], status:"pending" },
+  { id:"D4b",name:"古龙/始祖",    phase:4, track:"D", trackName:"战斗", hours:"2-3d", deps:["D4"], status:"pending" },
+  { id:"E2", name:"胜利判定",     phase:4, track:"E", trackName:"上层", hours:"1d",   deps:["C4","C1","D5"], status:"pending" },
+
+  // Phase 5 (v0.6) - AI + UI
+  { id:"E3", name:"Bot AI",       phase:5, track:"E", trackName:"上层", hours:"5-7d", deps:["D1","D2","D3","D4","C4","C2","C3"], status:"pending" },
+  { id:"E5", name:"UI系统",       phase:5, track:"E", trackName:"上层", hours:"5-7d", deps:["B2","C1","C4"], status:"pending" },
+
+  // Phase 6 (v1.0) - 多人
+  { id:"E4", name:"多人网络",     phase:6, track:"E", trackName:"上层", hours:"待定", deps:[], status:"pending" },
+];
+
+const TRACK_ORDER = ["A","B","C","D","E"];
+const TRACK_LABELS = { A:"地图", B:"核心", C:"经济", D:"战斗", E:"上层" };
+const TRACK_COLORS = { A:"track-a", B:"track-b", C:"track-c", D:"track-d", E:"track-e" };
+const PHASE_NAMES = ["v0.2 地图+回合","v0.3 经营建造","v0.4 战斗系统","v0.5 终局内容","v0.6 AI+UI","v1.0 多人网络"];
+
+// ========== State ==========
+let state = { modules: {}, currentId: null };
+let selectedId = null;
+let dirty = false;
+
+function initState() {
+  for (const m of MODULES) {
+    if (!state.modules[m.id]) {
+      state.modules[m.id] = { status: m.status || "pending", notes: "" };
+    }
+  }
+}
+
+// ========== Render ==========
+function render() {
+  const container = document.getElementById("phaseContainer");
+  container.innerHTML = "";
+  const grouped = {};
+  for (const m of MODULES) {
+    if (!grouped[m.phase]) grouped[m.phase] = {};
+    if (!grouped[m.phase][m.track]) grouped[m.phase][m.track] = [];
+    grouped[m.phase][m.track].push(m);
+  }
+
+  for (let p = 1; p <= 6; p++) {
+    const col = document.createElement("div");
+    col.className = "phase";
+    const phaseMods = MODULES.filter(m => m.phase === p);
+    const done = phaseMods.filter(m => getStatus(m.id) === "done").length;
+    const pct = phaseMods.length ? Math.round(done/phaseMods.length*100) : 0;
+
+    col.innerHTML = `
+      <div class="phase-header">
+        <h2>Phase ${p}</h2>
+        <div class="phase-ver">${PHASE_NAMES[p-1]}</div>
+      </div>
+      <div class="phase-progress-bar"><div class="fill" style="width:${pct}%"></div></div>
+      <div class="phase-body" id="phaseBody${p}"></div>
+    `;
+    container.appendChild(col);
+    const body = col.querySelector(`#phaseBody${p}`);
+
+    for (const t of TRACK_ORDER) {
+      const mods = grouped[p]?.[t];
+      if (!mods || mods.length === 0) continue;
+      const grp = document.createElement("div");
+      grp.className = "track-group";
+      grp.innerHTML = `<div class="track-label ${TRACK_COLORS[t]}">${TRACK_LABELS[t]}</div>`;
+      for (const m of mods) {
+        const s = getStatus(m.id);
+        const sel = selectedId === m.id;
+        const icon = s === "done" ? "✔" : s === "current" ? "▶" : "○";
+        const iconCls = s === "done" ? "done" : s === "current" ? "current" : "pending";
+        const depText = m.deps.length ? `<span class="arrow">←</span> ${m.deps.join(" ")}` : "";
+        const card = document.createElement("div");
+        card.className = `card${sel ? " selected" : ""}`;
+        card.dataset.id = m.id;
+        card.innerHTML = `
+          <div class="top">
+            <span class="status-icon ${iconCls}">${icon}</span>
+            <span class="id">${m.id}</span>
+            <span class="name">${m.name}</span>
+          </div>
+          <div class="meta">
+            <span>${m.hours}</span>
+            ${depText ? `<span class="deps">${depText}</span>` : ""}
+          </div>
+        `;
+        card.addEventListener("click", () => selectCard(m.id));
+        card.addEventListener("contextmenu", (e) => { e.preventDefault(); showContextMenu(e, m.id); });
+        grp.appendChild(card);
+      }
+      body.appendChild(grp);
+    }
+
+    if (body.children.length === 0) {
+      body.innerHTML = '<div class="empty-hint">—</div>';
+    }
+  }
+
+  updateStats();
+  updateJumpSelect();
+  updateCurrentLabel();
+  updateNotesPanel();
+}
+
+function getStatus(id) {
+  return state.modules[id]?.status || "pending";
+}
+function getNotes(id) {
+  return state.modules[id]?.notes || "";
+}
+
+// ========== Interactions ==========
+function selectCard(id) {
+  selectedId = id;
+  state.currentId = id;
+  dirty = true;
+  render();
+  // Open notes panel if not already open
+  const panel = document.getElementById("notesPanel");
+  if (!panel.classList.contains("open")) {
+    toggleNotes();
+  }
+  // Scroll active card into view
+  setTimeout(() => {
+    const card = document.querySelector(`.card.selected`);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, 50);
+}
+
+function setCardStatus(status) {
+  if (!selectedId) return;
+  state.modules[selectedId].status = status;
+  dirty = true;
+  hideContextMenu();
+  render();
+}
+
+// Context menu
+function showContextMenu(e, id) {
+  selectedId = id;
+  const menu = document.getElementById("contextMenu");
+  menu.style.display = "block";
+  menu.style.left = Math.min(e.clientX, window.innerWidth - 160) + "px";
+  menu.style.top = Math.min(e.clientY, window.innerHeight - 120) + "px";
+  // highlight card
+  document.querySelectorAll(".card").forEach(c => c.classList.remove("selected"));
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (card) card.classList.add("selected");
+}
+function hideContextMenu() {
+  document.getElementById("contextMenu").style.display = "none";
+}
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".context-menu")) hideContextMenu();
+});
+
+// Notes
+function toggleNotes() {
+  const panel = document.getElementById("notesPanel");
+  panel.classList.toggle("open");
+  if (panel.classList.contains("open") && selectedId) {
+    loadNotes();
+  }
+}
+
+function loadNotes() {
+  if (!selectedId) return;
+  const m = MODULES.find(x => x.id === selectedId);
+  if (!m) return;
+  document.getElementById("notesTitle").textContent = `${m.id} ${m.name}`;
+  document.getElementById("notesModuleInfo").innerHTML =
+    `Phase ${m.phase} · ${m.trackName} · ${m.hours}${m.deps.length ? ` · 依赖: ${m.deps.join(", ")}` : ""}`;
+  document.getElementById("notesText").value = getNotes(selectedId);
+  document.getElementById("notesSaved").textContent = "—";
+}
+
+function saveNotes() {
+  if (!selectedId) return;
+  const val = document.getElementById("notesText").value;
+  state.modules[selectedId].notes = val;
+  dirty = true;
+  document.getElementById("notesSaved").textContent = "已保存 " + new Date().toLocaleTimeString();
+}
+
+// Save notes on input with debounce
+let notesTimer = null;
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("notesText").addEventListener("input", () => {
+    clearTimeout(notesTimer);
+    document.getElementById("notesSaved").textContent = "未保存...";
+    notesTimer = setTimeout(saveNotes, 500);
+  });
+});
+
+// ========== Stats & UI ==========
+function updateStats() {
+  let d = 0, c = 0, p = 0;
+  for (const m of MODULES) {
+    const s = getStatus(m.id);
+    if (s === "done") d++;
+    else if (s === "current") c++;
+    else p++;
+  }
+  document.getElementById("statDone").textContent = "✔ " + d;
+  document.getElementById("statCurrent").textContent = "▶ " + c;
+  document.getElementById("statPending").textContent = "○ " + p;
+}
+
+function updateCurrentLabel() {
+  const id = state.currentId;
+  if (!id) { document.getElementById("currentLabel").textContent = "—"; return; }
+  const m = MODULES.find(x => x.id === id);
+  if (!m) { document.getElementById("currentLabel").textContent = "—"; return; }
+  const s = getStatus(id);
+  const icon = s === "done" ? "✔" : s === "current" ? "▶" : "○";
+  document.getElementById("currentLabel").textContent = `Phase ${m.phase} · ${m.id} ${m.name} ${icon}`;
+}
+
+function updateJumpSelect() {
+  const sel = document.getElementById("jumpSelect");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— 选择模块 —</option>';
+  for (const m of MODULES) {
+    const s = getStatus(m.id);
+    const icon = s === "done" ? "✔" : s === "current" ? "▶" : "○";
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = `P${m.phase} ${m.id} ${m.name} ${icon}`;
+    sel.appendChild(opt);
+  }
+  if (cur) sel.value = cur;
+}
+
+function jumpToModule(id) {
+  if (!id) return;
+  selectCard(id);
+}
+
+// ========== Save / Load ==========
+async function saveState() {
+  const btn = document.getElementById("btnSave");
+  btn.textContent = "⏳ 保存中...";
+  try {
+    const resp = await fetch("/api/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state),
+    });
+    if (resp.ok) {
+      dirty = false;
+      btn.textContent = "✅ 已保存";
+      btn.classList.add("saved");
+      setTimeout(() => { btn.textContent = "💾 保存"; btn.classList.remove("saved"); }, 2000);
+      showToast("已保存到服务器");
+    } else {
+      btn.textContent = "❌ 保存失败";
+      setTimeout(() => { btn.textContent = "💾 保存"; }, 2000);
+    }
+  } catch (e) {
+    btn.textContent = "❌ 连接失败";
+    setTimeout(() => { btn.textContent = "💾 保存"; }, 2000);
+    showToast("无法连接服务器: " + e.message);
+  }
+}
+
+async function loadState() {
+  try {
+    const resp = await fetch("/api/state");
+    if (resp.ok) {
+      const data = await resp.json();
+      state = data;
+      if (!state.modules) state.modules = {};
+      initState();
+    } else {
+      initState();
+    }
+  } catch (e) {
+    console.warn("无法加载状态, 使用默认值:", e.message);
+    initState();
+  }
+  render();
+}
+
+// ========== Toast ==========
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+// ========== Keyboard ==========
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    hideContextMenu();
+    const panel = document.getElementById("notesPanel");
+    if (panel.classList.contains("open")) toggleNotes();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+    e.preventDefault();
+    saveState();
+  }
+});
+
+// ========== Init ==========
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadState();
+  // Auto-save every 30s if dirty
+  setInterval(() => { if (dirty) saveState(); }, 30000);
+});
+</script>
+</body>
+</html>
