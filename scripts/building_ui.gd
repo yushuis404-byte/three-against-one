@@ -43,6 +43,7 @@ const CATEGORY_ORDER := [
 
 
 func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_PASS  # 根节点不拦截地图区域的点击
 	_build_ui()
 	_select_category(BuildingData.BuildingCategory.INFRA)
 

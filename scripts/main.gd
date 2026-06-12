@@ -30,9 +30,9 @@ func _setup_game() -> void:
 
 	# 初始视野：揭示三阵营出生点周围
 	var fog_mgr = $GameBoard/FogOfWar2D
-	fog_mgr.reveal_area_immediate(0, 35, 13, 2)  # 精灵
-	fog_mgr.reveal_area_immediate(1, 35, 43, 2)  # 矮人
-	fog_mgr.reveal_area_immediate(2, 62, 35, 2)  # 兽人
+	fog_mgr.reveal_area_immediate(0, 35, 12, 3)  # 精灵（覆盖主城 2×2）
+	fog_mgr.reveal_area_immediate(1, 35, 42, 3)  # 矮人
+	fog_mgr.reveal_area_immediate(2, 62, 34, 3)  # 兽人
 	fog_mgr.queue_redraw()
 	print("[Main] 2.5D 游戏就绪")
 
@@ -53,6 +53,7 @@ func _setup_game() -> void:
 	building_manager.set_turn_manager(turn_manager)
 	building_manager.building_hovered.connect(_on_resource_hovered)
 	_place_initial_buildings()
+	building_manager.reveal_all_town_hall_vision()
 
 	# 回合系统初始化
 	turn_manager.round_started.connect(_on_round_started)
@@ -113,7 +114,8 @@ func _place_initial_buildings() -> void:
 		var origin: Vector2i = s["th_origin"]
 
 		# 主城
-		building_manager.place_building(BuildingData.town_hall(), p, origin)
+		var th_placed: bool = building_manager.place_building(BuildingData.town_hall(), p, origin)
+		print("[建筑] 阵营 %d 主城放置: %s at %s" % [p, str(th_placed), str(origin)])
 
 		# 特色资源建筑：在主城旁尝试偏移位置放置
 		var infra: BuildingData = faction_buildings[p]
@@ -123,10 +125,15 @@ func _place_initial_buildings() -> void:
 			Vector2i(-1, 1), Vector2i(2, 1),
 			Vector2i(-1, -1), Vector2i(2, -1),
 		]
+		var infra_placed: bool = false
 		for off in offsets:
 			var cand := Vector2i(origin.x + off.x, origin.y + off.y)
 			if building_manager.place_building(infra, p, cand):
+				infra_placed = true
+				print("[建筑] 阵营 %d %s 放置: true at %s" % [p, infra.name, str(cand)])
 				break
+		if not infra_placed:
+			print("[建筑] 阵营 %d %s 放置失败!" % [p, infra.name])
 
 
 const FACTION_NAMES := ["精灵", "矮人", "兽人"]

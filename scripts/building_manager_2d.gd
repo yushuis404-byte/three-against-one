@@ -53,8 +53,30 @@ func set_turn_manager(tm: Node) -> void:
 		tm.round_ended.connect(_on_round_ended)
 
 
-func _on_player_turn_started(_player: int) -> void:
+func _on_player_turn_started(player: int) -> void:
+	_reveal_town_hall_vision(player)
 	queue_redraw()
+
+
+func reveal_all_town_hall_vision() -> void:
+	## 游戏开始时揭示所有主城的视野
+	for p in range(3):
+		_reveal_town_hall_vision(p)
+
+
+func _reveal_town_hall_vision(player: int) -> void:
+	## 揭示该玩家所有主城周围的迷雾（视野半径 4）
+	if not _fog_mgr or not _fog_mgr.has_method("reveal_area"):
+		return
+	for b in _buildings:
+		if b["faction"] == player:
+			var data: BuildingData = b["data"]
+			if data.category == BuildingData.BuildingCategory.TOWN_HALL:
+				var origin: Vector2i = b["origin"]
+				var fp: Vector2i = data.footprint
+				var cx: int = origin.x + fp.x / 2
+				var cy: int = origin.y + fp.y / 2
+				_fog_mgr.reveal_area(player, cx, cy, 4)
 
 
 # ========== Building 数据 API ==========
@@ -78,6 +100,13 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		"origin": origin,
 		"hp": data.hp_max,
 	})
+
+	# 放置建筑时揭示该阵营对应区域的迷雾
+	if _fog_mgr and _fog_mgr.has_method("reveal_area_immediate"):
+		var fp: Vector2i = data.footprint
+		var center_x: int = origin.x + fp.x / 2
+		var center_y: int = origin.y + fp.y / 2
+		_fog_mgr.reveal_area_immediate(faction, center_x, center_y, 3)
 
 	queue_redraw()
 	return true
@@ -189,28 +218,50 @@ func _draw() -> void:
 
 		# 选中高亮
 		if is_selected:
-			draw_rect(Rect2(top_left.x - 2, top_left.y - 2, w + 4, h + 4),
-				SELECT_COLOR, false, 3.0)
+			draw_rect(Rect2(top_left.x - 3, top_left.y - 3, w + 6, h + 6),
+				SELECT_COLOR, false, 4.0)
+
+		# 主城特殊效果：外发光
+		if data.category == BuildingData.BuildingCategory.TOWN_HALL:
+			var glow_color: Color = FACTION_COLORS[faction]
+			glow_color.a = 0.3
+			draw_rect(Rect2(top_left.x - 4, top_left.y - 4, w + 8, h + 8), glow_color, true)
+			glow_color.a = 0.2
+			draw_rect(Rect2(top_left.x - 8, top_left.y - 8, w + 16, h + 16), glow_color, true)
 
 		# 建筑底色方块
 		var color: Color = FACTION_COLORS[faction]
 		color.a = BUILDING_ALPHA
 		draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
 
-		# 描边
+		# 描边（主城加粗）
+		var border_width: float = 3.0 if data.category == BuildingData.BuildingCategory.TOWN_HALL else 1.5
 		draw_rect(Rect2(top_left.x, top_left.y, w, h),
-			Color.BLACK, false, 1.5)
+			Color.BLACK, false, border_width)
 
 		# 建筑名称文字
 		var font: Font = ThemeDB.fallback_font
-		var fsize := 11
-		var label := data.name
+		var fsize: int = 13 if data.category == BuildingData.BuildingCategory.TOWN_HALL else 11
+		var label: String = data.name
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
 		var label_pos := Vector2(
 			top_left.x + w / 2.0 - text_size.x / 2.0,
 			top_left.y + h / 2.0 + fsize / 3.0
 		)
+		# 文字阴影增加可读性
+		draw_string(font, Vector2(label_pos.x + 1, label_pos.y + 1), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(0, 0, 0, 0.6))
 		draw_string(font, label_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
+
+		# 主城特殊标记：顶部显示城堡图标 ★
+		if data.category == BuildingData.BuildingCategory.TOWN_HALL:
+			var star_text := "★ 主城 ★"
+			var star_size := font.get_string_size(star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
+			var star_pos := Vector2(
+				top_left.x + w / 2.0 - star_size.x / 2.0,
+				top_left.y - 6
+			)
+			draw_string(font, Vector2(star_pos.x + 1, star_pos.y + 1), star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0, 0, 0, 0.7))
+			draw_string(font, star_pos, star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.9, 0.3))
 
 		# HP 标签（右下角小字）
 		var hp_label := "HP:%d" % b["hp"]
