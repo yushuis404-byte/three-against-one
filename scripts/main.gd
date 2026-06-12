@@ -11,6 +11,7 @@ extends Node2D
 @onready var turn_label: Label = $UI/TurnLabel
 @onready var resource_tracker: Node = $GameBoard/ResourceTracker
 @onready var resource_panel: Panel = $UI/ResourcePanel
+@onready var building_ui: Control = $UI/BuildingUI
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
@@ -67,6 +68,12 @@ func _setup_game() -> void:
 	resource_tracker.set_building_manager(building_manager)
 	resource_tracker.resources_updated.connect(_on_resources_updated)
 	_init_resource_labels()
+
+	# 建造面板初始化
+	building_ui.set_turn_manager(turn_manager)
+	building_ui.set_building_manager(building_manager)
+	building_ui.set_resource_tracker(resource_tracker)
+	building_ui.refresh(turn_manager.current_player)
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
@@ -141,6 +148,7 @@ func _on_player_turn_started(player: int) -> void:
 	turn_label.label_settings = _make_label_settings(FACTION_COLORS[player])
 	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], turn_manager.get_ap(player)]
 	resource_tracker.update_display(player)
+	building_ui.refresh(player)
 
 
 func _on_round_ended(round: int) -> void:
@@ -151,6 +159,7 @@ func _on_round_ended(round: int) -> void:
 func _on_ap_changed(player: int, ap: int) -> void:
 	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], turn_manager.get_ap(player)]
 	resource_tracker.update_display(player)
+	building_ui.refresh(player)
 
 
 func _init_resource_labels() -> void:
@@ -160,10 +169,10 @@ func _init_resource_labels() -> void:
 		return
 	var key_map := {"Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore"}
 	for node_name in key_map:
-		var label: Label = panel.get_node("VBox/Label" + node_name)
+		var label: Label = panel.get_node("HBox/Label" + node_name)
 		if label:
 			resource_tracker.set_resource_label(key_map[node_name], label)
-	resource_tracker.set_faction_label(panel.get_node("VBox/FactionLabel"))
+	resource_tracker.set_faction_label(panel.get_node("HBox/FactionLabel"))
 
 
 func _on_resources_updated(_player: int) -> void:

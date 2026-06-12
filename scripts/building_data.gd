@@ -146,6 +146,18 @@ static func scout_post() -> BuildingData:
 		4, "视野 +2"
 	)
 
+static func get_templates() -> Dictionary:
+	## 返回按分类分组的全部建筑模板
+	return {
+		BuildingCategory.INFRA: [infra_lumber_camp(), infra_quarry(), infra_farm(), infra_warehouse()],
+		BuildingCategory.T1_RESOURCE: [t1_mine(), t1_extraction_tower(), t1_ancient_wood_harvest()],
+		BuildingCategory.MILITARY: [barracks_lv1()],
+		BuildingCategory.SCOUT: [scout_post()],
+		BuildingCategory.GOLD_CHAIN: [gold_mine_shaft()],
+		BuildingCategory.TOWN_HALL: [town_hall()],
+	}
+
+
 static func gold_mine_shaft() -> BuildingData:
 	return BuildingData.new(
 		"金矿矿井", BuildingCategory.GOLD_CHAIN, Vector2i(1, 1),
