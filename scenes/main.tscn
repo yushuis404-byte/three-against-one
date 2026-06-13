@@ -11,6 +11,7 @@
 [ext_resource type="Script" uid="uid://whn7lwmb0lvj" path="res://scripts/building_manager_2d.gd" id="9_build"]
 [ext_resource type="Script" uid="uid://biaixqbx2vixd" path="res://scripts/resource_tracker.gd" id="10_tracker"]
 [ext_resource type="Script" uid="uid://dvgjc8wsiqshi" path="res://scripts/building_ui.gd" id="11_build_ui"]
+[ext_resource type="Script" path="res://scripts/gathering_manager_2d.gd" id="12_gather"]
 
 [node name="Main" type="Node2D" unique_id=488890058]
 script = ExtResource("2_main")
@@ -40,6 +41,9 @@ script = ExtResource("9_build")
 
 [node name="UnitManager2D" type="Node2D" parent="GameBoard" unique_id=635143604]
 script = ExtResource("8_unit")
+
+[node name="GatheringManager2D" type="Node2D" parent="GameBoard"]
+script = ExtResource("12_gather")
 
 [node name="ResourceTracker" type="Node" parent="GameBoard" unique_id=1799745659]
 script = ExtResource("10_tracker")

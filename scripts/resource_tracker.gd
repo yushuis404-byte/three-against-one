@@ -82,6 +82,11 @@ func _on_round_ended(_round: int) -> void:
 		var faction: int = b["faction"]
 		for key in prod:
 			add_resource(faction, key, prod[key])
+		# 驻兵加成
+		if _building_mgr.has_method("get_garrison_bonus"):
+			var bonus: Dictionary = _building_mgr.get_garrison_bonus(b["id"])
+			for key in bonus:
+				add_resource(faction, key, bonus[key])
 
 
 func update_display(player: int) -> void:

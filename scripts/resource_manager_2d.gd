@@ -33,7 +33,10 @@ enum ResourceType {
 	GOLD_MINE,
 	ANCIENT_FOREST,
 	QUARRY,
-	FERTILE_PLAIN,
+	IRON_OAK,
+	WILD_BERRIES,
+	WILD_GAME,
+	FRUIT_TREE,
 	IRON_MINE,
 	MAGIC_NODE,
 	ANCIENT_TREE,
@@ -58,13 +61,27 @@ const RESOURCE_DEFS: Array = [
 	[ResourceType.ANCIENT_FOREST, "古树林", 16, Color(0.13, 0.55, 0.13),
 	 { 7: 6, 8: 4, 10: 3, 9: 3 },
 	 [TerrainData.Terrain.FOREST_ELF]],
-	[ResourceType.QUARRY, "石场", 16, Color(0.55, 0.50, 0.45),
-	 { 8: 6, 12: 3, 4: 3, 11: 2, 9: 2 },
+	[ResourceType.QUARRY, "石场", 20, Color(0.55, 0.50, 0.45),
+	 { 8: 6, 12: 3, 4: 3, 11: 2, 9: 2, 7: 4 },
 	 [TerrainData.Terrain.MOUNTAIN_DWARF]],
-	[ResourceType.FERTILE_PLAIN, "肥沃平原", 16, Color(0.45, 0.75, 0.30),
-	 { 8: 5, 9: 5, 10: 2, 12: 2, 4: 2 },
-	 [TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC,
-	  TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF]],
+	[ResourceType.IRON_OAK, "铁橡木", 29, Color(0.6, 0.35, 0.1),
+	 { 7: 12, 8: 5, 9: 8, 10: 4 },
+	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+	  TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC]],
+	[ResourceType.WILD_BERRIES, "野果丛", 18, Color(0.85, 0.25, 0.20),
+	 { 7: 6, 10: 4, 8: 2, 9: 4, 12: 2 },
+	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+	  TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC,
+	  TerrainData.Terrain.RUINS]],
+	[ResourceType.WILD_GAME, "兽群", 20, Color(0.55, 0.35, 0.15),
+	 { 9: 12, 10: 3, 12: 2, 7: 2, 8: 1 },
+	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.PLAIN_DWARF,
+	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+	  TerrainData.Terrain.GLADE_ELF]],
+	[ResourceType.FRUIT_TREE, "果树", 14, Color(0.35, 0.55, 0.15),
+	 { 7: 5, 10: 3, 9: 3, 12: 2, 8: 1 },
+	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+	  TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC]],
 	[ResourceType.IRON_MINE, "铁矿脉", 14, Color(0.65, 0.65, 0.65),
 	 { 8: 5, 11: 3, 9: 3, 4: 2, 12: 1 },
 	 [TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.PLAIN_DWARF]],
@@ -276,3 +293,48 @@ func get_stats() -> Dictionary:
 				counts[rt] = counts.get(rt, 0) + 1
 				total += 1
 	return { "counts": counts, "total": total }
+
+
+# ========== 采集映射 ==========
+# ResourceType -> Array[Dictionary] 采集产出列表
+const RESOURCE_GATHER_KEY: Dictionary = {
+	ResourceType.GOLD_MINE: [{ "key": "gold_ore" }],
+	ResourceType.ANCIENT_FOREST: [{ "key": "ancient_wood" }],
+	ResourceType.QUARRY: [{ "key": "stone" }],
+	ResourceType.IRON_MINE: [{ "key": "iron" }],
+	ResourceType.MAGIC_NODE: [{ "key": "magic_dust" }],
+	ResourceType.ANCIENT_TREE: [{ "key": "ancient_wood" }],
+	ResourceType.RUNE_STONE: [{ "key": "magic_dust" }],
+	ResourceType.ABANDONED_POST: [{ "key": "magic_dust" }],
+	ResourceType.STAR_CRYSTAL: [{ "key": "magic_dust" }],
+	ResourceType.WORLD_TREE_ROOT: [{ "key": "ancient_wood" }],
+	ResourceType.DRAGON_CRYSTAL: [{ "key": "magic_dust" }],
+	ResourceType.HOT_SPRING: [{ "key": "food" }],
+	ResourceType.ANCIENT_RELIC: [{ "key": "magic_dust" }],
+	ResourceType.IRON_OAK: [{ "key": "wood" }],
+	ResourceType.WILD_BERRIES: [{ "key": "food" }],
+	ResourceType.WILD_GAME: [{ "key": "food" }],
+	ResourceType.FRUIT_TREE: [{ "key": "food" }, { "key": "wood" }],
+}
+const GATHER_AMOUNT: int = 2
+
+
+func get_gather_result(x: int, y: int) -> Array:
+	var rt: int = get_resource_type_at(x, y)
+	if rt == ResourceType.NONE:
+		return []
+	var entries: Array = RESOURCE_GATHER_KEY.get(rt, [])
+	if entries.is_empty():
+		return []
+	var result: Array = []
+	var rname: String = RESOURCE_DEFS[rt - 1][1]
+	for e in entries:
+		var entry: Dictionary = e
+		result.append({ "key": entry["key"], "amount": GATHER_AMOUNT, "name": rname })
+	return result
+
+
+func remove_resource(x: int, y: int) -> void:
+	if x >= 0 and x < grid_cols and y >= 0 and y < grid_rows:
+		resource_grid[y][x] = ResourceType.NONE
+		queue_redraw()

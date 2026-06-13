@@ -154,6 +154,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	# 检查是否点击了可达格（移动）
 	if _selected_id >= 0 and gpos in _reachable_tiles:
+		# 检查是否可驻兵建筑
+		if _turn_manager:
+			var bmgr: Node = get_parent().get_node("BuildingManager2D")
+			if bmgr and bmgr.has_method("can_garrison"):
+				var b: Dictionary = bmgr.get_building_at(gpos)
+				if not b.is_empty() and bmgr.can_garrison(b["id"], _turn_manager.current_player):
+					_garrison_unit_to(b["id"], gpos)
+					return
 		_move_selected_to(gpos)
 		return
 
@@ -217,6 +225,16 @@ func _move_selected_to(target: Vector2i) -> void:
 				var cp: int = _turn_manager.current_player
 				fog_mgr.reveal_area(cp, target.x, target.y, data.vision)
 
+			# 工人到达资源格 → 通知采集管理器
+			if data.category == UnitData.UnitCategory.WORKER:
+				var gather_mgr = get_parent().get_node("GatheringManager2D")
+				if gather_mgr and gather_mgr.has_method("start_gather"):
+					var res_mgr = get_parent().get_node("ResourceManager2D")
+					if res_mgr and res_mgr.has_method("get_gather_result"):
+						var gather_info: Array = res_mgr.get_gather_result(target.x, target.y)
+						if not gather_info.is_empty():
+							gather_mgr.start_gather(u["faction"], target, gather_info)
+
 			# 移动后自动取消选择
 			_clear_selection()
 			queue_redraw()
@@ -257,6 +275,15 @@ func _calc_reachable(unit: Dictionary) -> Array:
 			if not _is_tile_passable(nx, ny):
 				continue
 			if not _is_tile_empty(nx, ny):
+				# 检查是否可驻兵建筑（资源建筑、同阵营、有容量）
+				var bmgr: Node = get_parent().get_node("BuildingManager2D")
+				if bmgr and bmgr.has_method("get_building_at") and bmgr.has_method("max_garrison"):
+					var b: Dictionary = bmgr.get_building_at(Vector2i(nx, ny))
+					if not b.is_empty() and b["faction"] == unit["faction"]:
+						if not b["data"].production.is_empty():
+							if b.get("garrison", []).size() < bmgr.max_garrison(b):
+								visited[nkey] = true
+								result.append(nkey)
 				continue
 
 			visited[nkey] = true
@@ -313,11 +340,65 @@ func _on_player_turn_started(player: int) -> void:
 		if u["faction"] == player:
 			u["has_moved"] = false
 			u["has_attacked"] = false
+
 	_clear_selection()
 
 
 func _on_player_turn_ended(player: int) -> void:
 	_clear_selection()
+
+
+# ========== 驻兵 ==========
+
+func _garrison_unit_to(building_id: int, target: Vector2i) -> void:
+	## 将选中单位入驻到建筑内
+	if _selected_id < 0:
+		return
+
+	for u in _units:
+		if u["id"] == _selected_id:
+			var from: Vector2i = u["grid_pos"]
+			var steps := _calc_path_length(from, target)
+			if steps <= 0:
+				return
+
+			# 扣 AP
+			if _turn_manager:
+				var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, steps)
+				if not ok:
+					return
+
+			# 入驻建筑
+			var bmgr: Node = get_parent().get_node("BuildingManager2D")
+			if bmgr and bmgr.has_method("garrison_unit"):
+				bmgr.garrison_unit(building_id, u)
+
+			# 从单位列表移除
+			_units.erase(u)
+			_clear_selection()
+			queue_redraw()
+			return
+
+
+func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) -> int:
+	## 公共接口：添加一个单位到地图上（用于驻兵撤出等）
+	var uid := _next_id
+	_next_id += 1
+	_units.append({
+		"id": uid,
+		"data": data,
+		"faction": faction,
+		"grid_pos": grid_pos,
+		"hp": hp if hp >= 0 else data.hp_max,
+		"has_moved": false,
+		"has_attacked": false,
+	})
+	queue_redraw()
+	return uid
+
+
+func get_selected_id() -> int:
+	return _selected_id
 
 
 # ========== 工具 ==========

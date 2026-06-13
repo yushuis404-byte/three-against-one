@@ -60,7 +60,7 @@ static func town_hall() -> BuildingData:
 static func infra_lumber_camp() -> BuildingData:
 	return BuildingData.new(
 		"伐木场", BuildingCategory.INFRA, Vector2i(1, 1),
-		50, 0, 0, 0, 0,
+		0, 3, 0, 0, 0,
 		4, { "wood": 3 },
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
 		 TerrainData.Terrain.GLADE_ELF, TerrainData.Terrain.WASTELAND_ORC],
@@ -70,7 +70,7 @@ static func infra_lumber_camp() -> BuildingData:
 static func infra_quarry() -> BuildingData:
 	return BuildingData.new(
 		"采石场", BuildingCategory.INFRA, Vector2i(1, 1),
-		50, 0, 0, 0, 0,
+		0, 5, 0, 0, 0,
 		4, { "stone": 3 },
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
 		 TerrainData.Terrain.WASTELAND_ORC],
@@ -80,7 +80,7 @@ static func infra_quarry() -> BuildingData:
 static func infra_farm() -> BuildingData:
 	return BuildingData.new(
 		"农场", BuildingCategory.INFRA, Vector2i(1, 1),
-		50, 0, 0, 0, 0,
+		0, 0, 0, 0, 3,
 		4, { "food": 3 },
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.GLADE_ELF,
 		 TerrainData.Terrain.WASTELAND_ORC],

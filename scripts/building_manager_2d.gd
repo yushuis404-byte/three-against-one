@@ -19,6 +19,8 @@ var _turn_manager: Node = null
 var _territory_mgr: Node = null
 var _fog_mgr: Node = null
 
+var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
+
 signal building_hovered(text: String)
 
 const FACTION_COLORS := [
@@ -28,6 +30,16 @@ const FACTION_COLORS := [
 ]
 const BUILDING_ALPHA := 0.85
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.6)
+
+const RESOURCE_NAMES := {
+	"wood": "木材",
+	"stone": "石料",
+	"food": "食物",
+	"iron": "铁矿",
+	"magic_dust": "魔尘",
+	"ancient_wood": "古木",
+	"gold_ore": "金矿",
+}
 
 
 func _ready() -> void:
@@ -56,6 +68,10 @@ func set_turn_manager(tm: Node) -> void:
 func _on_player_turn_started(player: int) -> void:
 	_reveal_town_hall_vision(player)
 	queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	_just_garrisoned.clear()
 
 
 func reveal_all_town_hall_vision() -> void:
@@ -99,6 +115,7 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		"faction": faction,
 		"origin": origin,
 		"hp": data.hp_max,
+		"garrison": [],
 	})
 
 	# 放置建筑时揭示该阵营对应区域的迷雾
@@ -184,6 +201,82 @@ func count_buildings(faction: int, name_filter: String = "") -> int:
 
 func get_all_buildings() -> Array:
 	return _buildings.duplicate()
+
+
+# ========== 驻兵系统 ==========
+
+func max_garrison(building: Dictionary) -> int:
+	## 驻兵上限：footprint 面积，至少 2
+	var fp: Vector2i = building["data"].footprint
+	return max(2, fp.x * fp.y)
+
+
+func can_garrison(building_id: int, faction: int) -> bool:
+	## 检查建筑是否可驻兵（同阵营、资源建筑、未满）
+	for b in _buildings:
+		if b["id"] == building_id:
+			if b["faction"] != faction:
+				return false
+			if b["data"].production.is_empty():
+				return false
+			if b["garrison"].size() >= max_garrison(b):
+				return false
+			return true
+	return false
+
+
+func garrison_unit(building_id: int, unit_dict: Dictionary) -> void:
+	## 将单位入驻到建筑中
+	for b in _buildings:
+		if b["id"] == building_id:
+			b["garrison"].append(unit_dict.duplicate())
+			_just_garrisoned[building_id] = true
+			queue_redraw()
+			return
+
+
+func ungarrison_one(building_id: int) -> Dictionary:
+	## 从建筑撤出一个驻兵，返回该单位的数据
+	for b in _buildings:
+		if b["id"] == building_id:
+			if b["garrison"].is_empty():
+				return {}
+			var unit: Dictionary = b["garrison"].pop_back()
+			queue_redraw()
+			return unit
+	return {}
+
+
+func get_garrison_bonus(building_id: int) -> Dictionary:
+	## 返回驻兵加成字典：{ "wood": 2, "food": 2 } 等
+	for b in _buildings:
+		if b["id"] == building_id:
+			var prod: Dictionary = b["data"].production
+			if prod.is_empty() or b["garrison"].is_empty():
+				return {}
+			var bonus: Dictionary = {}
+			var count: int = b["garrison"].size()
+			for key in prod:
+				bonus[key] = count
+			return bonus
+	return {}
+
+
+func _find_ungarrison_pos(building: Dictionary) -> Vector2i:
+	## 在建筑周围找第一个空位用于撤出单位
+	var origin: Vector2i = building["origin"]
+	var fp: Vector2i = building["data"].footprint
+	var dirs := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
+	for dy in range(fp.y):
+		for dx in range(fp.x):
+			for dir in dirs:
+				var n: Vector2i = Vector2i(origin.x + dx, origin.y + dy) + dir
+				if n.x < 0 or n.x >= grid_cols or n.y < 0 or n.y >= grid_rows:
+					continue
+				if building_grid[n.y][n.x] >= 0:
+					continue
+				return n
+	return Vector2i(-1, -1)
 
 
 # ========== 绘制 ==========
@@ -272,6 +365,25 @@ func _draw() -> void:
 		)
 		draw_string(font, hp_pos, hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
 
+		# 驻兵圆点（建筑上方）
+		var garrison: Array = b.get("garrison", [])
+		if not garrison.is_empty():
+			var dot_count: int = garrison.size()
+			var max_dots := mini(dot_count, 4)
+			var dot_radius := 2.5
+			var dot_spacing := 8.0
+			var dots_total_width := (max_dots - 1) * dot_spacing
+			var dots_start_x := top_left.x + w / 2.0 - dots_total_width / 2.0
+			for i in range(max_dots):
+				var dot_pos := Vector2(dots_start_x + i * dot_spacing, top_left.y - 10)
+				draw_circle(dot_pos, dot_radius, FACTION_COLORS[faction])
+				draw_arc(dot_pos, dot_radius, 0, TAU, 8, Color.BLACK, 0.8)
+			if dot_count > 4:
+				var plus_label := "+%d" % [dot_count - 4]
+				var plus_size := font.get_string_size(plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8)
+				var plus_pos := Vector2(dots_start_x + 4 * dot_spacing + 2, top_left.y - 10 + 3)
+				draw_string(font, plus_pos, plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color.WHITE)
+
 
 # ========== 回合产出 ==========
 
@@ -291,6 +403,51 @@ func _on_round_ended(round_number: int) -> void:
 			parts.append("%s +%d" % [key, prod[key]])
 		print("[建筑] %s %s: %s" % [faction_name, data.name, ", ".join(parts)])
 
+		# 驻兵加成日志
+		var garrison: Array = b.get("garrison", [])
+		var gcount := garrison.size()
+		if gcount > 0:
+			var bonus_parts: PackedStringArray = []
+			for key in prod:
+				bonus_parts.append("%s +%d" % [key, gcount])
+			print("[建筑] 驻兵加成 %s: %s" % [data.name, ", ".join(bonus_parts)])
+
+		# 建筑上方飘浮产量文字
+		_show_production_text(b, prod, gcount)
+
+
+func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int) -> void:
+	## 在建筑上方创建飘浮产量文字，如 "木材 +1" "石料 +2"
+	if prod.is_empty():
+		return
+	var data: BuildingData = building["data"]
+	var origin: Vector2i = building["origin"]
+	var fp: Vector2i = data.footprint
+	var cx: int = origin.x + fp.x / 2
+	var cy: int = origin.y + fp.y / 2
+	var world_pos := _grid_to_world(cx, cy)
+
+	var lines: PackedStringArray = []
+	for key in prod:
+		var total: int = prod[key] + gcount
+		var rname: String = RESOURCE_NAMES.get(key, key)
+		lines.append("%s +%d" % [rname, total])
+	var text := "\n".join(lines)
+
+	var label := Label.new()
+	label.text = text
+	label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
+	label.add_theme_font_size_override("font_size", 13)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.position = Vector2(world_pos.x - 30, world_pos.y - 30)
+	add_child(label)
+
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.tween_property(label, "position", label.position + Vector2(0, -30), 1.0)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(label.queue_free)
+
 
 # ========== 交互 ==========
 
@@ -303,6 +460,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		var building := get_building_at(gpos)
 		if not building.is_empty():
+			# 检查撤出驻兵：点击己方有驻兵的建筑 → 撤出一个
+			var garr: Array = building.get("garrison", [])
+			if not garr.is_empty() and _turn_manager and not _just_garrisoned.has(building["id"]):
+				var cp: int = _turn_manager.current_player
+				if building["faction"] == cp:
+					var unit_dict := ungarrison_one(building["id"])
+					if not unit_dict.is_empty():
+						var spawn_pos := _find_ungarrison_pos(building)
+						if spawn_pos.x >= 0:
+							var unit_mgr = get_parent().get_node("UnitManager2D")
+							if unit_mgr and unit_mgr.has_method("add_unit"):
+								unit_mgr.add_unit(cp, unit_dict["data"], spawn_pos, unit_dict.get("hp", -1))
+						return  # 撤出后不切换选择
 			if _selected_id == building["id"]:
 				_clear_selection()
 			else:
@@ -323,7 +493,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				0: fname = "精灵"
 				1: fname = "矮人"
 				2: fname = "兽人"
-			building_hovered.emit("%s · %s (HP:%d/%d)" % [fname, data.name, building["hp"], data.hp_max])
+			var hover_text := "%s · %s (HP:%d/%d)" % [fname, data.name, building["hp"], data.hp_max]
+			var garr: Array = building.get("garrison", [])
+			if not garr.is_empty():
+				hover_text += " 驻军:%d" % garr.size()
+			building_hovered.emit(hover_text)
 
 
 func _select_building(bid: int) -> void:
