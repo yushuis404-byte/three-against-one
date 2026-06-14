@@ -11,7 +11,7 @@ const ProductionRecipeScript := preload("res://scripts/templates/production_reci
 func make_unit_templates() -> Dictionary:
 	var worker = _unit_basic(
 		"unit.worker",
-		"Worker",
+		"工人",
 		UnitTemplateScript.UnitRole.WORKER,
 		1,
 		0,
@@ -24,7 +24,7 @@ func make_unit_templates() -> Dictionary:
 
 	var scout = _unit_basic(
 		"unit.scout",
-		"Scout",
+		"斥候",
 		UnitTemplateScript.UnitRole.SCOUT,
 		3,
 		1,
@@ -36,7 +36,7 @@ func make_unit_templates() -> Dictionary:
 
 	var guard = _unit_basic(
 		"unit.guard",
-		"Guard",
+		"守卫",
 		UnitTemplateScript.UnitRole.GUARD,
 		1,
 		3,
@@ -47,7 +47,7 @@ func make_unit_templates() -> Dictionary:
 	guard.food_cost = 2
 
 	var veteran_guard: Resource = guard.create_variant("unit.guard.veteran", {
-		"display_name": "Veteran Guard",
+		"display_name": "精锐守卫",
 		"atk": 4,
 		"hp_max": 8,
 		"tags": ["guard", "military", "melee", "veteran"],

@@ -13,12 +13,12 @@
       "notes": "已新增 docs/template_toolkit.md。"
     },
     "U1": {
-      "status": "current",
-      "notes": "下一步：UnitManager 初始单位改由 TemplateRegistry 创建。"
+      "status": "done",
+      "notes": "已完成：UnitManager 初始单位优先从 TemplateRegistry 读取 unit.worker / unit.scout / unit.guard，读取失败时回退旧 UnitData。"
     },
     "U2": {
-      "status": "pending",
-      "notes": ""
+      "status": "current",
+      "notes": "下一步：单位实例只保存 template_id、hp、位置和状态，属性从模板读取。"
     },
     "U3": {
       "status": "pending",
@@ -101,5 +101,5 @@
       "notes": ""
     }
   },
-  "currentId": "U1"
+  "currentId": "U2"
 }

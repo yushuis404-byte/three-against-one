@@ -20,6 +20,7 @@ var _reachable_tiles: Array = []  # 当前选中单位的可达格列表
 
 var _turn_manager: Node = null
 var _grid_manager: Node = null
+var _template_registry: Node = null
 
 # 战斗系统
 var _in_combat := false
@@ -42,6 +43,7 @@ const UNIT_RADIUS := 8.0
 
 func _ready() -> void:
 	_grid_manager = get_parent().get_node("GridManager2D")
+	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -65,9 +67,9 @@ func place_initial_units() -> void:
 		var p: int = s["player"]
 		var pos: Vector2i = s["pos"]
 		var offset: int = s["name_offset"]
-		_add_unit(p, UnitData.worker(), Vector2i(pos.x + offset, pos.y))
-		_add_unit(p, UnitData.scout(), Vector2i(pos.x + offset + 1, pos.y))
-		_add_unit(p, UnitData.guard(), Vector2i(pos.x + offset + 2, pos.y))
+		_add_initial_unit(p, "unit.worker", UnitData.worker(), Vector2i(pos.x + offset, pos.y))
+		_add_initial_unit(p, "unit.scout", UnitData.scout(), Vector2i(pos.x + offset + 1, pos.y))
+		_add_initial_unit(p, "unit.guard", UnitData.guard(), Vector2i(pos.x + offset + 2, pos.y))
 
 		# 初始放置时揭示视野
 		for u in _units:
@@ -75,6 +77,14 @@ func place_initial_units() -> void:
 				continue
 			var upos: Vector2i = u["grid_pos"]
 			fog_mgr.reveal_area(p, upos.x, upos.y, u["data"].vision)
+
+
+func _add_initial_unit(faction: int, template_id: String, fallback: UnitData, grid_pos: Vector2i) -> int:
+	if _template_registry and _template_registry.has_method("get_unit"):
+		var template: Resource = _template_registry.call("get_unit", template_id)
+		if template != null:
+			return add_unit_from_template(faction, template, grid_pos)
+	return _add_unit(faction, fallback, grid_pos)
 
 
 func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:
