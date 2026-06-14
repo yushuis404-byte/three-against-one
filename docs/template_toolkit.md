@@ -1,0 +1,50 @@
+# Template Toolkit
+
+This project now has a low-intrusion template layer under `scripts/templates/`.
+The current prototype can keep running while managers migrate one feature at a time.
+
+## Core Files
+
+- `game_template.gd`: shared id, display name, description, icon key, tags, and sort order.
+- `resource_amount.gd`: reusable `{ resource_key, amount }` pair for costs and rewards.
+- `production_recipe.gd`: generic input/output conversion rule.
+- `unit_template.gd`: reusable unit definition.
+- `building_template.gd`: reusable building definition.
+- `resource_node_template.gd`: reusable map resource definition.
+- `default_template_library.gd`: code-side defaults used before `.tres` data files are authored.
+- `template_registry.gd`: loader/query node for all templates.
+
+`TemplateRegistry` is already mounted in `scenes/main.tscn` under `GameBoard`.
+
+## Unit Template Pattern
+
+Create one base template, then derive variants by overriding only the differences.
+
+```gdscript
+var guard = registry.get_unit("unit.guard")
+var heavy_guard = guard.create_variant("unit.guard.heavy", {
+	"display_name": "Heavy Guard",
+	"move_max": 1,
+	"atk": 4,
+	"hp_max": 10,
+	"tags": ["guard", "military", "melee", "heavy"],
+})
+```
+
+The compatibility bridge is already in place:
+
+```gdscript
+unit_manager.add_unit_from_template(player, registry.get_unit("unit.worker"), grid_pos)
+```
+
+Existing `UnitData` still works. `UnitTemplate.to_unit_data()` and `UnitData.from_template()` let old systems consume new templates.
+
+## Migration Order
+
+1. Move unit spawning to `TemplateRegistry`.
+2. Move recruit camp options to `BuildingTemplate.recruit_options`.
+3. Move building UI card data to `BuildingTemplate`.
+4. Move production and garrison bonuses to `ProductionRecipe`.
+5. Move map resource definitions to `ResourceNodeTemplate`.
+
+The rule of thumb: new content should be template data first, system code only when the rule itself is new.

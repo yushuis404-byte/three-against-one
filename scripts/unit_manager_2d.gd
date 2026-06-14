@@ -589,6 +589,13 @@ func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) ->
 	return uid
 
 
+func add_unit_from_template(faction: int, template: Resource, grid_pos: Vector2i, hp: int = -1) -> int:
+	## Compatibility entry for the template toolkit.
+	if template == null:
+		return -1
+	return add_unit(faction, UnitData.from_template(template), grid_pos, hp)
+
+
 func get_selected_id() -> int:
 	return _selected_id
 
