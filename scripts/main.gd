@@ -12,6 +12,7 @@ extends Node2D
 @onready var resource_tracker: Node = $GameBoard/ResourceTracker
 @onready var resource_panel: Panel = $UI/ResourcePanel
 @onready var building_ui: Control = $UI/BuildingUI
+@onready var recruit_ui: Control = $UI/RecruitUI
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
@@ -53,6 +54,9 @@ func _setup_game() -> void:
 	building_manager.set_turn_manager(turn_manager)
 	building_manager.building_hovered.connect(_on_resource_hovered)
 	building_manager.set_resource_tracker(resource_tracker)
+	building_manager.recruit_panel_requested.connect(_on_recruit_panel_requested)
+	building_manager.recruit_panel_closed.connect(_on_recruit_panel_closed)
+	building_manager.recruit_queue_changed.connect(_on_recruit_queue_changed)
 	_place_initial_buildings()
 	building_manager.reveal_all_town_hall_vision()
 
@@ -78,6 +82,8 @@ func _setup_game() -> void:
 	building_ui.building_selected.connect(_on_building_selected)
 	building_ui.refresh(turn_manager.current_player)
 
+	recruit_ui.recruit_requested.connect(_on_recruit_requested)
+
 	# 单位信息面板初始化
 	_init_unit_info_panel()
 
@@ -87,6 +93,22 @@ func _setup_game() -> void:
 
 func _on_building_selected(data: BuildingData) -> void:
 	building_manager.start_placement(data, turn_manager.current_player)
+
+
+func _on_recruit_panel_requested(building_id: int, building_name: String, options: Array, queue: Array) -> void:
+	recruit_ui.show_panel(building_id, building_name, options, queue)
+
+
+func _on_recruit_panel_closed() -> void:
+	recruit_ui.hide_panel()
+
+
+func _on_recruit_queue_changed(building_id: int, queue: Array) -> void:
+	recruit_ui.update_queue(building_id, queue)
+
+
+func _on_recruit_requested(building_id: int, unit_template_id: String, count: int) -> void:
+	building_manager.request_recruitment(building_id, unit_template_id, count)
 
 
 func _on_fog_updated(player: int) -> void:

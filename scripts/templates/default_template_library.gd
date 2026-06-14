@@ -20,6 +20,8 @@ func make_unit_templates() -> Dictionary:
 		["worker", "civilian", "gatherer"]
 	)
 	worker.recruit_cost = [_amount("food", 1)]
+	worker.recruit_ap_cost = 1
+	worker.recruit_turns = 1
 	worker.can_attack_units = false
 
 	var scout = _unit_basic(
@@ -33,6 +35,9 @@ func make_unit_templates() -> Dictionary:
 		["scout", "military", "light"]
 	)
 	scout.food_cost = 1
+	scout.recruit_cost = [_amount("food", 1), _amount("wood", 5)]
+	scout.recruit_ap_cost = 1
+	scout.recruit_turns = 2
 
 	var guard = _unit_basic(
 		"unit.guard",
@@ -45,11 +50,15 @@ func make_unit_templates() -> Dictionary:
 		["guard", "military", "melee"]
 	)
 	guard.food_cost = 2
+	guard.recruit_cost = [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)]
+	guard.recruit_ap_cost = 1
+	guard.recruit_turns = 2
 
 	var veteran_guard: Resource = guard.create_variant("unit.guard.veteran", {
 		"display_name": "精锐守卫",
 		"atk": 4,
 		"hp_max": 8,
+		"recruit_turns": 3,
 		"tags": ["guard", "military", "melee", "veteran"],
 	})
 
@@ -71,6 +80,16 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	recruit_camp.max_per_faction = 3
 	recruit_camp.recruit_options = [unit_templates["unit.worker"]]
 	recruit_camp.tags = ["recruit", "infra"]
+
+	var barracks = BuildingTemplateScript.new()
+	barracks.id = "building.barracks_lv1"
+	barracks.display_name = "兵营"
+	barracks.role = BuildingTemplateScript.BuildingRole.MILITARY
+	barracks.hp_max = 8
+	barracks.build_cost = [_amount("gold", 100), _amount("wood", 50), _amount("stone", 30)]
+	barracks.max_per_faction = 99
+	barracks.recruit_options = [unit_templates["unit.guard"], unit_templates["unit.scout"]]
+	barracks.tags = ["military", "recruit"]
 
 	var lumber_camp = BuildingTemplateScript.new()
 	lumber_camp.id = "building.lumber_camp"
@@ -112,6 +131,7 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 
 	return {
 		recruit_camp.id: recruit_camp,
+		barracks.id: barracks,
 		lumber_camp.id: lumber_camp,
 		gold_mine.id: gold_mine,
 	}

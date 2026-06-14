@@ -13,6 +13,7 @@
 [ext_resource type="Script" uid="uid://dvgjc8wsiqshi" path="res://scripts/building_ui.gd" id="11_build_ui"]
 [ext_resource type="Script" path="res://scripts/gathering_manager_2d.gd" id="12_gather"]
 [ext_resource type="Script" path="res://scripts/templates/template_registry.gd" id="13_templates"]
+[ext_resource type="Script" path="res://scripts/recruit_ui.gd" id="14_recruit_ui"]
 
 [node name="Main" type="Node2D" unique_id=488890058]
 script = ExtResource("2_main")
@@ -125,3 +126,12 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("11_build_ui")
+
+[node name="RecruitUI" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("14_recruit_ui")

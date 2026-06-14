@@ -11,6 +11,8 @@ enum UnitRole { WORKER, SCOUT, GUARD, ELITE, SIEGE, SPECIAL }
 @export var vision: int = 1
 @export var food_cost: int = 1
 @export var recruit_cost: Array = []
+@export var recruit_ap_cost: int = 1
+@export var recruit_turns: int = 1
 @export var upkeep: Array = []
 @export var can_gather: bool = false
 @export var can_garrison: bool = true

@@ -21,8 +21,8 @@
       "notes": "下一步：单位实例只保存 template_id、hp、位置和状态，属性从模板读取。"
     },
     "U3": {
-      "status": "pending",
-      "notes": ""
+      "status": "done",
+      "notes": "已完成第一版：点击招募建筑打开 RecruitUI，可选单位与数量，提交后进入建筑招募队列；按玩家回合开始推进剩余回合，到 0 后在建筑周围出兵。"
     },
     "U4": {
       "status": "pending",

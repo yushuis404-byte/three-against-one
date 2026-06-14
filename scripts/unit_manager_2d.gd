@@ -39,6 +39,7 @@ const FACTION_COLORS := [
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
 const UNIT_RADIUS := 8.0
+const SPAWN_SEARCH_RADIUS := 8
 
 
 func _ready() -> void:
@@ -88,17 +89,24 @@ func _add_initial_unit(faction: int, template_id: String, fallback: UnitData, gr
 
 
 func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:
+	var spawn_pos: Vector2i = _resolve_spawn_pos(grid_pos)
+	if spawn_pos.x < 0:
+		print("[Unit] No valid spawn tile near %s for %s." % [str(grid_pos), data.unit_name])
+		return -1
+
 	var uid := _next_id
 	_next_id += 1
 	_units.append({
 		"id": uid,
 		"data": data,
 		"faction": faction,
-		"grid_pos": grid_pos,
+		"grid_pos": spawn_pos,
 		"hp": data.hp_max,
 		"has_moved": false,
 		"has_attacked": false,
 	})
+	if spawn_pos != grid_pos:
+		print("[Unit] Adjusted spawn %s -> %s for %s." % [str(grid_pos), str(spawn_pos), data.unit_name])
 	return uid
 
 
@@ -584,17 +592,24 @@ func is_in_combat() -> bool:
 
 func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) -> int:
 	## 公共接口：添加一个单位到地图上（用于驻兵撤出等）
+	var spawn_pos: Vector2i = _resolve_spawn_pos(grid_pos)
+	if spawn_pos.x < 0:
+		print("[Unit] No valid spawn tile near %s for %s." % [str(grid_pos), data.unit_name])
+		return -1
+
 	var uid := _next_id
 	_next_id += 1
 	_units.append({
 		"id": uid,
 		"data": data,
 		"faction": faction,
-		"grid_pos": grid_pos,
+		"grid_pos": spawn_pos,
 		"hp": hp if hp >= 0 else data.hp_max,
 		"has_moved": false,
 		"has_attacked": false,
 	})
+	if spawn_pos != grid_pos:
+		print("[Unit] Adjusted spawn %s -> %s for %s." % [str(grid_pos), str(spawn_pos), data.unit_name])
 	queue_redraw()
 	return uid
 
@@ -628,6 +643,33 @@ func _is_tile_empty(gx: int, gy: int) -> bool:
 	# 建筑占用检查
 	var bmgr = get_parent().get_node("BuildingManager2D")
 	if bmgr and bmgr.is_tile_occupied(gx, gy):
+		return false
+	return true
+
+
+func _resolve_spawn_pos(preferred: Vector2i) -> Vector2i:
+	if _is_valid_spawn_tile(preferred.x, preferred.y):
+		return preferred
+
+	for radius in range(1, SPAWN_SEARCH_RADIUS + 1):
+		for dx in range(-radius, radius + 1):
+			var dy_abs: int = radius - absi(dx)
+			var candidates: Array[Vector2i] = [Vector2i(preferred.x + dx, preferred.y + dy_abs)]
+			if dy_abs != 0:
+				candidates.append(Vector2i(preferred.x + dx, preferred.y - dy_abs))
+			for candidate in candidates:
+				if _is_valid_spawn_tile(candidate.x, candidate.y):
+					return candidate
+
+	return Vector2i(-1, -1)
+
+
+func _is_valid_spawn_tile(gx: int, gy: int) -> bool:
+	if not _in_bounds(gx, gy):
+		return false
+	if not _is_tile_passable(gx, gy):
+		return false
+	if not _is_tile_empty(gx, gy):
 		return false
 	return true
 

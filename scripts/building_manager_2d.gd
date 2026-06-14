@@ -19,8 +19,10 @@ var _turn_manager: Node = null
 var _territory_mgr: Node = null
 var _fog_mgr: Node = null
 var _resource_mgr: Node = null
+var _template_registry: Node = null
 
 var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
+const RECRUIT_QUEUE_CAPACITY := 3
 
 # 放置模式
 var _placement_active := false
@@ -32,6 +34,9 @@ var _resource_tracker: Node = null
 
 signal building_hovered(text: String)
 signal placement_canceled()
+signal recruit_panel_requested(building_id: int, building_name: String, options: Array, queue: Array)
+signal recruit_panel_closed()
+signal recruit_queue_changed(building_id: int, queue: Array)
 
 const FACTION_COLORS := [
 	Color(0.18, 0.60, 0.15),   # 0 精灵绿
@@ -59,6 +64,7 @@ func _ready() -> void:
 	_territory_mgr = get_parent().get_node("TerritoryManager2D")
 	_fog_mgr = get_parent().get_node("FogOfWar2D")
 	_resource_mgr = get_parent().get_node("ResourceManager2D")
+	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
 
 
 func _init_grid() -> void:
@@ -83,6 +89,7 @@ func set_resource_tracker(rt: Node) -> void:
 
 func _on_player_turn_started(player: int) -> void:
 	_reveal_town_hall_vision(player)
+	_process_recruit_queues(player)
 	queue_redraw()
 
 
@@ -132,6 +139,7 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		"origin": origin,
 		"hp": data.hp_max,
 		"garrison": [],
+		"recruit_queue": [],
 	})
 
 	# 放置建筑时揭示该阵营对应区域的迷雾
@@ -566,11 +574,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			_clear_selection()
 
-	# 招募营：R 键招募工人
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_R and _selected_id >= 0:
-			_recruit_worker()
-
 	if event is InputEventMouseMotion:
 		var cursor := get_global_mouse_position()
 		var gpos := _world_to_grid(cursor)
@@ -613,11 +616,17 @@ func _handle_placement_input(event: InputEvent) -> void:
 
 func _select_building(bid: int) -> void:
 	_selected_id = bid
+	var building: Dictionary = _get_building_by_id(bid)
+	if _is_recruit_building(building):
+		_emit_recruit_panel(building)
+	else:
+		recruit_panel_closed.emit()
 	queue_redraw()
 
 
 func _clear_selection() -> void:
 	_selected_id = -1
+	recruit_panel_closed.emit()
 	queue_redraw()
 
 
@@ -721,57 +730,234 @@ func _in_bounds(gx: int, gy: int) -> bool:
 	return gx >= 0 and gx < grid_cols and gy >= 0 and gy < grid_rows
 
 
-func _recruit_worker() -> void:
-	## 招募工人：检查食物/AP → 附近生成
-	var building: Dictionary = {}
-	for b in _buildings:
-		if b["id"] == _selected_id:
-			building = b
-			break
-	if building.is_empty():
-		return
-	if building["data"].category != BuildingData.BuildingCategory.RECRUIT:
-		return
+func request_recruitment(building_id: int, unit_template_id: String, count: int) -> bool:
+	var building: Dictionary = _get_building_by_id(building_id)
+	if not _is_recruit_building(building):
+		return false
 	var faction: int = _turn_manager.current_player if _turn_manager else -1
 	if faction < 0 or building["faction"] != faction:
-		return
-	# 检查食物
-	if _resource_tracker and _resource_tracker.get_resource(faction, "food") < 1:
-		print("[建筑] 食物不足，无法招募工人")
-		return
-	# 检查 AP
-	if _turn_manager and _turn_manager.get_ap(faction) < 1:
-		print("[建筑] AP 不足，无法招募工人")
-		return
-	# 找生成位置
+		return false
+	var unit_template: Resource = _get_recruit_unit_template(unit_template_id)
+	if unit_template == null:
+		return false
+	if not _building_can_recruit(building, unit_template_id):
+		return false
+
+	var safe_count: int = clampi(count, 1, RECRUIT_QUEUE_CAPACITY)
+	var queue: Array = building.get("recruit_queue", [])
+	if queue.size() + safe_count > RECRUIT_QUEUE_CAPACITY:
+		print("[Recruit] Queue is full.")
+		return false
+
+	var cost: Dictionary = _get_unit_recruit_cost(unit_template)
+	for key in cost:
+		var need: int = int(cost[key]) * safe_count
+		if _resource_tracker and _resource_tracker.get_resource(faction, key) < need:
+			print("[Recruit] Not enough %s." % key)
+			return false
+
+	var ap_cost: int = int(unit_template.get("recruit_ap_cost")) * safe_count
+	if _turn_manager and _turn_manager.get_ap(faction) < ap_cost:
+		print("[Recruit] Not enough AP.")
+		return false
+
+	if _resource_tracker:
+		for key in cost:
+			_resource_tracker.spend_resource(faction, key, int(cost[key]) * safe_count)
+	if _turn_manager:
+		_turn_manager.spend_ap(faction, ap_cost)
+
+	var turns: int = maxi(1, int(unit_template.get("recruit_turns")))
+	for i in range(safe_count):
+		queue.append({
+			"unit_template_id": unit_template_id,
+			"unit_name": str(unit_template.get("display_name")),
+			"remaining_turns": turns,
+			"total_turns": turns,
+		})
+	building["recruit_queue"] = queue
+	recruit_queue_changed.emit(building_id, queue.duplicate(true))
+	_emit_recruit_panel(building)
+	print("[Recruit] Added %d x %s to queue." % [safe_count, unit_template_id])
+	return true
+
+
+func get_recruit_queue(building_id: int) -> Array:
+	var building: Dictionary = _get_building_by_id(building_id)
+	if building.is_empty():
+		return []
+	return building.get("recruit_queue", []).duplicate(true)
+
+
+func _process_recruit_queues(player: int) -> void:
+	for building in _buildings:
+		if building["faction"] != player:
+			continue
+		var queue: Array = building.get("recruit_queue", [])
+		if queue.is_empty():
+			continue
+
+		for item in queue:
+			var remaining: int = int(item.get("remaining_turns", 0))
+			if remaining > 0:
+				item["remaining_turns"] = remaining - 1
+
+		var i := 0
+		while i < queue.size():
+			var item: Dictionary = queue[i]
+			if int(item.get("remaining_turns", 0)) <= 0:
+				var spawned: bool = _spawn_recruited_unit(building, str(item.get("unit_template_id", "")))
+				if spawned:
+					queue.remove_at(i)
+					continue
+			i += 1
+
+		building["recruit_queue"] = queue
+		recruit_queue_changed.emit(building["id"], queue.duplicate(true))
+		if building["id"] == _selected_id:
+			_emit_recruit_panel(building)
+
+
+func _spawn_recruited_unit(building: Dictionary, unit_template_id: String) -> bool:
+	var unit_template: Resource = _get_recruit_unit_template(unit_template_id)
+	if unit_template == null:
+		return false
+	var spawn_pos: Vector2i = _find_empty_adjacent_pos(building)
+	if spawn_pos.x < 0:
+		print("[Recruit] No empty adjacent tile; completed unit waits.")
+		return false
+	var unit_mgr = get_parent().get_node("UnitManager2D")
+	if unit_mgr and unit_mgr.has_method("add_unit_from_template"):
+		unit_mgr.add_unit_from_template(building["faction"], unit_template, spawn_pos)
+		print("[Recruit] Spawned %s at %s." % [unit_template_id, str(spawn_pos)])
+		return true
+	return false
+
+
+func _find_empty_adjacent_pos(building: Dictionary) -> Vector2i:
 	var origin: Vector2i = building["origin"]
 	var fp: Vector2i = building["data"].footprint
 	var dirs := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
-	var spawn_pos := Vector2i(-1, -1)
+	var unit_mgr = get_parent().get_node_or_null("UnitManager2D")
 	for dy in range(fp.y):
 		for dx in range(fp.x):
 			for dir in dirs:
 				var n: Vector2i = Vector2i(origin.x + dx, origin.y + dy) + dir
-				if n.x < 0 or n.x >= grid_cols or n.y < 0 or n.y >= grid_rows:
+				if not _in_bounds(n.x, n.y):
 					continue
 				if building_grid[n.y][n.x] >= 0:
 					continue
-				spawn_pos = n
-				break
-			if spawn_pos.x >= 0:
-				break
-		if spawn_pos.x >= 0:
-			break
-	if spawn_pos.x < 0:
-		print("[建筑] 没有空位可招募")
+				if unit_mgr and unit_mgr.has_method("get_unit_at"):
+					var unit: Dictionary = unit_mgr.get_unit_at(n)
+					if not unit.is_empty():
+						continue
+				return n
+	return Vector2i(-1, -1)
+
+
+func _emit_recruit_panel(building: Dictionary) -> void:
+	var options: Array = _get_recruit_options(building)
+	if options.is_empty():
+		recruit_panel_closed.emit()
 		return
-	# 扣费
-	if _resource_tracker:
-		_resource_tracker.spend_resource(faction, "food", 1)
-	if _turn_manager:
-		_turn_manager.spend_ap(faction, 1)
-	# 生成工人
-	var unit_mgr = get_parent().get_node("UnitManager2D")
-	if unit_mgr and unit_mgr.has_method("add_unit"):
-		unit_mgr.add_unit(faction, UnitData.worker(), spawn_pos)
-		print("[建筑] 招募工人成功")
+	recruit_panel_requested.emit(
+		building["id"],
+		building["data"].name,
+		options,
+		building.get("recruit_queue", []).duplicate(true)
+	)
+
+
+func _get_recruit_options(building: Dictionary) -> Array:
+	if not _is_recruit_building(building):
+		return []
+	var result: Array = []
+	var template_ids: Array = _get_recruit_template_ids_for_building(building)
+	for template_id in template_ids:
+		var unit_template: Resource = _get_recruit_unit_template(template_id)
+		if unit_template == null:
+			continue
+		result.append({
+			"id": template_id,
+			"name": str(unit_template.get("display_name")),
+			"cost": _get_unit_recruit_cost(unit_template),
+			"ap_cost": int(unit_template.get("recruit_ap_cost")),
+			"turns": int(unit_template.get("recruit_turns")),
+		})
+	return result
+
+
+func _get_recruit_template_ids_for_building(building: Dictionary) -> Array:
+	var building_template: Resource = _get_building_template_for_data(building["data"])
+	if building_template != null:
+		var recruit_options: Array = building_template.get("recruit_options")
+		if not recruit_options.is_empty():
+			var template_ids: Array = []
+			for unit_template in recruit_options:
+				if unit_template == null:
+					continue
+				var template_id := str(unit_template.get("id"))
+				if not template_id.is_empty():
+					template_ids.append(template_id)
+			if not template_ids.is_empty():
+				return template_ids
+
+	var data: BuildingData = building["data"]
+	if data.category == BuildingData.BuildingCategory.RECRUIT:
+		return ["unit.worker"]
+	if data.category == BuildingData.BuildingCategory.MILITARY:
+		return ["unit.guard", "unit.scout"]
+	return []
+
+
+func _get_building_template_for_data(data: BuildingData) -> Resource:
+	if data == null or not _template_registry or not _template_registry.has_method("get_building"):
+		return null
+	var template_id := ""
+	if data.category == BuildingData.BuildingCategory.RECRUIT:
+		template_id = "building.recruit_camp"
+	elif data.category == BuildingData.BuildingCategory.MILITARY:
+		template_id = "building.barracks_lv1"
+	if template_id.is_empty():
+		return null
+	return _template_registry.call("get_building", template_id)
+
+
+func _building_can_recruit(building: Dictionary, unit_template_id: String) -> bool:
+	return unit_template_id in _get_recruit_template_ids_for_building(building)
+
+
+func _get_recruit_unit_template(unit_template_id: String) -> Resource:
+	if _template_registry and _template_registry.has_method("get_unit"):
+		return _template_registry.call("get_unit", unit_template_id)
+	return null
+
+
+func _get_unit_recruit_cost(unit_template: Resource) -> Dictionary:
+	var result: Dictionary = {}
+	if unit_template == null:
+		return result
+	var items: Array = unit_template.get("recruit_cost")
+	for item in items:
+		if item == null:
+			continue
+		var key: String = str(item.get("key"))
+		var amount: int = int(item.get("amount"))
+		if key.is_empty() or amount == 0:
+			continue
+		result[key] = int(result.get(key, 0)) + amount
+	return result
+
+
+func _is_recruit_building(building: Dictionary) -> bool:
+	if building.is_empty():
+		return false
+	var data: BuildingData = building["data"]
+	return data.category == BuildingData.BuildingCategory.RECRUIT or data.category == BuildingData.BuildingCategory.MILITARY
+
+
+func _get_building_by_id(building_id: int) -> Dictionary:
+	for building in _buildings:
+		if building["id"] == building_id:
+			return building
+	return {}
