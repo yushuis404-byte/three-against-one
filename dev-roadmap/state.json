@@ -1,1 +1,97 @@
-{"modules": {}, "currentId": null}
+{
+  "modules": {
+    "A1": {
+      "status": "done",
+      "notes": ""
+    },
+    "A2": {
+      "status": "done",
+      "notes": ""
+    },
+    "A3": {
+      "status": "done",
+      "notes": ""
+    },
+    "A4": {
+      "status": "done",
+      "notes": ""
+    },
+    "B1": {
+      "status": "done",
+      "notes": ""
+    },
+    "B2": {
+      "status": "done",
+      "notes": ""
+    },
+    "B3": {
+      "status": "pending",
+      "notes": ""
+    },
+    "C1": {
+      "status": "pending",
+      "notes": ""
+    },
+    "C2": {
+      "status": "current",
+      "notes": ""
+    },
+    "C3": {
+      "status": "done",
+      "notes": ""
+    },
+    "C4": {
+      "status": "pending",
+      "notes": ""
+    },
+    "C5": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D1": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D2": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D3": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D4": {
+      "status": "pending",
+      "notes": ""
+    },
+    "E1": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D5": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D4b": {
+      "status": "pending",
+      "notes": ""
+    },
+    "E2": {
+      "status": "pending",
+      "notes": ""
+    },
+    "E3": {
+      "status": "pending",
+      "notes": ""
+    },
+    "E5": {
+      "status": "pending",
+      "notes": ""
+    },
+    "E4": {
+      "status": "pending",
+      "notes": ""
+    }
+  },
+  "currentId": "C2"
+}

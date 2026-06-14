@@ -76,6 +76,9 @@ func _setup_game() -> void:
 	building_ui.set_resource_tracker(resource_tracker)
 	building_ui.refresh(turn_manager.current_player)
 
+	# 单位信息面板初始化
+	_init_unit_info_panel()
+
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
 
@@ -195,6 +198,17 @@ func _make_label_settings(color: Color) -> LabelSettings:
 	return s
 
 
+func _init_unit_info_panel() -> void:
+	var panel_script := preload("res://scripts/unit_info_panel.gd")
+	var panel := Control.new()
+	panel.name = "UnitInfoPanel"
+	panel.script = panel_script
+	$UI.add_child(panel)
+
+	unit_manager.unit_selected.connect(panel.show_unit)
+	unit_manager.selection_cleared.connect(panel.hide_panel)
+
+
 func _input(event: InputEvent) -> void:
 	# Enter 或 Tab 都可结束回合（Tab 在编辑器内嵌模式可能被截获）
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -204,5 +218,7 @@ func _input(event: InputEvent) -> void:
 
 func _on_end_turn() -> void:
 	if current_state != GameState.PLAYING:
+		return
+	if unit_manager.is_in_combat():
 		return
 	turn_manager.end_player_turn(turn_manager.current_player)

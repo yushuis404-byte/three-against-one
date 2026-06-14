@@ -1,7 +1,12 @@
 extends Node2D
-## 单位管理器 — 放置、绘制、选择、移动
+## 单位管理器 — 放置、绘制、选择、移动、战斗
 ##
 ## 单位绘制在迷雾之下（原型简化），阵营色圆圈 + 中文名 + HP
+
+signal unit_selected(unit_data: Dictionary)
+signal selection_cleared()
+signal combat_started()
+signal combat_ended()
 
 var grid_cols := 100
 var grid_rows := 56
@@ -15,6 +20,11 @@ var _reachable_tiles: Array = []  # 当前选中单位的可达格列表
 
 var _turn_manager: Node = null
 var _grid_manager: Node = null
+
+# 战斗系统
+var _in_combat := false
+var _combat_timer: Timer = null
+var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
 
 const FACTION_COLORS := [
 	Color(0.18, 0.60, 0.15),   # 0 精灵绿
@@ -146,6 +156,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.button_index != MOUSE_BUTTON_LEFT or not event.pressed:
 		return
 
+	# 战斗中锁定所有操作
+	if _in_combat:
+		return
+
 	var cursor := get_global_mouse_position()
 	var gpos := _world_to_grid(cursor)
 	if not _in_bounds(gpos.x, gpos.y):
@@ -164,6 +178,16 @@ func _unhandled_input(event: InputEvent) -> void:
 					return
 		_move_selected_to(gpos)
 		return
+
+	# 检查是否点击了相邻敌方单位（进入决斗）
+	if _selected_id >= 0:
+		var src := _get_unit_by_id(_selected_id)
+		if not src.is_empty():
+			var target := get_unit_at(gpos)
+			if not target.is_empty() and target["faction"] != src["faction"]:
+				if _is_adjacent(src["grid_pos"], target["grid_pos"]):
+					_initiate_combat(_selected_id, target["id"])
+					return
 
 	# 检查是否点击了己方单位（选择）
 	var unit := get_unit_at(gpos)
@@ -185,6 +209,7 @@ func _select_unit(uid: int) -> void:
 	for u in _units:
 		if u["id"] == uid:
 			_reachable_tiles = _calc_reachable(u)
+			unit_selected.emit(u.duplicate())
 			break
 	queue_redraw()
 
@@ -192,6 +217,7 @@ func _select_unit(uid: int) -> void:
 func _clear_selection() -> void:
 	_selected_id = -1
 	_reachable_tiles = []
+	selection_cleared.emit()
 	queue_redraw()
 
 
@@ -380,6 +406,100 @@ func _garrison_unit_to(building_id: int, target: Vector2i) -> void:
 			return
 
 
+# ========== 战斗系统 ==========
+
+func _initiate_combat(attacker_id: int, defender_id: int) -> void:
+	## 发起决斗：创建 1 秒间隔 Timer，轮流攻击直至死亡
+	_in_combat = true
+	_combat_data = {
+		"unit_a_id": attacker_id,
+		"unit_b_id": defender_id,
+		"next_attacker_id": attacker_id,
+	}
+	combat_started.emit()
+
+	# 创建并启动 Timer
+	_combat_timer = Timer.new()
+	_combat_timer.wait_time = 1.0
+	_combat_timer.timeout.connect(_combat_tick)
+	add_child(_combat_timer)
+	_combat_timer.start()
+
+	# 先手立即出拳（不等待 1 秒）
+	_combat_tick()
+
+
+func _combat_tick() -> void:
+	## 当前攻击方给对方造成 ATK 点伤害，检查死亡，否则切换回合
+	var cur_attacker_id: int = _combat_data["next_attacker_id"]
+	var unit_a: Dictionary = _get_unit_by_id(_combat_data["unit_a_id"])
+	var unit_b: Dictionary = _get_unit_by_id(_combat_data["unit_b_id"])
+
+	# 任一单位已被移除（异常保护）
+	if unit_a.is_empty() or unit_b.is_empty():
+		_end_combat(-1)
+		return
+
+	# 确定攻守方
+	var attacker: Dictionary
+	var defender: Dictionary
+	if cur_attacker_id == unit_a["id"]:
+		attacker = unit_a
+		defender = unit_b
+	else:
+		attacker = unit_b
+		defender = unit_a
+
+	# 造成伤害
+	var dmg: int = attacker["data"].atk
+	defender["hp"] -= dmg
+
+	# 刷新 UI（重发选中单位数据）
+	var selected := _get_unit_by_id(_selected_id)
+	if not selected.is_empty():
+		unit_selected.emit(selected.duplicate())
+
+	queue_redraw()
+
+	# 检查是否死亡
+	if defender["hp"] <= 0:
+		_end_combat(attacker["id"])
+		return
+
+	# 交替攻击方
+	_combat_data["next_attacker_id"] = defender["id"]
+
+
+func _end_combat(winner_id: int) -> void:
+	## 结束决斗：停止 Timer，移除死亡单位，清除状态
+	if _combat_timer:
+		_combat_timer.stop()
+		_combat_timer.queue_free()
+		_combat_timer = null
+
+	# 找出失败方并从单位列表移除
+	var loser_id: int = -1
+	if _combat_data.get("unit_a_id", -1) == winner_id:
+		loser_id = _combat_data.get("unit_b_id", -1)
+	elif _combat_data.get("unit_b_id", -1) == winner_id:
+		loser_id = _combat_data.get("unit_a_id", -1)
+
+	if loser_id >= 0:
+		for i in range(_units.size() - 1, -1, -1):
+			if _units[i]["id"] == loser_id:
+				_units.remove_at(i)
+				break
+
+	_in_combat = false
+	_combat_data = {}
+	combat_ended.emit()
+	_clear_selection()
+
+
+func is_in_combat() -> bool:
+	return _in_combat
+
+
 func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) -> int:
 	## 公共接口：添加一个单位到地图上（用于驻兵撤出等）
 	var uid := _next_id
@@ -425,6 +545,17 @@ func _is_tile_empty(gx: int, gy: int) -> bool:
 
 func _in_bounds(x: int, y: int) -> bool:
 	return x >= 0 and x < grid_cols and y >= 0 and y < grid_rows
+
+
+func _get_unit_by_id(uid: int) -> Dictionary:
+	for u in _units:
+		if u["id"] == uid:
+			return u
+	return {}
+
+
+func _is_adjacent(a: Vector2i, b: Vector2i) -> bool:
+	return abs(a.x - b.x) + abs(a.y - b.y) == 1
 
 
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:
