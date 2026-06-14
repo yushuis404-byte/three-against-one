@@ -1,97 +1,105 @@
 {
   "modules": {
-    "A1": {
+    "P0": {
       "status": "done",
-      "notes": ""
+      "notes": "当前 v0.3 原型作为行为参考版，不继续在旧结构上硬堆大系统。"
     },
-    "A2": {
+    "P1": {
       "status": "done",
-      "notes": ""
+      "notes": "已新增 scripts/templates/ 下的模板工具包，并挂载 TemplateRegistry。"
     },
-    "A3": {
+    "P2": {
       "status": "done",
-      "notes": ""
+      "notes": "已新增 docs/template_toolkit.md。"
     },
-    "A4": {
-      "status": "done",
-      "notes": ""
-    },
-    "B1": {
-      "status": "done",
-      "notes": ""
-    },
-    "B2": {
-      "status": "done",
-      "notes": ""
-    },
-    "B3": {
-      "status": "pending",
-      "notes": ""
-    },
-    "C1": {
-      "status": "pending",
-      "notes": ""
-    },
-    "C2": {
+    "U1": {
       "status": "current",
-      "notes": ""
+      "notes": "下一步：UnitManager 初始单位改由 TemplateRegistry 创建。"
     },
-    "C3": {
-      "status": "done",
-      "notes": ""
-    },
-    "C4": {
+    "U2": {
       "status": "pending",
       "notes": ""
     },
-    "C5": {
+    "U3": {
       "status": "pending",
       "notes": ""
     },
-    "D1": {
+    "U4": {
       "status": "pending",
       "notes": ""
     },
-    "D2": {
+    "B1R": {
       "status": "pending",
       "notes": ""
     },
-    "D3": {
+    "B2R": {
       "status": "pending",
       "notes": ""
     },
-    "D4": {
+    "B3R": {
       "status": "pending",
       "notes": ""
     },
-    "E1": {
+    "B4R": {
       "status": "pending",
       "notes": ""
     },
-    "D5": {
+    "E1R": {
       "status": "pending",
       "notes": ""
     },
-    "D4b": {
+    "E2R": {
       "status": "pending",
       "notes": ""
     },
-    "E2": {
+    "E3R": {
       "status": "pending",
       "notes": ""
     },
-    "E3": {
+    "E4R": {
       "status": "pending",
       "notes": ""
     },
-    "E5": {
+    "A1R": {
       "status": "pending",
       "notes": ""
     },
-    "E4": {
+    "A2R": {
+      "status": "pending",
+      "notes": ""
+    },
+    "A3R": {
+      "status": "pending",
+      "notes": ""
+    },
+    "A4R": {
+      "status": "pending",
+      "notes": ""
+    },
+    "C4R": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D1R": {
+      "status": "pending",
+      "notes": ""
+    },
+    "D4R": {
+      "status": "pending",
+      "notes": ""
+    },
+    "E5R": {
+      "status": "pending",
+      "notes": ""
+    },
+    "AI1": {
+      "status": "pending",
+      "notes": ""
+    },
+    "N1": {
       "status": "pending",
       "notes": ""
     }
   },
-  "currentId": "C2"
+  "currentId": "U1"
 }
