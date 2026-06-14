@@ -26,6 +26,10 @@ var _in_combat := false
 var _combat_timer: Timer = null
 var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
 
+# 战斗视觉效果
+var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
+var _shake_offsets: Dictionary = {}  # unit_id -> Vector2（受击偏移）
+
 const FACTION_COLORS := [
 	Color(0.18, 0.60, 0.15),   # 0 精灵绿
 	Color(0.80, 0.65, 0.10),   # 1 矮人金
@@ -122,29 +126,33 @@ func _draw() -> void:
 		var hp: int = u["hp"]
 		var uid: int = u["id"]
 		var is_selected := uid == _selected_id
+		var draw_pos: Vector2 = world_pos + _shake_offsets.get(uid, Vector2.ZERO)
 
 		# 选中高亮
 		if is_selected:
-			draw_circle(world_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
+			draw_circle(draw_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
 
-		# 阵营色填充圆
-		draw_circle(world_pos, UNIT_RADIUS, FACTION_COLORS[faction])
+		# 阵营色填充圆（受击闪白）
+		var color: Color = FACTION_COLORS[faction]
+		if _hit_flash.has(uid):
+			color = Color(1.0, 0.9, 0.85)
+		draw_circle(draw_pos, UNIT_RADIUS, color)
 
 		# 黑色描边
-		draw_arc(world_pos, UNIT_RADIUS, 0, TAU, 16, Color.BLACK, 1.5)
+		draw_arc(draw_pos, UNIT_RADIUS, 0, TAU, 16, Color.BLACK, 1.5)
 
 		# 中文名称（圆上方）
 		var font: Font = ThemeDB.fallback_font
 		var fsize := 11
 		var label := data.unit_name
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var name_pos := Vector2(world_pos.x - text_size.x / 2.0, world_pos.y - UNIT_RADIUS - 4.0)
+		var name_pos := Vector2(draw_pos.x - text_size.x / 2.0, draw_pos.y - UNIT_RADIUS - 4.0)
 		draw_string(font, name_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
 		# HP 数字（圆下方）
 		var hp_label := str(hp)
 		var hp_size := font.get_string_size(hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var hp_pos := Vector2(world_pos.x - hp_size.x / 2.0, world_pos.y + UNIT_RADIUS + 14.0)
+		var hp_pos := Vector2(draw_pos.x - hp_size.x / 2.0, draw_pos.y + UNIT_RADIUS + 14.0)
 		draw_string(font, hp_pos, hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
 
@@ -454,6 +462,9 @@ func _combat_tick() -> void:
 	var dmg: int = attacker["data"].atk
 	defender["hp"] -= dmg
 
+	# 受击视觉效果
+	_play_hit_effect(defender["id"], defender["grid_pos"], dmg)
+
 	# 刷新 UI（重发选中单位数据）
 	var selected := _get_unit_by_id(_selected_id)
 	if not selected.is_empty():
@@ -494,6 +505,65 @@ func _end_combat(winner_id: int) -> void:
 	_combat_data = {}
 	combat_ended.emit()
 	_clear_selection()
+
+
+# ========== 战斗视觉效果 ==========
+
+func _play_hit_effect(unit_id: int, grid_pos: Vector2i, damage: int) -> void:
+	## 触发受击视觉链：闪白 + 震动 + 伤害数字
+	if not is_inside_tree():
+		return
+	_hit_flash[unit_id] = true
+	_hit_shake(unit_id)
+	_show_damage_text(grid_pos, damage)
+	queue_redraw()
+
+	# 延迟清除闪白
+	await get_tree().create_timer(0.15).timeout
+	if not is_inside_tree():
+		return
+	_hit_flash.erase(unit_id)
+	queue_redraw()
+
+
+func _hit_shake(unit_id: int) -> void:
+	## 受击震动：随机偏移 → 快速衰减归零（~0.12s）
+	_shake_offsets[unit_id] = Vector2.ZERO
+	var tween := create_tween()
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_method(_tween_shake.bind(unit_id), 1.0, 0.0, 0.12)
+
+
+func _tween_shake(amount: float, unit_id: int) -> void:
+	## Tween 回调：每帧生成随机偏移，幅度随 amount 衰减
+	if amount <= 0.0:
+		_shake_offsets.erase(unit_id)
+	else:
+		_shake_offsets[unit_id] = Vector2(
+			randf_range(-3.0, 3.0),
+			randf_range(-2.0, 2.0)
+		) * amount
+	queue_redraw()
+
+
+func _show_damage_text(grid_pos: Vector2i, damage: int) -> void:
+	## 在单位位置创建红色 "-N" 浮动数字，向上飘散消失
+	var label := Label.new()
+	label.text = "-%d" % damage
+	label.add_theme_color_override("font_color", Color(1.0, 0.2, 0.1))
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	add_child(label)
+
+	var world_pos := _grid_to_world(grid_pos.x, grid_pos.y)
+	label.position = Vector2(world_pos.x - 10, world_pos.y - 24)
+	label.z_index = 10
+
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.tween_property(label, "position", label.position + Vector2(randf_range(-20.0, 20.0), -40.0), 0.8)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.8)
+	tween.tween_callback(label.queue_free)
 
 
 func is_in_combat() -> bool:
