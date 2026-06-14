@@ -1,0 +1,13 @@
+[mcp_servers.godot-forge]
+command = "npx"
+args = [
+    "-y",
+    "godot-forge",
+]
+
+[mcp_servers.godot-mcp]
+command = "npx"
+args = [
+    "-y",
+    "@iflow-mcp/tugcantopaloglu-godot-mcp",
+]

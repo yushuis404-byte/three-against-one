@@ -57,7 +57,8 @@ const RESOURCE_DEFS: Array = [
 	[ResourceType.GOLD_MINE, "金矿脉", 18, Color(1.0, 0.84, 0.0),
 	 { 7: 3, 8: 3, 9: 3, 12: 3, 11: 1, 10: 1, 4: 4 },
 	 [TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
-	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.RUINS]],
+	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.RUINS,
+	  TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF]],
 	[ResourceType.ANCIENT_FOREST, "古树林", 16, Color(0.13, 0.55, 0.13),
 	 { 7: 6, 8: 4, 10: 3, 9: 3 },
 	 [TerrainData.Terrain.FOREST_ELF]],
@@ -332,6 +333,12 @@ func get_gather_result(x: int, y: int) -> Array:
 		var entry: Dictionary = e
 		result.append({ "key": entry["key"], "amount": GATHER_AMOUNT, "name": rname })
 	return result
+
+
+func get_resource_type(x: int, y: int) -> int:
+	if x < 0 or x >= grid_cols or y < 0 or y >= grid_rows:
+		return ResourceType.NONE
+	return resource_grid[y][x]
 
 
 func remove_resource(x: int, y: int) -> void:

@@ -181,9 +181,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			var bmgr: Node = get_parent().get_node("BuildingManager2D")
 			if bmgr and bmgr.has_method("can_garrison"):
 				var b: Dictionary = bmgr.get_building_at(gpos)
-				if not b.is_empty() and bmgr.can_garrison(b["id"], _turn_manager.current_player):
-					_garrison_unit_to(b["id"], gpos)
-					return
+				if not b.is_empty():
+					var sel_unit := _get_unit_by_id(_selected_id)
+					if not sel_unit.is_empty() and bmgr.can_garrison(b["id"], _turn_manager.current_player, sel_unit["data"].category):
+						_garrison_unit_to(b["id"], gpos)
+						return
 		_move_selected_to(gpos)
 		return
 

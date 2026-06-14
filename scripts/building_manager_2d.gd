@@ -18,6 +18,7 @@ var _grid_manager: Node = null
 var _turn_manager: Node = null
 var _territory_mgr: Node = null
 var _fog_mgr: Node = null
+var _resource_mgr: Node = null
 
 var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
 
@@ -48,6 +49,7 @@ const RESOURCE_NAMES := {
 	"magic_dust": "魔尘",
 	"ancient_wood": "古木",
 	"gold_ore": "金矿",
+	"gold": "金币",
 }
 
 
@@ -56,6 +58,7 @@ func _ready() -> void:
 	_grid_manager = get_parent().get_node("GridManager2D")
 	_territory_mgr = get_parent().get_node("TerritoryManager2D")
 	_fog_mgr = get_parent().get_node("FogOfWar2D")
+	_resource_mgr = get_parent().get_node("ResourceManager2D")
 
 
 func _init_grid() -> void:
@@ -138,6 +141,11 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		var center_y: int = origin.y + fp.y / 2
 		_fog_mgr.reveal_area_immediate(faction, center_x, center_y, 3)
 
+	# 金矿矿井消耗金矿资源点
+	if data.needs_resource_point:
+		if _resource_mgr and _resource_mgr.has_method("remove_resource"):
+			_resource_mgr.remove_resource(origin.x, origin.y)
+
 	queue_redraw()
 	return true
 
@@ -191,6 +199,13 @@ func _can_place(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		if building_grid[t.y][t.x] >= 0:
 			return false
 
+	# 金矿矿井：需要金矿资源点
+	if data.needs_resource_point:
+		if not _resource_mgr or not _resource_mgr.has_method("get_resource_type"):
+			return false
+		if _resource_mgr.get_resource_type(origin.x, origin.y) != 1:
+			return false
+
 	# 阵营上限检查
 	if data.max_per_faction < 99:
 		var count := 0
@@ -224,16 +239,22 @@ func max_garrison(building: Dictionary) -> int:
 	return max(2, fp.x * fp.y)
 
 
-func can_garrison(building_id: int, faction: int) -> bool:
-	## 检查建筑是否可驻兵（同阵营、资源建筑、未满）
+func can_garrison(building_id: int, faction: int, unit_category: int = -1) -> bool:
+	## 检查建筑是否可驻兵
+	## unit_category: UnitData.UnitCategory, 资源生产类建筑只允许工人入驻
 	for b in _buildings:
 		if b["id"] == building_id:
 			if b["faction"] != faction:
 				return false
-			if b["data"].production.is_empty():
+			# 必须有产出或是金矿产业链才能驻兵
+			if b["data"].production.is_empty() and not b["data"].is_special_building:
 				return false
 			if b["garrison"].size() >= max_garrison(b):
 				return false
+			# 资源生产类建筑只允许工人入驻
+			if not b["data"].production.is_empty() or b["data"].is_special_building:
+				if unit_category >= 0 and unit_category != UnitData.UnitCategory.WORKER:
+					return false
 			return true
 	return false
 
@@ -261,20 +282,29 @@ func ungarrison_one(building_id: int) -> Dictionary:
 
 
 func get_garrison_bonus(building_id: int) -> Dictionary:
-	## 返回驻兵加成字典：{ "wood": 2, "food": 2 } 等
+	## 返回驻兵加成字典
+	## 金矿矿井：1 工人 → 2 金币
+	## 其他建筑：每驻 1 兵 → 每个产出键 +1
 	for b in _buildings:
 		if b["id"] == building_id:
-			var prod: Dictionary = b["data"].production
-			if prod.is_empty() or b["garrison"].is_empty():
+			if b["garrison"].is_empty():
+				return {}
+			var data: BuildingData = b["data"]
+			var count: int = b["garrison"].size()
+
+			# 金矿矿井：1 工人 → 2 金矿
+			if data.name == "金矿矿井":
+				return { "gold_ore": count * 2 }
+
+			# 普通驻兵加成：每驻 1 兵 → 每个产出键 +1
+			var prod: Dictionary = data.production
+			if prod.is_empty():
 				return {}
 			var bonus: Dictionary = {}
-			var count: int = b["garrison"].size()
 			for key in prod:
 				bonus[key] = count
 			return bonus
 	return {}
-
-
 func _find_ungarrison_pos(building: Dictionary) -> Vector2i:
 	## 在建筑周围找第一个空位用于撤出单位
 	var origin: Vector2i = building["origin"]
@@ -427,6 +457,21 @@ func _on_round_ended(round_number: int) -> void:
 	for b in _buildings:
 		var data: BuildingData = b["data"]
 		var prod: Dictionary = data.production
+
+		# 金币铸造厂特殊显示
+		if data.name == "金币铸造厂":
+			var garr: Array = b.get("garrison", [])
+			var gcount := garr.size()
+			if gcount > 0:
+				var faction_name := ""
+				match b["faction"]:
+					0: faction_name = "精灵"
+					1: faction_name = "矮人"
+					2: faction_name = "兽人"
+				print("[建筑] %s 金币铸造厂: 驻兵 %d → 金币 +%d（消耗金矿）" % [faction_name, gcount, gcount * 2])
+				_show_production_text(b, {"gold": gcount * 2}, 0, Color(1.0, 0.84, 0.0))
+			continue
+
 		if prod.is_empty():
 			continue
 		var faction_name := ""
@@ -452,7 +497,7 @@ func _on_round_ended(round_number: int) -> void:
 		_show_production_text(b, prod, gcount)
 
 
-func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int) -> void:
+func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int, custom_color: Color = Color(0.5, 1.0, 0.5)) -> void:
 	## 在建筑上方创建飘浮产量文字，如 "木材 +1" "石料 +2"
 	if prod.is_empty():
 		return
@@ -472,7 +517,7 @@ func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int) 
 
 	var label := Label.new()
 	label.text = text
-	label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
+	label.add_theme_color_override("font_color", custom_color)
 	label.add_theme_font_size_override("font_size", 13)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.position = Vector2(world_pos.x - 30, world_pos.y - 30)
@@ -520,6 +565,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select_building(building["id"])
 		else:
 			_clear_selection()
+
+	# 招募营：R 键招募工人
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_R and _selected_id >= 0:
+			_recruit_worker()
 
 	if event is InputEventMouseMotion:
 		var cursor := get_global_mouse_position()
@@ -669,3 +719,59 @@ func _world_to_grid(world_pos: Vector2) -> Vector2i:
 
 func _in_bounds(gx: int, gy: int) -> bool:
 	return gx >= 0 and gx < grid_cols and gy >= 0 and gy < grid_rows
+
+
+func _recruit_worker() -> void:
+	## 招募工人：检查食物/AP → 附近生成
+	var building: Dictionary = {}
+	for b in _buildings:
+		if b["id"] == _selected_id:
+			building = b
+			break
+	if building.is_empty():
+		return
+	if building["data"].category != BuildingData.BuildingCategory.RECRUIT:
+		return
+	var faction: int = _turn_manager.current_player if _turn_manager else -1
+	if faction < 0 or building["faction"] != faction:
+		return
+	# 检查食物
+	if _resource_tracker and _resource_tracker.get_resource(faction, "food") < 1:
+		print("[建筑] 食物不足，无法招募工人")
+		return
+	# 检查 AP
+	if _turn_manager and _turn_manager.get_ap(faction) < 1:
+		print("[建筑] AP 不足，无法招募工人")
+		return
+	# 找生成位置
+	var origin: Vector2i = building["origin"]
+	var fp: Vector2i = building["data"].footprint
+	var dirs := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
+	var spawn_pos := Vector2i(-1, -1)
+	for dy in range(fp.y):
+		for dx in range(fp.x):
+			for dir in dirs:
+				var n: Vector2i = Vector2i(origin.x + dx, origin.y + dy) + dir
+				if n.x < 0 or n.x >= grid_cols or n.y < 0 or n.y >= grid_rows:
+					continue
+				if building_grid[n.y][n.x] >= 0:
+					continue
+				spawn_pos = n
+				break
+			if spawn_pos.x >= 0:
+				break
+		if spawn_pos.x >= 0:
+			break
+	if spawn_pos.x < 0:
+		print("[建筑] 没有空位可招募")
+		return
+	# 扣费
+	if _resource_tracker:
+		_resource_tracker.spend_resource(faction, "food", 1)
+	if _turn_manager:
+		_turn_manager.spend_ap(faction, 1)
+	# 生成工人
+	var unit_mgr = get_parent().get_node("UnitManager2D")
+	if unit_mgr and unit_mgr.has_method("add_unit"):
+		unit_mgr.add_unit(faction, UnitData.worker(), spawn_pos)
+		print("[建筑] 招募工人成功")

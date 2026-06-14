@@ -2,11 +2,12 @@ class_name BuildingData
 ## 建筑模板数据 — 通用建筑定义
 
 enum BuildingCategory {
-	INFRA,         # 基础设施（伐木场/采石场/农场/仓库）
+	INFRA,         # 基础设施（伐木场/采石场/农场/仓库/金矿矿井/金币铸造厂）
 	T1_RESOURCE,   # T1 资源采集（矿井/萃取塔/古木采集场）
 	GOLD_CHAIN,    # 金币链（金矿矿井）
 	MILITARY,      # 军事（兵营）
 	SCOUT,         # 侦察（侦察哨）
+	RECRUIT,       # 招募（招募营）
 	TOWN_HALL,     # 主城
 }
 
@@ -23,6 +24,8 @@ var production: Dictionary    # { resource_key: per_turn_amount }
 var terrain_compatibility: Array[int]  # TerrainData.Terrain 枚举值列表
 var max_per_faction: int
 var description: String
+var is_special_building: bool = false  # 特殊建筑标记（如金矿矿井需金矿资源点+驻兵产出）
+var needs_resource_point: bool = false  # 是否需要金矿资源点（金矿矿井需 true）
 
 
 func _init(p_name: String, p_cat: BuildingCategory, p_fp: Vector2i,
@@ -73,7 +76,9 @@ static func infra_quarry() -> BuildingData:
 		0, 5, 0, 0, 0,
 		4, { "stone": 3 },
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
-		 TerrainData.Terrain.WASTELAND_ORC],
+		 TerrainData.Terrain.WASTELAND_ORC,
+		 TerrainData.Terrain.FOREST_ELF,
+		 TerrainData.Terrain.GLADE_ELF],
 		7, "每回合 +3 石料"
 	)
 
@@ -146,23 +151,55 @@ static func scout_post() -> BuildingData:
 		4, "视野 +2"
 	)
 
+static func recruit_camp() -> BuildingData:
+	return BuildingData.new(
+		"招募营", BuildingCategory.RECRUIT, Vector2i(1, 1),
+		0, 20, 15, 0, 0,
+		4, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC],
+		3, "按 R 键招募工人（耗 1 食物 + 1 AP）"
+	)
+
 static func get_templates() -> Dictionary:
 	## 返回按分类分组的全部建筑模板
 	return {
-		BuildingCategory.INFRA: [infra_lumber_camp(), infra_quarry(), infra_farm(), infra_warehouse()],
+		BuildingCategory.INFRA: [infra_lumber_camp(), infra_quarry(), infra_farm(), infra_warehouse(), gold_mine_shaft(), mint()],
 		BuildingCategory.T1_RESOURCE: [t1_mine(), t1_extraction_tower(), t1_ancient_wood_harvest()],
 		BuildingCategory.MILITARY: [barracks_lv1()],
 		BuildingCategory.SCOUT: [scout_post()],
-		BuildingCategory.GOLD_CHAIN: [gold_mine_shaft()],
+		BuildingCategory.RECRUIT: [recruit_camp()],
 		BuildingCategory.TOWN_HALL: [town_hall()],
 	}
 
 
 static func gold_mine_shaft() -> BuildingData:
-	return BuildingData.new(
-		"金矿矿井", BuildingCategory.GOLD_CHAIN, Vector2i(1, 1),
-		80, 40, 30, 0, 0,
-		6, { "gold_ore": 3 },
-		[TerrainData.Terrain.MOUNTAIN_DWARF],
-		1, "每回合 +3 金矿石，仅限金矿脉上建造"
+	var b := BuildingData.new(
+		"金矿矿井", BuildingCategory.INFRA, Vector2i(1, 1),
+		0, 20, 15, 5, 0,
+		6, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		2, "需建在金矿上，需入驻工人，每驻 1 工 → +2 金矿/回合"
 	)
+	b.is_special_building = true
+	b.needs_resource_point = true
+	return b
+
+
+static func mint() -> BuildingData:
+	var b := BuildingData.new(
+		"金币铸造厂", BuildingCategory.INFRA, Vector2i(1, 1),
+		0, 30, 20, 10, 0,
+		6, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		2, "需入驻工人，消耗金矿产出金币。每驻 1 工 → +2 金币/回合（消耗 1 金矿）"
+	)
+	b.is_special_building = true
+	return b

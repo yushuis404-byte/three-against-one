@@ -23,13 +23,18 @@ const CATEGORY_NAMES := {
 	BuildingData.BuildingCategory.T1_RESOURCE: "资源",
 	BuildingData.BuildingCategory.MILITARY: "军事",
 	BuildingData.BuildingCategory.SCOUT: "侦察",
-	BuildingData.BuildingCategory.GOLD_CHAIN: "金币",
+	BuildingData.BuildingCategory.RECRUIT: "招募",
 	BuildingData.BuildingCategory.TOWN_HALL: "主城",
 }
 
 const RESOURCE_NAMES := {
-	"wood": "木", "stone": "石", "food": "食",
-	"iron": "铁", "magic_dust": "尘", "ancient_wood": "古木", "gold_ore": "金",
+	"wood": "木材", "stone": "石料", "food": "食物",
+	"iron": "铁矿", "magic_dust": "魔尘", "ancient_wood": "古木", "gold_ore": "金矿",
+}
+
+const COST_NAMES := {
+	"gold": "金币", "wood": "木材", "stone": "石料",
+	"iron": "铁矿", "food": "食物",
 }
 
 const CATEGORY_ORDER := [
@@ -37,7 +42,7 @@ const CATEGORY_ORDER := [
 	BuildingData.BuildingCategory.T1_RESOURCE,
 	BuildingData.BuildingCategory.MILITARY,
 	BuildingData.BuildingCategory.SCOUT,
-	BuildingData.BuildingCategory.GOLD_CHAIN,
+	BuildingData.BuildingCategory.RECRUIT,
 	BuildingData.BuildingCategory.TOWN_HALL,
 ]
 
@@ -359,11 +364,11 @@ func _make_card_hover_style() -> StyleBoxFlat:
 
 func _format_cost(d: BuildingData) -> String:
 	var parts: PackedStringArray = []
-	if d.cost_gold > 0: parts.append("%dg" % d.cost_gold)
-	if d.cost_wood > 0: parts.append("%dw" % d.cost_wood)
-	if d.cost_stone > 0: parts.append("%ds" % d.cost_stone)
-	if d.cost_iron > 0: parts.append("%di" % d.cost_iron)
-	if d.cost_food > 0: parts.append("%df" % d.cost_food)
+	if d.cost_gold > 0: parts.append("%d%s" % [d.cost_gold, COST_NAMES["gold"]])
+	if d.cost_wood > 0: parts.append("%d%s" % [d.cost_wood, COST_NAMES["wood"]])
+	if d.cost_stone > 0: parts.append("%d%s" % [d.cost_stone, COST_NAMES["stone"]])
+	if d.cost_iron > 0: parts.append("%d%s" % [d.cost_iron, COST_NAMES["iron"]])
+	if d.cost_food > 0: parts.append("%d%s" % [d.cost_food, COST_NAMES["food"]])
 	return " ".join(parts)
 
 

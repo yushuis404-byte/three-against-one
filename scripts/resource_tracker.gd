@@ -36,7 +36,7 @@ func _init_resources() -> void:
 		var d: Dictionary = {}
 		for key in RESOURCE_KEYS:
 			d[key] = 0
-		d["gold"] = 500  # 初始金币
+		d["gold"] = 0  # 初始金币
 		_resources[p] = d
 
 
@@ -90,17 +90,35 @@ func _on_round_ended(_round: int) -> void:
 	var buildings: Array = _building_mgr.get_all_buildings()
 	for b in buildings:
 		var prod: Dictionary = b["data"].production
-		if prod.is_empty():
-			continue
 		var faction: int = b["faction"]
-		for key in prod:
-			add_resource(faction, key, prod[key])
-		# 驻兵加成
+
+		# 基础产出
+		if not prod.is_empty():
+			for key in prod:
+				add_resource(faction, key, prod[key])
+
+		# 驻兵加成（独立判断，即使无基础产出也可能有加成）
 		if _building_mgr.has_method("get_garrison_bonus"):
 			var bonus: Dictionary = _building_mgr.get_garrison_bonus(b["id"])
-			for key in bonus:
-				add_resource(faction, key, bonus[key])
+			if not bonus.is_empty():
+				for key in bonus:
+					add_resource(faction, key, bonus[key])
 
+
+	# 金币铸造厂：消耗金矿 → 产出金币
+	for b in buildings:
+		if b["data"].name == "金币铸造厂":
+			var faction: int = b["faction"]
+			var garr: Array = b.get("garrison", [])
+			var gcount := garr.size()
+			if gcount > 0:
+				var max_gold := gcount * 2
+				var ore_avail := get_resource(faction, "gold_ore")
+				var ore_use := mini(max_gold, ore_avail)
+				if ore_use > 0:
+					spend_resource(faction, "gold_ore", ore_use)
+					add_resource(faction, "gold", ore_use)
+					print("[资源] 阵营 %d 金币铸造厂: 消耗 %d 金矿 → 产出 %d 金币" % [faction, ore_use, ore_use])
 
 func update_display(player: int) -> void:
 	var res: Dictionary = _resources[player]
