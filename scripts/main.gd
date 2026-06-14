@@ -52,6 +52,7 @@ func _setup_game() -> void:
 	resource_manager.set_turn_manager(turn_manager)
 	building_manager.set_turn_manager(turn_manager)
 	building_manager.building_hovered.connect(_on_resource_hovered)
+	building_manager.set_resource_tracker(resource_tracker)
 	_place_initial_buildings()
 	building_manager.reveal_all_town_hall_vision()
 
@@ -74,6 +75,7 @@ func _setup_game() -> void:
 	building_ui.set_turn_manager(turn_manager)
 	building_ui.set_building_manager(building_manager)
 	building_ui.set_resource_tracker(resource_tracker)
+	building_ui.building_selected.connect(_on_building_selected)
 	building_ui.refresh(turn_manager.current_player)
 
 	# 单位信息面板初始化
@@ -81,6 +83,10 @@ func _setup_game() -> void:
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
+
+
+func _on_building_selected(data: BuildingData) -> void:
+	building_manager.start_placement(data, turn_manager.current_player)
 
 
 func _on_fog_updated(player: int) -> void:
@@ -177,7 +183,7 @@ func _init_resource_labels() -> void:
 	var panel: Panel = resource_panel
 	if not panel:
 		return
-	var key_map := {"Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore"}
+	var key_map := {"Gold": "gold", "Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore"}
 	for node_name in key_map:
 		var label: Label = panel.get_node("HBox/Label" + node_name)
 		if label:

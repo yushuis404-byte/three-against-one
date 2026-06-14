@@ -21,7 +21,16 @@ var _fog_mgr: Node = null
 
 var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
 
+# 放置模式
+var _placement_active := false
+var _placement_data: BuildingData = null
+var _placement_faction := -1
+var _placement_hover_pos: Vector2i = Vector2i(-1, -1)
+var _placement_valid := false
+var _resource_tracker: Node = null
+
 signal building_hovered(text: String)
+signal placement_canceled()
 
 const FACTION_COLORS := [
 	Color(0.18, 0.60, 0.15),   # 0 精灵绿
@@ -63,6 +72,10 @@ func set_turn_manager(tm: Node) -> void:
 	if tm:
 		tm.player_turn_started.connect(_on_player_turn_started)
 		tm.round_ended.connect(_on_round_ended)
+
+
+func set_resource_tracker(rt: Node) -> void:
+	_resource_tracker = rt
 
 
 func _on_player_turn_started(player: int) -> void:
@@ -282,9 +295,15 @@ func _find_ungarrison_pos(building: Dictionary) -> Vector2i:
 # ========== 绘制 ==========
 
 func _draw() -> void:
-	if _buildings.is_empty():
-		return
+	if not _buildings.is_empty():
+		_draw_buildings()
 
+	# 放置模式幽灵预览
+	if _placement_active and _placement_data and _in_bounds(_placement_hover_pos.x, _placement_hover_pos.y):
+		_draw_placement_ghost()
+
+
+func _draw_buildings() -> void:
 	for b in _buildings:
 		var data: BuildingData = b["data"]
 		var faction: int = b["faction"]
@@ -385,6 +404,23 @@ func _draw() -> void:
 				draw_string(font, plus_pos, plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color.WHITE)
 
 
+func _draw_placement_ghost() -> void:
+	if not _placement_data:
+		return
+	var fp: Vector2i = _placement_data.footprint
+	var world_origin := _grid_to_world(_placement_hover_pos.x, _placement_hover_pos.y)
+	var top_left := Vector2(world_origin.x - tile_size * 0.5, world_origin.y - tile_size * 0.5)
+	var w := fp.x * tile_size
+	var h := fp.y * tile_size
+	var color: Color
+	if _placement_valid:
+		color = Color(0.3, 1.0, 0.3, 0.4)
+	else:
+		color = Color(1.0, 0.3, 0.3, 0.4)
+	draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
+	draw_rect(Rect2(top_left.x, top_left.y, w, h), Color.WHITE, false, 1.5)
+
+
 # ========== 回合产出 ==========
 
 func _on_round_ended(round_number: int) -> void:
@@ -452,6 +488,11 @@ func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int) 
 # ========== 交互 ==========
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 放置模式优先处理
+	if _placement_active:
+		_handle_placement_input(event)
+		return
+
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var cursor := get_global_mouse_position()
 		var gpos := _world_to_grid(cursor)
@@ -500,6 +541,26 @@ func _unhandled_input(event: InputEvent) -> void:
 			building_hovered.emit(hover_text)
 
 
+func _handle_placement_input(event: InputEvent) -> void:
+	## 放置模式下处理鼠标移动（预览）+ 左键（建造）+ 右键（取消）
+	if event is InputEventMouseMotion:
+		var cursor := get_global_mouse_position()
+		var gpos := _world_to_grid(cursor)
+		_placement_hover_pos = gpos
+		_placement_valid = _check_placement_valid(gpos)
+		queue_redraw()
+		return
+
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if _placement_valid:
+				_do_placement(_placement_hover_pos)
+			else:
+				queue_redraw()
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			cancel_placement()
+
+
 func _select_building(bid: int) -> void:
 	_selected_id = bid
 	queue_redraw()
@@ -508,6 +569,88 @@ func _select_building(bid: int) -> void:
 func _clear_selection() -> void:
 	_selected_id = -1
 	queue_redraw()
+
+
+# ========== 放置模式 ==========
+
+func start_placement(data: BuildingData, faction: int) -> void:
+	## 点击建筑卡片后进入放置模式
+	_placement_active = true
+	_placement_data = data
+	_placement_faction = faction
+	_placement_hover_pos = Vector2i(-1, -1)
+	_placement_valid = false
+	queue_redraw()
+
+
+func cancel_placement() -> void:
+	## 取消放置模式
+	_placement_active = false
+	_placement_data = null
+	_placement_faction = -1
+	_placement_hover_pos = Vector2i(-1, -1)
+	_placement_valid = false
+	placement_canceled.emit()
+	queue_redraw()
+
+
+func _check_placement_valid(pos: Vector2i) -> bool:
+	## 实时校验是否可在此处建造
+	if not _placement_data or not _in_bounds(pos.x, pos.y):
+		return false
+
+	var data: BuildingData = _placement_data
+	var faction: int = _placement_faction
+
+	# 资源检查
+	if _resource_tracker:
+		if _resource_tracker.get_resource(faction, "gold") < data.cost_gold:
+			return false
+		if _resource_tracker.get_resource(faction, "wood") < data.cost_wood:
+			return false
+		if _resource_tracker.get_resource(faction, "stone") < data.cost_stone:
+			return false
+		if _resource_tracker.get_resource(faction, "iron") < data.cost_iron:
+			return false
+		if _resource_tracker.get_resource(faction, "food") < data.cost_food:
+			return false
+
+	# AP 检查
+	if _turn_manager:
+		var ap: int = _turn_manager.get_ap(_turn_manager.current_player)
+		if ap < 2:
+			return false
+
+	# 领土/地形/占用/上限检查
+	return _can_place(data, faction, pos)
+
+
+func _do_placement(pos: Vector2i) -> void:
+	## 执行建造：扣资源 → 扣 AP → 放置建筑
+	if not _placement_data:
+		return
+
+	var data: BuildingData = _placement_data
+	var faction: int = _placement_faction
+
+	# 扣资源
+	if _resource_tracker:
+		_resource_tracker.spend_resource(faction, "gold", data.cost_gold)
+		_resource_tracker.spend_resource(faction, "wood", data.cost_wood)
+		_resource_tracker.spend_resource(faction, "stone", data.cost_stone)
+		_resource_tracker.spend_resource(faction, "iron", data.cost_iron)
+		_resource_tracker.spend_resource(faction, "food", data.cost_food)
+
+	# 扣 AP
+	if _turn_manager:
+		_turn_manager.spend_ap(faction, 2)
+
+	# 放置建筑
+	var placed: bool = place_building(data, faction, pos)
+	if placed:
+		print("[建造] 阵营 %d 在 %s 建造 %s" % [faction, str(pos), data.name])
+
+	cancel_placement()
 
 
 # ========== 坐标工具 ==========
@@ -522,3 +665,7 @@ func _world_to_grid(world_pos: Vector2) -> Vector2i:
 	var gx := int(roundf((world_pos.x - offset.x) / tile_size))
 	var gy := int(roundf((world_pos.y - offset.y) / tile_size))
 	return Vector2i(gx, gy)
+
+
+func _in_bounds(gx: int, gy: int) -> bool:
+	return gx >= 0 and gx < grid_cols and gy >= 0 and gy < grid_rows

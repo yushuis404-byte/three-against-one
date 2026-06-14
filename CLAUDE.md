@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 **Three Against One** — 3-player asynchronous turn-based 2.5D strategy board game in Godot 4.6.
-Three asymmetric factions (Dwarf/Elf/Orc) on a shared hex-less grid map with resources, tech trees, fog of war, and PvP/PvE combat.
+Three asymmetric factions (Elf/Dwarf/Orc) on a shared hex-less grid map with resources, tech trees, fog of war, and PvP/PvE combat.
 
 ## Current Status
-v0.3 prototype — 100×56 terrain generation with war fog (0.3s fade animation), territorial borders, 173 resource points, Space+LMB pan/zoom camera. Hotseat turn system (Tab cycles Elf→Dwarf→Orc with +6AP/round, cap 12), unit system (3 types per faction: worker/scout/guard with BFS movement, fog-on-move reveal), **building system (11 generic building types with footprint system, turn-based production, UI panel + resource tracking)**. Town halls have persistent vision, glow effects, and star markers. Architecture modularized into independent nodes.
+v0.3 prototype — 100×56 terrain generation with war fog (0.3s fade animation), territorial borders, 173 resource points, Space+LMB pan/zoom camera. Hotseat turn system (Tab cycles Elf→Dwarf→Orc with +6AP/round, cap 12). Unit system (3 types per faction: worker/scout/guard with BFS movement, fog-on-move reveal, **real-time duel combat with visual effects**). Building system (11 generic types with footprint system, turn-based production, **interactive placement mode with ghost preview + validation**, UI panel + resource tracking, **garrison system**, gold currency). **Gathering system** (workers on resource nodes collect resources next turn). Architecture modularized into independent nodes.
 
 ## Known GDScript Quirks
 - `var x := arr[i]` fails when `arr` is untyped Array (returns Variant). Fix: use `var x: Type = arr[i]`.
@@ -17,15 +17,19 @@ v0.3 prototype — 100×56 terrain generation with war fog (0.3s fade animation)
 - Line endings: some files use CRLF, some LF. Godot handles both.
 - Godot 4 font/color theme overrides: use `add_theme_font_size_override("font_size", N)` and `add_theme_color_override("font_color", Color(...))`. The `theme_override_font_sizes["key"] = val` syntax used in Godot 3 is gone (causes runtime error).
 - Control mouse_filter: `STOP` (default) blocks events from reaching parents; `PASS` passes to parent; `IGNORE` skips the node entirely. Containers (MarginContainer, VBoxContainer, etc.) call `accept_event()` in `_gui_input` by default, consuming click events. To make containers transparent to clicks, set `mouse_filter = Control.MOUSE_FILTER_IGNORE` on all intermediate containers/labels.
+- **Edit tool + Chinese characters**: The Edit tool cannot match lines containing Chinese fullwidth characters like `# ========== 回合产出 ==========` due to Unicode normalization differences. Use Python scripts (via Bash) to insert/modify text in files with Chinese content.
+- **Node reference across siblings**: use `get_parent().get_node("TargetNode")` instead of `@onready` when the target is later in tree order (avoids init-order race). BuildingManager2D, UnitManager2D, etc. all use this pattern in `_ready()`.
 
 ## Commands
 - **Open project**: Open `project.godot` in Godot 4.6 editor
 - **Run game**: Click "Play" (F5) in Godot editor, or `godot4 --path .` from terminal
+- **Validate syntax** (no GUI): `C:/tools/godot/Godot_v4.6.2-stable_win64_console.exe --path . --headless --check-only`
 - **No tests/CI**: Project has no test framework yet
 - **Game design docs** (reference, not code):
-  - `游戏策划_v12.md` — full game design document
-  - `地图模块_游戏策划_v12.md` — map module design
+  - `游戏策划_v12.md` — full game design document (v13, reflects actual v0.3 implementation)
+  - `地图模块_游戏策划_v12.md` — map module design (v13, updated with 100×56, 6-phase generation)
 - **Dev plan**: `开发路径表.md` — modular development roadmap with parallel tracks and phases
+- **Dev roadmap tool**: `dev-roadmap/start.bat` — local Python+HTML roadmap tracker
 
 ## Architecture
 
@@ -39,36 +43,42 @@ Main (Node2D) — main.gd (game state controller)
 │   ├── FogOfWar2D (Node2D)           — fog_of_war_2d.gd (war fog + fade animation)
 │   ├── TerritoryManager2D (Node2D)   — territory_manager_2d.gd (BFS territory + borders)
 │   ├── TurnManager2D (Node)          — turn_manager_2d.gd (hotseat turn + AP system)
-│   ├── BuildingManager2D (Node2D)    — building_manager_2d.gd (building placement + production)
-│   ├── UnitManager2D (Node2D)        — unit_manager_2d.gd (unit placement, selection, movement)
+│   ├── BuildingManager2D (Node2D)    — building_manager_2d.gd (building placement + production + garrison)
+│   ├── UnitManager2D (Node2D)        — unit_manager_2d.gd (unit placement, selection, movement, combat)
+│   ├── GatheringManager2D (Node2D)   — gathering_manager_2d.gd (worker resource collection)
 │   └── ResourceTracker (Node)        — resource_tracker.gd (per-faction inventory, turn-based collection)
 └── UI (CanvasLayer)
     ├── DebugLabel (Label)            — top-left debug info
     ├── TurnLabel (Label)             — top-center turn indicator (faction-colored text)
     ├── BuildingUI (Control)          — building_ui.gd (building panel, right-side card layout)
-    └── ResourcePanel (Panel)         — in-scene resource labels (wood/stone/food/iron etc.)
+    ├── ResourcePanel (Panel)         — in-scene resource labels (gold/wood/stone/food etc.)
+    └── UnitInfoPanel (Control)       — unit_info_panel.gd (bottom unit details panel, built in code)
 ```
 
-Draw order: GridManager2D → ResourceManager2D → TerritoryManager2D → UnitManager2D → FogOfWar2D. Each sibling has independent `_draw()` and `_unhandled_input()`. Units render above territory borders but below the fog overlay.
+Draw order: GridManager2D → ResourceManager2D → TerritoryManager2D → UnitManager2D → BuildingManager2D → FogOfWar2D. Each sibling has independent `_draw()` and `_unhandled_input()`. Units render above territory borders but below the fog overlay.
+
+**Node reference pattern**: Managers use `get_parent().get_node("OtherManager")` in `_ready()` to reference siblings (avoids scene tree init-order issues with `@onready`).
 
 ### Core Scripts (all GDScript, Godot 4.6)
 
 | Script | Lines | Role |
 |--------|-------|------|
 | `scripts/grid_manager_2d.gd` | 672 | 6-phase terrain generation (mountain → ring → ocean → territories → impassable → assign terrain), terrain `_draw()`, spawn markers, coordinate utils, hash/noise, expansion to 100×56. Delegates resource placement to ResourceManager2D. |
-| `scripts/resource_manager_2d.gd` | 260 | ResourceType enum, RESOURCE_DEFS table (14 types, 173 total), resource_grid, deterministic placement, diamond `_draw()`, hover signal. Queries FogOfWar2D to only show diamonds on visible tiles. |
-| `scripts/fog_of_war_2d.gd` | 167 | Per-player float fog grids (0.0=explored, 0.7=unexplored), 3×3 smoothing for edge gradients, 0.3s fade animation on first reveal, reveal_area/reveal_area_immediate/is_explored API, `fog_updated(player)` signal. |
-| `scripts/territory_manager_2d.gd` | 164 | BFS flood-fill territory from town halls through explored+passable tiles. `owner_grid[y][x]` (-1/0/1/2), border line rendering (2.5px faction colors), `recalc_territory(player)`, `get_cell_owner()`/`is_territory()` API. |
-| `scripts/turn_manager_2d.gd` | 80 | Hotseat round-based turn system. 3 players (Elf→Dwarf→Orc→round end), +6AP/round cap 12. Signals: `round_started`, `player_turn_started/ended`, `round_ended`, `ap_changed`. `spend_ap(player, amount)` returns false if insufficient. |
-| `scripts/unit_data.gd` | 41 | `class_name UnitData` — template data (name, category, move/atk/hp/vision/food_cost). Static factory methods: `worker()`, `scout()`, `guard()`. |
-| `scripts/unit_manager_2d.gd` | 358 | Unit storage (Array[Dictionary] with id/data/grid_pos/hp/flags), BFS reachable-tile calculation, AP-cost movement, fog reveal on move. Renders faction-colored circles with Chinese name + HP. LMB select/move/deselect interaction. |
-| `scripts/building_data.gd` | 154 | `class_name BuildingData` — 11 building template types with footprint, cost, HP, production, terrain compatibility. Static factory methods for all generic buildings. |
-| `scripts/building_manager_2d.gd` | 351 | Building placement with footprint validation, `building_grid[y][x]`, faction-colored rect rendering + town hall glow/star effects, `round_ended` production, mouse hover/select interaction, town hall vision reveal. See Building System section. |
-| `scripts/building_ui.gd` | 384 | Building UI panel (right-side, built in code). Two-column layout: left category sidebar + right card grid + bottom detail panel. StyleBoxFlat cards with hover effects, cost/production display. Emits `building_selected(data)` on click. |
-| `scripts/resource_tracker.gd` | 105 | Per-faction resource inventory (`_resources[player][key]`). Collects building production on `round_ended`, updates UI labels. API: `add_resource()`, `get_resource()`, `update_display(player)`. |
-| `scripts/main.gd` | 209 | Game state machine (LOADING/PLAYING/TURN_RESOLVE/GAME_OVER). Initializes all subsystems in order. Connects turn signals to faction-colored TurnLabel UI. Faction name/color constants. `_place_initial_buildings()` for initial building setup. |
-| `scripts/camera_controller_2d.gd` | 101 | Space+LMB drag pan, scroll zoom, clamp to map bounds. |
-| `scripts/terrain_data.gd` | 60 | `class_name TerrainData` — 12 terrain types with colors, passability, buildability. Global enum/data singleton. |
+| `scripts/resource_manager_2d.gd` | 340 | ResourceType enum, RESOURCE_DEFS table (14 types, 173 total), resource_grid, deterministic placement, diamond `_draw()`, hover signal, gather_result/remove_resource API. Queries FogOfWar2D to only show diamonds on visible tiles. |
+| `scripts/fog_of_war_2d.gd` | 179 | Per-player float fog grids (0.0=explored, 0.7=unexplored), 3×3 smoothing for edge gradients, 0.3s fade animation on first reveal, reveal_area/reveal_area_immediate/is_explored API, `fog_updated(player)` signal. |
+| `scripts/territory_manager_2d.gd` | 163 | BFS flood-fill territory from town halls through explored+passable tiles. `owner_grid[y][x]` (-1/0/1/2), border line rendering (2.5px faction colors), `recalc_territory(player)`, `get_cell_owner()`/`is_territory()` API. |
+| `scripts/turn_manager_2d.gd` | 79 | Hotseat round-based turn system. 3 players (Elf→Dwarf→Orc→round end), +6AP/round cap 12. Signals: `round_started`, `player_turn_started/ended`, `round_ended`, `ap_changed`. `spend_ap(player, amount)` returns false if insufficient. |
+| `scripts/unit_data.gd` | 40 | `class_name UnitData` — template data (name, category, move/atk/hp/vision/food_cost). Static factory methods: `worker()`, `scout()`, `guard()`. |
+| `scripts/unit_manager_2d.gd` | 640 | Unit storage (Array[Dictionary]), BFS reachable-tile calculation, AP-cost movement, fog reveal on move. Renders faction-colored circles with Chinese name + HP. LMB select/move/deselect. **Combat system**: Timer-based alternating 1s-interval attack until death, visual effects (flash white, red "-N" damage text floating upward, unit icon shake). |
+| `scripts/building_data.gd` | 168 | `class_name BuildingData` — 11 building template types with footprint, cost (gold/wood/stone/iron/food), HP, production, terrain compatibility. Static factory methods for all generic buildings. |
+| `scripts/building_manager_2d.gd` | 671 | Building placement with footprint validation, `building_grid[y][x]`, faction-colored rect rendering + town hall glow/star effects, `round_ended` production, mouse hover/select. **Placement mode**: start/cancel placement, green/red ghost preview, real-time validation (resources + AP + territory + terrain + occupancy + limit), resource deduction + 2AP cost on build. **Garrison system**: garrison/ungarrison units, production bonus, garrison dots rendering. |
+| `scripts/building_ui.gd` | 383 | Building UI panel (right-side, built in code). Two-column layout: left category sidebar + right 2-column card grid + bottom detail panel. StyleBoxFlat cards with hover effects, cost/production display, built count (x/y). Emits `building_selected(data)` on card click. |
+| `scripts/resource_tracker.gd` | 122 | Per-faction resource inventory (`_resources[player][key]`). 8 resource types including "gold" with 500 starting. Collects building production on `round_ended`, adds garrison bonus. API: `add_resource()`, `get_resource()`, `spend_resource()`, `update_display(player)`. |
+| `scripts/gathering_manager_2d.gd` | 103 | Tracks workers on resource nodes. On player turn start, checks if worker still on node → collects resources → removes resource from map → floating text. |
+| `scripts/unit_info_panel.gd` | 203 | Bottom unit detail panel (built in code). Shows faction-colored name bar, HP bar, ATK/MOVE/VISION/FOOD stats, movement/attack status. |
+| `scripts/main.gd` | 230 | Game state machine (LOADING/PLAYING/TURN_RESOLVE/GAME_OVER). Initializes all subsystems, connects signals. Routes `building_ui.building_selected` → `building_manager.start_placement`. |
+| `scripts/camera_controller_2d.gd` | 100 | Space+LMB drag pan, scroll zoom, clamp to map bounds. |
+| `scripts/terrain_data.gd` | 59 | `class_name TerrainData` — 12 terrain types with colors, passability, buildability. Global enum/data singleton. |
 
 ### Terrain Generation Pipeline (6 Phases + expansion in grid_manager_2d)
 
@@ -100,122 +110,94 @@ All grids use outer loop y (rows), inner x (cols). All generation is **determini
 
 Hotseat round-based: Elf(0) → Dwarf(1) → Orc(2) → round end → next round. Tab key ends current player's turn.
 
-- **AP**: Each player gains +6 AP per round (cap 12). Movement costs 1 AP per tile (prototype simplified). `spend_ap(player, amount)` returns false if insufficient.
+- **AP**: Each player gains +6 AP per round (cap 12). Movement costs 1 AP per tile. Building costs 2 AP. `spend_ap(player, amount)` returns false if insufficient.
 - **Signal order**: `round_started(round)` → `player_turn_started(player)` → `player_turn_ended(player)` (×3 per round) → `round_ended(round)` → loop.
 - `start_game()` must be called AFTER all signal connections are made, or the first signals are missed.
 - Connected to UnitManager2D for player turn start/end (resets has_moved/has_attacked flags, clears selection).
+- Connected to BuildingManager2D for town hall vision refresh on player turn start and production on round end.
+- Connected to ResourceTracker for production collection on round end.
 
 ### Unit System (`UnitManager2D` + `UnitData`)
 
 Each faction starts with 3 units: 1 worker (move1/atk0/hp3/vision1), 1 scout (move3/atk1/hp3/vision3), 1 guard (move1/atk3/hp6/vision1). All units stored in `_units: Array[Dictionary]`, rendered via `_draw()` as faction-colored circles.
 
 - **Selection**: LMB on own unit → white selection circle + translucent reachable-tile highlights. LMB on reachable tile → move (AP deducted). LMB elsewhere → deselect.
-- **Movement**: BFS from unit position with `move_max` depth. Skips impassable terrain and occupied tiles. Path length = AP cost. After moving, calls `fog_mgr.reveal_area(player, x, y, unit.vision)`.
-- **Fog interaction**: Units are rendered below fog overlay (visible through fog in prototype). Movement reveals fog at the destination position based on unit's vision stat.
+- **Movement**: BFS from unit position with `move_max` depth. Skips impassable terrain, building-occupied tiles (except garrisonable buildings). Path length = AP cost. After moving, reveals fog at destination based on unit's vision stat. Workers auto-register gathering via GatheringManager2D.
+- **Garrison**: Move onto own resource building → garrison unit inside. Click garrisoned building → ungarrison one unit to nearest empty tile.
+- **Combat**: LMB adjacent enemy unit → initiate duel. Timer-based alternating attacks (1s interval). Attacker deals ATK damage to defender. Visuals: flash white, red "-N" damage text floating upward, unit shake (randomized offset, ~0.12s ease-out). Continues until one unit dies. Combat locks all input until resolved.
+- **Fog interaction**: Units render below fog overlay but are visible through fog (prototype simplification). Movement reveals fog at destination.
 
 ### Building System (`BuildingManager2D` + `BuildingData` + `BuildingUI` + `ResourceTracker`)
 
-11 generic building types all factions share (no faction-specific buildings yet). Buildings are placed on the grid with a **footprint** system (`footprint: Vector2i`), stored in `building_grid[y][x]` where multi-tile buildings write the same `building_id` to all occupied cells.
+11 generic building types all factions share. Buildings placed on grid with **footprint** system (`footprint: Vector2i`). Multi-tile buildings write same `building_id` to all occupied cells in `building_grid[y][x]`.
 
-**Footprint sizes (current):**
-- Town Hall: **2×2** (阵营核心)
-- Barracks Lv1, all resource buildings: **1×1** (Barracks upgrade path: 1×1→2×1→2×2)
+**Footprint sizes:** Town Hall: 2×2, all others: 1×1.
 
-**Key data per building:** name, category, cost (gold/wood/stone/iron/food), hp_max, production dict (e.g. `{ "wood": 3 }`), terrain_compatibility (Array of `TerrainData.Terrain`), max_per_faction, footprint.
+**Placement mode flow:**
+1. Click right-side building card → `building_ui.building_selected(data)` → `main.gd` routes to `building_manager.start_placement(data, faction)`
+2. Mouse moves → ghost preview (green=valid, red=invalid) at snapped grid position, real-time validation
+3. LMB on valid position → deduct resources (gold/wood/stone/iron/food), deduct 2 AP, call `place_building()`, exit placement mode
+4. RMB → cancel placement
 
-**Initial placement** (in `main.gd._place_initial_buildings()`):
-- Each faction: 1 Town Hall (2×2, near spawn) + 1 Lumber Camp + 1 Quarry + 1 Farm (placed at nearby empty tiles)
-- Buildings placed BEFORE units to avoid overlap
+**Placement validation** (`_check_placement_valid` + `_can_place`):
+1. Resource check: gold vs `cost_gold`, wood/stone/iron/food against costs
+2. AP check: current player must have ≥ 2 AP
+3. All footprint tiles in faction's territory (TerritoryManager2D)
+4. All footprint tiles have compatible terrain (BuildingData.terrain_compatibility)
+5. All footprint tiles empty (no existing building)
+6. Must not exceed `max_per_faction` limit
 
-**Town hall rendering** (`BuildingManager2D._draw()`):
-- Double-layer outer glow: faction color at a=0.3 (4px out) and a=0.2 (8px out)
-- Thicker border (3px vs 1.5px for other buildings)
-- Larger font (13px vs 11px), with "★ 主城 ★" star marker above the building
-
-**Town hall vision:**
-- `reveal_all_town_hall_vision()` — called after initial placement, reveals fog radius 4 around all town halls for all players
-- `_reveal_town_hall_vision(player)` — called each turn for the current player's town halls (radius 4, Manhattan distance)
-- `place_building()` auto-reveals fog radius 3 around any newly placed building
-
-**BuildingUI Panel** (`building_ui.gd`):
-- Right-side panel built entirely in code (no .tscn), positioned at offset_left=1400, width≈500px
-- Two-column layout: left 80px category sidebar + right 2-column card grid + bottom 60px detail panel
-- Root Control uses `mouse_filter = PASS` to avoid blocking map interaction
-- Cards use `mouse_filter = STOP` with `gui_input.connect()` for click detection; all interior containers use `IGNORE`
-- Categories: 基础/资源/军事/侦察/金币/主城 (maps to `BuildingData.BuildingCategory`)
-- Each card shows: building name + build count (x/y), cost (yellow), production (green)
-- Cards have StyleBoxFlat backgrounds (dark bg, gray border, 4px rounded corners) with hover brightening
-- Bottom detail panel updates on card click and emits `building_selected(data)` signal
-- `_format_cost()` skips zero-cost resources; `_format_production()` shows "+N资源/回合"
-
-**Resource Tracker** (`resource_tracker.gd`):
-- Per-faction inventory: `_resources[player]["wood"/"stone"/"food"/etc]`
-- Connected to `round_ended` signal: iterates all buildings, adds production to the owning faction's inventory
-- UI labels updated via `update_display(player)` — shows 7 resource types (木材/石料/食物/铁矿/魔尘/古木/金矿)
-- `resources_updated(player)` signal for UI refresh
+**Gold currency**: Independent resource key "gold", initial 500 per faction. Buildings with `cost_gold > 0` deduct from gold. No gold-producing building yet.
 
 **Turn integration:**
-- `round_ended` signal → `ResourceTracker` collects production from all buildings → adds to faction inventories
-- `player_turn_started` signal → `building_ui.refresh(player)` rebuilds cards for the current faction
-- `ap_changed` signal → also refreshes building UI to reflect latest resource counts
+- `round_ended` → ResourceTracker collects production from all buildings + garrison bonus → faction inventories
+- `player_turn_started` → `building_ui.refresh(player)` rebuilds cards for current faction; town hall vision revealed
+- `ap_changed` → refreshes building UI to reflect latest resource counts
 
-**Unit interaction:**
-- `UnitManager2D._is_tile_empty()` checks `BuildingManager2D.is_tile_occupied()` — units cannot walk through buildings
-- Buildings render below units but above territory borders
+**Town hall rendering:** Double-layer outer glow (faction color a=0.3 at 4px, a=0.2 at 8px), thicker 3px border, larger 13px font, "★ 主城 ★" star marker. Town halls reveal fog radius 4 (Manhattan) on placement and each turn.
 
-**Placement validation** (`_can_place()`):
-1. All footprint tiles must be in faction's territory (TerritoryManager2D.get_cell_owner)
-2. All footprint tiles must have compatible terrain (BuildingData.terrain_compatibility)
-3. All footprint tiles must be empty (no existing building)
-4. Must not exceed max_per_faction limit
+**Garrison system:** Buildings with production can hold units (capacity = footprint area, min 2). Garrison bonus = 1 extra production per garrisoned unit per key. Rendered as colored dots above building.
 
-**11 building types:**
-Town Hall(2×2), Lumber Camp, Quarry, Farm, Warehouse, Mine(iron), Extraction Tower, Ancient Wood Harvest, Barracks Lv1, Scout Post, Gold Mine Shaft
+**BuildingUI panel:** Right-side (offset_left=1400, width≈500px), fully code-built. Root `mouse_filter = PASS`. Cards have `mouse_filter = STOP` with `gui_input.connect()` for clicks; all interior containers `IGNORE`. Categories: 基础/资源/军事/侦察/金币/主城.
+
+**11 building types:** Town Hall(2×2), Lumber Camp, Quarry, Farm, Warehouse, Mine(iron), Extraction Tower, Ancient Wood Harvest, Barracks Lv1, Scout Post, Gold Mine Shaft.
+
+### Gathering System (`GatheringManager2D`)
+
+Workers moving onto resource nodes auto-register as pending gathers. On next player turn start: checks worker still on node → adds resources via ResourceTracker → removes resource from map → floating "+N 资源" text.
+
+### Resource Types
+
+**8 tracked resources (per-faction inventory):** Gold(500 starting), Wood, Stone, Food, Iron, Magic Dust, Ancient Wood, Gold Ore.
+
+**14 map resource points (173 total):** Gold Mine(18), Ancient Forest(16), Quarry(15), Fertile Plain(15), Iron Mine(14), Magic Node(14), Ancient Tree(13), Rune Stone(13), Abandoned Post(12), Star Crystal(12), World Tree Root(12), Dragon Crystal(10), Hot Spring(3), Ancient Relic(2).
+
+Rendered as colored diamond markers only on tiles where `FogOfWar2D.get_fog(player, x, y) == 0.0`.
 
 ### ZoneTag Regions
 
-| Tag | Description |
-|-----|-------------|
-| ELF_TERRITORY | NW faction zone (seed 13,13) |
-| DWARF_TERRITORY | SW faction zone (seed 13,43) |
-| ORC_TERRITORY | SE faction zone (seed 43,43) |
-| EMERALD_WOODLANDS | Buffer between Elf and Dwarf |
-| SCORCHED_BADLANDS | Buffer between Dwarf and Orc |
-| RIFT_HIGHLANDS | Buffer between Elf and Orc |
-| RESOURCE_RING | Band around central mountain |
-| MOUNTAIN_NEST / MOUNTAIN_BODY / MOUNTAIN_PATH | Central mountain complex |
-| OCEAN | Outside the landmass |
+Elf Territory(NW), Dwarf Territory(SW), Orc Territory(SE), Emerald Woodlands(buffer), Scorched Badlands(buffer), Rift Highlands(buffer), Resource Ring, Mountain Nest/Body/Path, Ocean.
 
 ### Territory System (`TerritoryManager2D`)
 
-BFS flood-fill from town halls through explored+passable tiles. Player mapping: 0=Elf, 1=Dwarf, 2=Orc.
-
-- **`recalc_territory(player)`** — clears old ownership, BFS orthogonally from all town halls. Only enters tiles where `fog_mgr.is_explored(player, nx, ny)` AND `TerrainData.is_passable(terrain)`. Emits `territory_updated(player)`.
-- **Border rendering** — `_draw()` iterates owned tiles, checks 4 neighbors. If neighbor owner differs, draws 2.5px line along the shared edge. Colors: Elf green `#2e9926`, Dwarf gold `#cca619`, Orc red `#cc4026`.
-- **Town halls** — each faction starts with 1. Can build more (500g + T3 resource) for strategic redundancy. Each anchors a connected territory zone.
-- **Enemy on your territory** — auto-revealed (fog removed), combat if garrisoned. Enemy buildings on your tiles flip ownership to them — must be retaken.
-
-### 14 Resource Types (173 total)
-
-Gold Mine(18), Ancient Forest(16), Quarry(15), Fertile Plain(15), Iron Mine(14), Magic Node(14), Ancient Tree(13), Rune Stone(13), Abandoned Post(12), Star Crystal(12), World Tree Root(12), Dragon Crystal(10), Hot Spring(3), Ancient Relic(2).
-
-Rendered as colored diamond markers only on tiles where `FogOfWar2D.get_fog(player, x, y) == 0.0`.
+BFS flood-fill from town halls through explored+passable tiles. Player mapping: 0=Elf, 1=Dwarf, 2=Orc. Border rendering: 2.5px lines along shared edges between different owners. Colors: Elf green `#2e9926`, Dwarf gold `#cca619`, Orc red `#cc4026`.
 
 ### Key Constants
 - Grid: 100×56 (16:9), 56×56 land centered at LAND_OFFSET_X=22, 32px tiles
 - Viewport: 1920×1080 (stretch: canvas_items)
 - Camera: zoom 0.55–2.5, default 1.0 (~0.55 shows full 100×56 map)
 - Bounds: x=[-1800, 1800], y=[-1096, 1096] (200px margin)
+- Starting gold: 500 per player
+- Building AP cost: 2 per building
 
 ## Development Notes
-- **Godot executable**: `C:\tools\godot\Godot_v4.6.2-stable_win64_console.exe` (or `..._win64.exe` for GUI). Downloaded locally for automated validation.
-- **Validation**: `Godot_v4.6.2-stable_win64_console.exe --path . --headless --check-only` to check for GDScript parse errors without launching window.
-- All rendering uses `_draw()` + `draw_rect()` — no TileMap nodes, no sprite atlases
+- **Godot executable**: `C:\tools\godot\Godot_v4.6.2-stable_win64_console.exe` (or `..._win64.exe` for GUI)
+- **Validation**: `Godot_v4.6.2-stable_win64_console.exe --path . --headless --check-only` to check for GDScript parse errors without launching window
+- All rendering uses `_draw()` + `draw_rect()` / `draw_circle()` / `draw_string()` — no TileMap nodes, no sprite atlases
 - Player spawns (land coords, offset by LAND_OFFSET_X=22 at render): Elf at (12,13)..(14,13), Dwarf at (12,43)..(14,43), Orc at (39,35)..(41,35)
-- Signal chain: `ResourceManager2D.resource_hovered(text)` → `main.gd` → `DebugLabel`
-- Node reference across siblings: use `get_parent().get_node("TargetNode")` instead of `@onready` when the target is later in tree order (avoids init-order race)
-- Fog is float-based (0.0=explored, 0.7=unexplored) with 3×3 neighborhood smoothing for edge gradients. First reveal triggers a 0.3s fade animation (lerp 0.7→0.0), then emits `fog_updated(player)` signal which triggers territory recalculation.
-- Input mappings: camera_zoom_in/out (scroll), select (LMB), end_turn (Tab)
+- Signal chain: `ResourceManager2D.resource_hovered(text)` / `BuildingManager2D.building_hovered(text)` → `main.gd` → `DebugLabel`
+- Fog is float-based (0.0=explored, 0.7=unexplored) with 3×3 neighborhood smoothing for edge gradients. First reveal triggers a 0.3s fade animation (lerp 0.7→0.0), then emits `fog_updated(player)` which triggers territory recalculation.
+- Input mappings: camera_zoom_in/out (scroll), select (LMB), end_turn (Tab/Enter)
 - MSAA 2× enabled in rendering settings
 - No design doc files should be edited by code — they are reference only
 - Input handling in `main.gd` uses direct keycode checks (`event.keycode == KEY_ENTER or event.keycode == KEY_TAB`) rather than InputMap actions, because InputMap can be corrupted by script-based editing and Tab can be intercepted by the Godot editor's own shortcuts when running embedded

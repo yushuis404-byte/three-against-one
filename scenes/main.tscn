@@ -81,6 +81,10 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "[精灵] 资源"
 
+[node name="LabelGold" type="Label" parent="UI/ResourcePanel/HBox"]
+layout_mode = 2
+text = "金币: 0"
+
 [node name="LabelWood" type="Label" parent="UI/ResourcePanel/HBox" unique_id=1645510749]
 layout_mode = 2
 text = "木材: 0"

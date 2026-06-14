@@ -14,8 +14,9 @@ var _faction_label: Label = null
 
 signal resources_updated(player: int)
 
-const RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore"]
+const RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "gold", "ancient_wood", "gold_ore"]
 const RESOURCE_NAMES := {
+	"gold": "金币",
 	"wood": "木材",
 	"stone": "石料",
 	"food": "食物",
@@ -35,6 +36,7 @@ func _init_resources() -> void:
 		var d: Dictionary = {}
 		for key in RESOURCE_KEYS:
 			d[key] = 0
+		d["gold"] = 500  # 初始金币
 		_resources[p] = d
 
 
@@ -65,6 +67,17 @@ func add_resource(player: int, key: String, amount: int) -> void:
 
 func get_resource(player: int, key: String) -> int:
 	return _resources[player].get(key, 0)
+
+
+func spend_resource(player: int, key: String, amount: int) -> bool:
+	## 扣减资源，返回是否成功（余额不足返回 false）
+	if not _resources[player].has(key):
+		return false
+	if _resources[player][key] < amount:
+		return false
+	_resources[player][key] -= amount
+	resources_updated.emit(player)
+	return true
 
 
 func get_all(player: int) -> Dictionary:
