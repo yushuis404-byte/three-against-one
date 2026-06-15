@@ -68,9 +68,10 @@ func place_initial_units() -> void:
 		var p: int = s["player"]
 		var pos: Vector2i = s["pos"]
 		var offset: int = s["name_offset"]
-		_add_initial_unit(p, "unit.worker", UnitData.worker(), Vector2i(pos.x + offset, pos.y))
-		_add_initial_unit(p, "unit.scout", UnitData.scout(), Vector2i(pos.x + offset + 1, pos.y))
-		_add_initial_unit(p, "unit.guard", UnitData.guard(), Vector2i(pos.x + offset + 2, pos.y))
+		var unit_defs: Array = _get_initial_unit_defs(p)
+		_add_initial_unit(p, str(unit_defs[0]["template_id"]), unit_defs[0]["fallback"], Vector2i(pos.x + offset, pos.y))
+		_add_initial_unit(p, str(unit_defs[1]["template_id"]), unit_defs[1]["fallback"], Vector2i(pos.x + offset + 1, pos.y))
+		_add_initial_unit(p, str(unit_defs[2]["template_id"]), unit_defs[2]["fallback"], Vector2i(pos.x + offset + 2, pos.y))
 
 		# 初始放置时揭示视野
 		for u in _units:
@@ -86,6 +87,33 @@ func _add_initial_unit(faction: int, template_id: String, fallback: UnitData, gr
 		if template != null:
 			return add_unit_from_template(faction, template, grid_pos)
 	return _add_unit(faction, fallback, grid_pos)
+
+
+func _get_initial_unit_defs(faction: int) -> Array:
+	match faction:
+		0:
+			return [
+				{"template_id": "unit.elf.worker", "fallback": UnitData.new("精灵工人", UnitData.UnitCategory.WORKER, 2, 0, 3, 1, 1)},
+				{"template_id": "unit.elf.scout", "fallback": UnitData.new("风行斥候", UnitData.UnitCategory.SCOUT, 4, 1, 3, 4, 1)},
+				{"template_id": "unit.elf.guard", "fallback": UnitData.new("月影刺客", UnitData.UnitCategory.GUARD, 2, 3, 5, 2, 2)},
+			]
+		1:
+			return [
+				{"template_id": "unit.dwarf.worker", "fallback": UnitData.new("矮人工人", UnitData.UnitCategory.WORKER, 1, 0, 4, 1, 1)},
+				{"template_id": "unit.dwarf.scout", "fallback": UnitData.new("勘探者", UnitData.UnitCategory.SCOUT, 2, 1, 4, 2, 1)},
+				{"template_id": "unit.dwarf.guard", "fallback": UnitData.new("铁锤卫", UnitData.UnitCategory.GUARD, 1, 3, 8, 1, 2)},
+			]
+		2:
+			return [
+				{"template_id": "unit.orc.worker", "fallback": UnitData.new("兽人工人", UnitData.UnitCategory.WORKER, 1, 0, 4, 1, 1)},
+				{"template_id": "unit.orc.scout", "fallback": UnitData.new("猎齿兽", UnitData.UnitCategory.SCOUT, 2, 2, 5, 2, 1)},
+				{"template_id": "unit.orc.guard", "fallback": UnitData.new("血斧兵", UnitData.UnitCategory.GUARD, 1, 4, 6, 1, 2)},
+			]
+	return [
+		{"template_id": "unit.worker", "fallback": UnitData.worker()},
+		{"template_id": "unit.scout", "fallback": UnitData.scout()},
+		{"template_id": "unit.guard", "fallback": UnitData.guard()},
+	]
 
 
 func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:

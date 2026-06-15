@@ -888,6 +888,10 @@ func _get_recruit_options(building: Dictionary) -> Array:
 
 
 func _get_recruit_template_ids_for_building(building: Dictionary) -> Array:
+	var faction_ids: Array = _get_faction_recruit_template_ids(building)
+	if not faction_ids.is_empty():
+		return faction_ids
+
 	var building_template: Resource = _get_building_template_for_data(building["data"])
 	if building_template != null:
 		var recruit_options: Array = building_template.get("recruit_options")
@@ -907,6 +911,28 @@ func _get_recruit_template_ids_for_building(building: Dictionary) -> Array:
 		return ["unit.worker"]
 	if data.category == BuildingData.BuildingCategory.MILITARY:
 		return ["unit.guard", "unit.scout"]
+	return []
+
+
+func _get_faction_recruit_template_ids(building: Dictionary) -> Array:
+	if building.is_empty() or not building.has("data"):
+		return []
+	var data: BuildingData = building["data"]
+	var faction: int = int(building.get("faction", -1))
+	var prefix := ""
+	match faction:
+		0:
+			prefix = "unit.elf"
+		1:
+			prefix = "unit.dwarf"
+		2:
+			prefix = "unit.orc"
+		_:
+			return []
+	if data.category == BuildingData.BuildingCategory.RECRUIT:
+		return ["%s.worker" % prefix]
+	if data.category == BuildingData.BuildingCategory.MILITARY:
+		return ["%s.guard" % prefix, "%s.scout" % prefix]
 	return []
 
 

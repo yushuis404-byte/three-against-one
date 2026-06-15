@@ -62,11 +62,128 @@ func make_unit_templates() -> Dictionary:
 		"tags": ["guard", "military", "melee", "veteran"],
 	})
 
+	var elf_worker = _unit_basic(
+		"unit.elf.worker",
+		"精灵工人",
+		UnitTemplateScript.UnitRole.WORKER,
+		2,
+		0,
+		3,
+		1,
+		["elf", "worker", "civilian", "gatherer", "forest_move_bonus"]
+	)
+	_config_recruit(elf_worker, [_amount("food", 1)], 1, 1, 1, false)
+
+	var elf_scout = _unit_basic(
+		"unit.elf.scout",
+		"风行斥候",
+		UnitTemplateScript.UnitRole.SCOUT,
+		4,
+		1,
+		3,
+		4,
+		["elf", "scout", "military", "light", "forest_move_bonus", "high_vision"]
+	)
+	_config_recruit(elf_scout, [_amount("food", 1), _amount("wood", 5)], 1, 2, 1, true)
+
+	var elf_guard = _unit_basic(
+		"unit.elf.guard",
+		"月影刺客",
+		UnitTemplateScript.UnitRole.GUARD,
+		2,
+		3,
+		5,
+		2,
+		["elf", "guard", "military", "melee", "mobile_attacker"]
+	)
+	_config_recruit(elf_guard, [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)], 1, 2, 2, true)
+
+	var dwarf_worker = _unit_basic(
+		"unit.dwarf.worker",
+		"矮人工人",
+		UnitTemplateScript.UnitRole.WORKER,
+		1,
+		0,
+		4,
+		1,
+		["dwarf", "worker", "civilian", "gatherer", "sturdy"]
+	)
+	_config_recruit(dwarf_worker, [_amount("food", 1)], 1, 1, 1, false)
+
+	var dwarf_scout = _unit_basic(
+		"unit.dwarf.scout",
+		"勘探者",
+		UnitTemplateScript.UnitRole.SCOUT,
+		2,
+		1,
+		4,
+		2,
+		["dwarf", "scout", "military", "light", "resource_detect_bonus", "mountain_move_bonus"]
+	)
+	_config_recruit(dwarf_scout, [_amount("food", 1), _amount("wood", 5)], 1, 2, 1, true)
+
+	var dwarf_guard = _unit_basic(
+		"unit.dwarf.guard",
+		"铁锤卫",
+		UnitTemplateScript.UnitRole.GUARD,
+		1,
+		3,
+		8,
+		1,
+		["dwarf", "guard", "military", "melee", "high_hp", "defender"]
+	)
+	_config_recruit(dwarf_guard, [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)], 1, 2, 2, true)
+
+	var orc_worker = _unit_basic(
+		"unit.orc.worker",
+		"兽人工人",
+		UnitTemplateScript.UnitRole.WORKER,
+		1,
+		0,
+		4,
+		1,
+		["orc", "worker", "civilian", "gatherer", "sturdy"]
+	)
+	_config_recruit(orc_worker, [_amount("food", 1)], 1, 1, 1, false)
+
+	var orc_scout = _unit_basic(
+		"unit.orc.scout",
+		"猎齿兽",
+		UnitTemplateScript.UnitRole.SCOUT,
+		2,
+		2,
+		5,
+		2,
+		["orc", "scout", "military", "beast", "bonus_vs_worker"]
+	)
+	_config_recruit(orc_scout, [_amount("food", 1), _amount("wood", 5)], 1, 2, 1, true)
+
+	var orc_guard = _unit_basic(
+		"unit.orc.guard",
+		"血斧兵",
+		UnitTemplateScript.UnitRole.GUARD,
+		1,
+		4,
+		6,
+		1,
+		["orc", "guard", "military", "melee", "high_attack"]
+	)
+	_config_recruit(orc_guard, [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)], 1, 2, 2, true)
+
 	return {
 		worker.id: worker,
 		scout.id: scout,
 		guard.id: guard,
 		veteran_guard.id: veteran_guard,
+		elf_worker.id: elf_worker,
+		elf_scout.id: elf_scout,
+		elf_guard.id: elf_guard,
+		dwarf_worker.id: dwarf_worker,
+		dwarf_scout.id: dwarf_scout,
+		dwarf_guard.id: dwarf_guard,
+		orc_worker.id: orc_worker,
+		orc_scout.id: orc_scout,
+		orc_guard.id: orc_guard,
 	}
 
 
@@ -157,6 +274,20 @@ func _unit_basic(
 	template.tags = p_tags.duplicate()
 	template.can_gather = p_role == UnitTemplateScript.UnitRole.WORKER
 	return template
+
+
+func _config_recruit(
+		template: Resource,
+		cost: Array,
+		ap_cost: int,
+		turns: int,
+		food_cost: int,
+		can_attack: bool) -> void:
+	template.recruit_cost = cost
+	template.recruit_ap_cost = ap_cost
+	template.recruit_turns = turns
+	template.food_cost = food_cost
+	template.can_attack_units = can_attack
 
 
 func _amount(key: String, amount: int) -> Resource:
