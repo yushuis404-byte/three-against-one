@@ -84,7 +84,7 @@ func make_unit_templates() -> Dictionary:
 		4,
 		["elf", "scout", "military", "light", "forest_move_bonus", "high_vision"]
 	)
-	_config_recruit(elf_scout, [_amount("food", 1), _amount("wood", 5)], 1, 2, 1, true)
+	_config_recruit(elf_scout, [_amount("gold", 50), _amount("wood", 20)], 1, 2, 1, true)
 
 	var elf_guard = _unit_basic(
 		"unit.elf.guard",
@@ -96,7 +96,7 @@ func make_unit_templates() -> Dictionary:
 		2,
 		["elf", "guard", "military", "melee", "mobile_attacker"]
 	)
-	_config_recruit(elf_guard, [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)], 1, 2, 2, true)
+	_config_recruit(elf_guard, [_amount("gold", 80), _amount("wood", 20), _amount("ancient_wood", 10)], 1, 2, 2, true)
 
 	var dwarf_worker = _unit_basic(
 		"unit.dwarf.worker",
@@ -120,7 +120,7 @@ func make_unit_templates() -> Dictionary:
 		2,
 		["dwarf", "scout", "military", "light", "resource_detect_bonus", "mountain_move_bonus"]
 	)
-	_config_recruit(dwarf_scout, [_amount("food", 1), _amount("wood", 5)], 1, 2, 1, true)
+	_config_recruit(dwarf_scout, [_amount("gold", 50), _amount("stone", 20)], 1, 2, 1, true)
 
 	var dwarf_guard = _unit_basic(
 		"unit.dwarf.guard",
@@ -132,7 +132,7 @@ func make_unit_templates() -> Dictionary:
 		1,
 		["dwarf", "guard", "military", "melee", "high_hp", "defender"]
 	)
-	_config_recruit(dwarf_guard, [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)], 1, 2, 2, true)
+	_config_recruit(dwarf_guard, [_amount("gold", 80), _amount("stone", 20), _amount("iron", 10)], 1, 2, 2, true)
 
 	var orc_worker = _unit_basic(
 		"unit.orc.worker",
@@ -156,7 +156,7 @@ func make_unit_templates() -> Dictionary:
 		2,
 		["orc", "scout", "military", "beast", "bonus_vs_worker"]
 	)
-	_config_recruit(orc_scout, [_amount("food", 1), _amount("wood", 5)], 1, 2, 1, true)
+	_config_recruit(orc_scout, [_amount("gold", 50), _amount("food", 30)], 1, 2, 0, true)
 
 	var orc_guard = _unit_basic(
 		"unit.orc.guard",
@@ -168,7 +168,7 @@ func make_unit_templates() -> Dictionary:
 		1,
 		["orc", "guard", "military", "melee", "high_attack"]
 	)
-	_config_recruit(orc_guard, [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)], 1, 2, 2, true)
+	_config_recruit(orc_guard, [_amount("gold", 80), _amount("food", 30), _amount("iron", 10)], 1, 2, 2, true)
 
 	return {
 		worker.id: worker,

@@ -23,7 +23,7 @@ const RESOURCE_NAMES := {
 	"iron": "铁矿",
 	"magic_dust": "魔尘",
 	"ancient_wood": "古木",
-	"gold_ore": "金矿",
+	"gold_ore": "金矿石",
 }
 
 
@@ -105,7 +105,7 @@ func _on_round_ended(_round: int) -> void:
 					add_resource(faction, key, bonus[key])
 
 
-	# 金币铸造厂：消耗金矿 → 产出金币
+	# 金币铸造厂：消耗金矿石 → 产出金币
 	for b in buildings:
 		if b["data"].name == "金币铸造厂":
 			var faction: int = b["faction"]
@@ -118,7 +118,7 @@ func _on_round_ended(_round: int) -> void:
 				if ore_use > 0:
 					spend_resource(faction, "gold_ore", ore_use)
 					add_resource(faction, "gold", ore_use)
-					print("[资源] 阵营 %d 金币铸造厂: 消耗 %d 金矿 → 产出 %d 金币" % [faction, ore_use, ore_use])
+					print("[资源] 阵营 %d 金币铸造厂: 消耗 %d 金矿石 → 产出 %d 金币" % [faction, ore_use, ore_use])
 
 func update_display(player: int) -> void:
 	var res: Dictionary = _resources[player]

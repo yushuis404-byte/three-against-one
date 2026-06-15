@@ -53,7 +53,7 @@ const RESOURCE_NAMES := {
 	"iron": "铁矿",
 	"magic_dust": "魔尘",
 	"ancient_wood": "古木",
-	"gold_ore": "金矿",
+	"gold_ore": "金矿石",
 	"gold": "金币",
 }
 
@@ -142,12 +142,20 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		"recruit_queue": [],
 	})
 
+	if data.name == "前哨站" and _territory_mgr:
+		var source := Vector2i(origin.x + data.footprint.x / 2, origin.y + data.footprint.y / 2)
+		if _territory_mgr.has_method("add_town_hall"):
+			_territory_mgr.add_town_hall(faction, source)
+
 	# 放置建筑时揭示该阵营对应区域的迷雾
 	if _fog_mgr and _fog_mgr.has_method("reveal_area_immediate"):
 		var fp: Vector2i = data.footprint
 		var center_x: int = origin.x + fp.x / 2
 		var center_y: int = origin.y + fp.y / 2
 		_fog_mgr.reveal_area_immediate(faction, center_x, center_y, 3)
+
+	if data.name == "前哨站" and _territory_mgr and _territory_mgr.has_method("recalc_territory"):
+		_territory_mgr.recalc_territory(faction)
 
 	# 金矿矿井消耗金矿资源点
 	if data.needs_resource_point:
@@ -291,7 +299,7 @@ func ungarrison_one(building_id: int) -> Dictionary:
 
 func get_garrison_bonus(building_id: int) -> Dictionary:
 	## 返回驻兵加成字典
-	## 金矿矿井：1 工人 → 2 金币
+	## 金矿矿井：1 工人 → 2 金矿石
 	## 其他建筑：每驻 1 兵 → 每个产出键 +1
 	for b in _buildings:
 		if b["id"] == building_id:
@@ -300,7 +308,7 @@ func get_garrison_bonus(building_id: int) -> Dictionary:
 			var data: BuildingData = b["data"]
 			var count: int = b["garrison"].size()
 
-			# 金矿矿井：1 工人 → 2 金矿
+			# 金矿矿井：1 工人 → 2 金矿石
 			if data.name == "金矿矿井":
 				return { "gold_ore": count * 2 }
 
@@ -476,7 +484,7 @@ func _on_round_ended(round_number: int) -> void:
 					0: faction_name = "精灵"
 					1: faction_name = "矮人"
 					2: faction_name = "兽人"
-				print("[建筑] %s 金币铸造厂: 驻兵 %d → 金币 +%d（消耗金矿）" % [faction_name, gcount, gcount * 2])
+				print("[建筑] %s 金币铸造厂: 驻兵 %d → 金币 +%d（消耗金矿石）" % [faction_name, gcount, gcount * 2])
 				_show_production_text(b, {"gold": gcount * 2}, 0, Color(1.0, 0.84, 0.0))
 			continue
 

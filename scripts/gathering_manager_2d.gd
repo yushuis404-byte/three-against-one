@@ -9,7 +9,7 @@ const RESOURCE_DISPLAY_NAMES: Dictionary = {
 	"food": "食物",
 	"stone": "石料",
 	"iron": "铁矿",
-	"gold_ore": "金矿",
+	"gold_ore": "金矿石",
 	"ancient_wood": "古木",
 	"magic_dust": "魔尘",
 }

@@ -29,7 +29,7 @@ const CATEGORY_NAMES := {
 
 const RESOURCE_NAMES := {
 	"wood": "木材", "stone": "石料", "food": "食物",
-	"iron": "铁矿", "magic_dust": "魔尘", "ancient_wood": "古木", "gold_ore": "金矿",
+	"iron": "铁矿", "magic_dust": "魔尘", "ancient_wood": "古木", "gold_ore": "金矿石",
 }
 
 const COST_NAMES := {

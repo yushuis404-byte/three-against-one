@@ -23,7 +23,7 @@ const RESOURCE_NAMES := {
 	"iron": "铁矿",
 	"magic_dust": "魔尘",
 	"ancient_wood": "古木",
-	"gold_ore": "金矿",
+	"gold_ore": "金矿石",
 	"gold": "金币",
 }
 

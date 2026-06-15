@@ -151,6 +151,17 @@ static func scout_post() -> BuildingData:
 		4, "视野 +2"
 	)
 
+static func outpost() -> BuildingData:
+	return BuildingData.new(
+		"前哨站", BuildingCategory.SCOUT, Vector2i(1, 1),
+		50, 30, 20, 0, 0,
+		10, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
+		 TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC],
+		4, "扩张领地范围，用于控制资源点和建立前线基地"
+	)
+
 static func recruit_camp() -> BuildingData:
 	return BuildingData.new(
 		"招募营", BuildingCategory.RECRUIT, Vector2i(1, 1),
@@ -168,7 +179,7 @@ static func get_templates() -> Dictionary:
 		BuildingCategory.INFRA: [infra_lumber_camp(), infra_quarry(), infra_farm(), infra_warehouse(), gold_mine_shaft(), mint()],
 		BuildingCategory.T1_RESOURCE: [t1_mine(), t1_extraction_tower(), t1_ancient_wood_harvest()],
 		BuildingCategory.MILITARY: [barracks_lv1()],
-		BuildingCategory.SCOUT: [scout_post()],
+		BuildingCategory.SCOUT: [scout_post(), outpost()],
 		BuildingCategory.RECRUIT: [recruit_camp()],
 		BuildingCategory.TOWN_HALL: [town_hall()],
 	}
@@ -183,7 +194,7 @@ static func gold_mine_shaft() -> BuildingData:
 		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
 		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
 		 TerrainData.Terrain.RUINS],
-		2, "需建在金矿上，需入驻工人，每驻 1 工 → +2 金矿/回合"
+		2, "需建在金矿上，需入驻工人，每驻 1 工 → +2 金矿石/回合"
 	)
 	b.is_special_building = true
 	b.needs_resource_point = true
@@ -199,7 +210,7 @@ static func mint() -> BuildingData:
 		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
 		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
 		 TerrainData.Terrain.RUINS],
-		2, "需入驻工人，消耗金矿产出金币。每驻 1 工 → +2 金币/回合（消耗 1 金矿）"
+		2, "需入驻工人，消耗金矿石产出金币。每驻 1 工 → +2 金币/回合（消耗 1 金矿石）"
 	)
 	b.is_special_building = true
 	return b
