@@ -31,11 +31,6 @@ var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
 var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
 var _shake_offsets: Dictionary = {}  # unit_id -> Vector2（受击偏移）
 
-const FACTION_COLORS := [
-	Color(0.18, 0.60, 0.15),   # 0 精灵绿
-	Color(0.80, 0.65, 0.10),   # 1 矮人金
-	Color(0.80, 0.25, 0.15),   # 2 兽人红
-]
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
 const UNIT_RADIUS := 8.0
@@ -68,7 +63,7 @@ func place_initial_units() -> void:
 		var p: int = s["player"]
 		var pos: Vector2i = s["pos"]
 		var offset: int = s["name_offset"]
-		var unit_defs: Array = _get_initial_unit_defs(p)
+		var unit_defs: Array = UnitRoster.get_initial_unit_defs(p)
 		_add_initial_unit(p, str(unit_defs[0]["template_id"]), unit_defs[0]["fallback"], Vector2i(pos.x + offset, pos.y))
 		_add_initial_unit(p, str(unit_defs[1]["template_id"]), unit_defs[1]["fallback"], Vector2i(pos.x + offset + 1, pos.y))
 		_add_initial_unit(p, str(unit_defs[2]["template_id"]), unit_defs[2]["fallback"], Vector2i(pos.x + offset + 2, pos.y))
@@ -87,33 +82,6 @@ func _add_initial_unit(faction: int, template_id: String, fallback: UnitData, gr
 		if template != null:
 			return add_unit_from_template(faction, template, grid_pos)
 	return _add_unit(faction, fallback, grid_pos)
-
-
-func _get_initial_unit_defs(faction: int) -> Array:
-	match faction:
-		0:
-			return [
-				{"template_id": "unit.elf.worker", "fallback": UnitData.new("精灵工人", UnitData.UnitCategory.WORKER, 2, 0, 3, 1, 1)},
-				{"template_id": "unit.elf.scout", "fallback": UnitData.new("风行斥候", UnitData.UnitCategory.SCOUT, 4, 1, 3, 4, 1)},
-				{"template_id": "unit.elf.guard", "fallback": UnitData.new("月影刺客", UnitData.UnitCategory.GUARD, 2, 3, 5, 2, 2)},
-			]
-		1:
-			return [
-				{"template_id": "unit.dwarf.worker", "fallback": UnitData.new("矮人工人", UnitData.UnitCategory.WORKER, 1, 0, 4, 1, 1)},
-				{"template_id": "unit.dwarf.scout", "fallback": UnitData.new("勘探者", UnitData.UnitCategory.SCOUT, 2, 1, 4, 2, 1)},
-				{"template_id": "unit.dwarf.guard", "fallback": UnitData.new("铁锤卫", UnitData.UnitCategory.GUARD, 1, 3, 8, 1, 2)},
-			]
-		2:
-			return [
-				{"template_id": "unit.orc.worker", "fallback": UnitData.new("兽人工人", UnitData.UnitCategory.WORKER, 1, 0, 4, 1, 1)},
-				{"template_id": "unit.orc.scout", "fallback": UnitData.new("猎齿兽", UnitData.UnitCategory.SCOUT, 2, 2, 5, 2, 1)},
-				{"template_id": "unit.orc.guard", "fallback": UnitData.new("血斧兵", UnitData.UnitCategory.GUARD, 1, 4, 6, 1, 2)},
-			]
-	return [
-		{"template_id": "unit.worker", "fallback": UnitData.worker()},
-		{"template_id": "unit.scout", "fallback": UnitData.scout()},
-		{"template_id": "unit.guard", "fallback": UnitData.guard()},
-	]
 
 
 func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:
@@ -180,7 +148,7 @@ func _draw() -> void:
 			draw_circle(draw_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
 
 		# 阵营色填充圆（受击闪白）
-		var color: Color = FACTION_COLORS[faction]
+		var color: Color = GameCatalog.faction_color(faction)
 		if _hit_flash.has(uid):
 			color = Color(1.0, 0.9, 0.85)
 		draw_circle(draw_pos, UNIT_RADIUS, color)

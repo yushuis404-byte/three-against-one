@@ -13,13 +13,6 @@ var _mov_label: Label
 var _vis_label: Label
 var _food_label: Label
 
-const FACTION_COLORS := [
-	Color(0.18, 0.60, 0.15),
-	Color(0.80, 0.65, 0.10),
-	Color(0.80, 0.25, 0.15),
-]
-const FACTION_NAMES := ["精灵", "矮人", "兽人"]
-
 const CATEGORY_NAMES := {
 	UnitData.UnitCategory.WORKER: "工人",
 	UnitData.UnitCategory.SCOUT: "斥候",
@@ -149,7 +142,7 @@ func show_unit(unit: Dictionary) -> void:
 
 	var data: UnitData = unit["data"]
 	var faction: int = unit["faction"]
-	var color: Color = FACTION_COLORS[faction]
+	var color: Color = GameCatalog.faction_color(faction)
 
 	# 阵营色条
 	var bar: ColorRect = _panel.get_node("FactionBar")

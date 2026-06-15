@@ -27,16 +27,6 @@ const CATEGORY_NAMES := {
 	BuildingData.BuildingCategory.TOWN_HALL: "主城",
 }
 
-const RESOURCE_NAMES := {
-	"wood": "木材", "stone": "石料", "food": "食物",
-	"iron": "铁矿", "magic_dust": "魔尘", "ancient_wood": "古木", "gold_ore": "金矿石",
-}
-
-const COST_NAMES := {
-	"gold": "金币", "wood": "木材", "stone": "石料",
-	"iron": "铁矿", "food": "食物",
-}
-
 const CATEGORY_ORDER := [
 	BuildingData.BuildingCategory.INFRA,
 	BuildingData.BuildingCategory.T1_RESOURCE,
@@ -68,12 +58,7 @@ func set_resource_tracker(rt: Node) -> void:
 func refresh(player: int) -> void:
 	_current_player = player
 	if _title_label:
-		var fname := ""
-		match player:
-			0: fname = "精灵"
-			1: fname = "矮人"
-			2: fname = "兽人"
-		_title_label.text = "[%s] 建造" % fname
+		_title_label.text = "[%s] 建造" % GameCatalog.faction_name(player)
 	# 刷新当前分类的卡片（更新已建数量）
 	_select_category(_selected_cat)
 
@@ -364,11 +349,11 @@ func _make_card_hover_style() -> StyleBoxFlat:
 
 func _format_cost(d: BuildingData) -> String:
 	var parts: PackedStringArray = []
-	if d.cost_gold > 0: parts.append("%d%s" % [d.cost_gold, COST_NAMES["gold"]])
-	if d.cost_wood > 0: parts.append("%d%s" % [d.cost_wood, COST_NAMES["wood"]])
-	if d.cost_stone > 0: parts.append("%d%s" % [d.cost_stone, COST_NAMES["stone"]])
-	if d.cost_iron > 0: parts.append("%d%s" % [d.cost_iron, COST_NAMES["iron"]])
-	if d.cost_food > 0: parts.append("%d%s" % [d.cost_food, COST_NAMES["food"]])
+	if d.cost_gold > 0: parts.append("%d%s" % [d.cost_gold, GameCatalog.resource_name("gold")])
+	if d.cost_wood > 0: parts.append("%d%s" % [d.cost_wood, GameCatalog.resource_name("wood")])
+	if d.cost_stone > 0: parts.append("%d%s" % [d.cost_stone, GameCatalog.resource_name("stone")])
+	if d.cost_iron > 0: parts.append("%d%s" % [d.cost_iron, GameCatalog.resource_name("iron")])
+	if d.cost_food > 0: parts.append("%d%s" % [d.cost_food, GameCatalog.resource_name("food")])
 	return " ".join(parts)
 
 
@@ -377,7 +362,7 @@ func _format_production(d: BuildingData) -> String:
 		return ""
 	var parts: PackedStringArray = []
 	for key in d.production:
-		var rname: String = RESOURCE_NAMES.get(key, key)
+		var rname: String = GameCatalog.resource_name(key)
 		parts.append("+%d%s/回合" % [d.production[key], rname])
 	return " ".join(parts)
 

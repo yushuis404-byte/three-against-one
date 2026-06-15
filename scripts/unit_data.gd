@@ -47,8 +47,4 @@ static func guard() -> UnitData:
 
 
 static func get_faction_name(faction: int) -> String:
-	match faction:
-		0: return "精灵"
-		1: return "矮人"
-		2: return "兽人"
-	return "中立"
+	return GameCatalog.faction_name(faction)

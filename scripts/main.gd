@@ -167,24 +167,16 @@ func _place_initial_buildings() -> void:
 			print("[建筑] 阵营 %d %s 放置失败!" % [p, infra.name])
 
 
-const FACTION_NAMES := ["精灵", "矮人", "兽人"]
-const FACTION_COLORS := [
-	Color(0.18, 0.60, 0.15),
-	Color(0.80, 0.65, 0.10),
-	Color(0.80, 0.25, 0.15),
-]
-
-
 func _on_round_started(round: int) -> void:
 	var p: int = turn_manager.current_player
-	turn_label.text = "第 %d 回合 · %s" % [round, FACTION_NAMES[p]]
-	turn_label.label_settings = _make_label_settings(FACTION_COLORS[p])
+	turn_label.text = "第 %d 回合 · %s" % [round, GameCatalog.faction_name(p)]
+	turn_label.label_settings = _make_label_settings(GameCatalog.faction_color(p))
 
 
 func _on_player_turn_started(player: int) -> void:
-	turn_label.text = "第 %d 回合 · %s" % [turn_manager.round_number, FACTION_NAMES[player]]
-	turn_label.label_settings = _make_label_settings(FACTION_COLORS[player])
-	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], turn_manager.get_ap(player)]
+	turn_label.text = "第 %d 回合 · %s" % [turn_manager.round_number, GameCatalog.faction_name(player)]
+	turn_label.label_settings = _make_label_settings(GameCatalog.faction_color(player))
+	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
 	resource_tracker.update_display(player)
 	building_ui.refresh(player)
 
@@ -195,7 +187,7 @@ func _on_round_ended(round: int) -> void:
 
 
 func _on_ap_changed(player: int, ap: int) -> void:
-	debug_label.text = "%s (AP: %d)" % [FACTION_NAMES[player], turn_manager.get_ap(player)]
+	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
 	resource_tracker.update_display(player)
 	building_ui.refresh(player)
 

@@ -38,24 +38,8 @@ signal recruit_panel_requested(building_id: int, building_name: String, options:
 signal recruit_panel_closed()
 signal recruit_queue_changed(building_id: int, queue: Array)
 
-const FACTION_COLORS := [
-	Color(0.18, 0.60, 0.15),   # 0 精灵绿
-	Color(0.80, 0.65, 0.10),   # 1 矮人金
-	Color(0.80, 0.25, 0.15),   # 2 兽人红
-]
 const BUILDING_ALPHA := 0.85
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.6)
-
-const RESOURCE_NAMES := {
-	"wood": "木材",
-	"stone": "石料",
-	"food": "食物",
-	"iron": "铁矿",
-	"magic_dust": "魔尘",
-	"ancient_wood": "古木",
-	"gold_ore": "金矿石",
-	"gold": "金币",
-}
 
 
 func _ready() -> void:
@@ -142,7 +126,7 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		"recruit_queue": [],
 	})
 
-	if data.name == "前哨站" and _territory_mgr:
+	if BuildingRules.is_outpost(data) and _territory_mgr:
 		var source := Vector2i(origin.x + data.footprint.x / 2, origin.y + data.footprint.y / 2)
 		if _territory_mgr.has_method("add_town_hall"):
 			_territory_mgr.add_town_hall(faction, source)
@@ -154,7 +138,7 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		var center_y: int = origin.y + fp.y / 2
 		_fog_mgr.reveal_area_immediate(faction, center_x, center_y, 3)
 
-	if data.name == "前哨站" and _territory_mgr and _territory_mgr.has_method("recalc_territory"):
+	if BuildingRules.is_outpost(data) and _territory_mgr and _territory_mgr.has_method("recalc_territory"):
 		_territory_mgr.recalc_territory(faction)
 
 	# 金矿矿井消耗金矿资源点
@@ -309,7 +293,7 @@ func get_garrison_bonus(building_id: int) -> Dictionary:
 			var count: int = b["garrison"].size()
 
 			# 金矿矿井：1 工人 → 2 金矿石
-			if data.name == "金矿矿井":
+			if BuildingRules.is_gold_mine_shaft(data):
 				return { "gold_ore": count * 2 }
 
 			# 普通驻兵加成：每驻 1 兵 → 每个产出键 +1
@@ -381,14 +365,14 @@ func _draw_buildings() -> void:
 
 		# 主城特殊效果：外发光
 		if data.category == BuildingData.BuildingCategory.TOWN_HALL:
-			var glow_color: Color = FACTION_COLORS[faction]
+			var glow_color: Color = GameCatalog.faction_color(faction)
 			glow_color.a = 0.3
 			draw_rect(Rect2(top_left.x - 4, top_left.y - 4, w + 8, h + 8), glow_color, true)
 			glow_color.a = 0.2
 			draw_rect(Rect2(top_left.x - 8, top_left.y - 8, w + 16, h + 16), glow_color, true)
 
 		# 建筑底色方块
-		var color: Color = FACTION_COLORS[faction]
+		var color: Color = GameCatalog.faction_color(faction)
 		color.a = BUILDING_ALPHA
 		draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
 
@@ -441,7 +425,7 @@ func _draw_buildings() -> void:
 			var dots_start_x := top_left.x + w / 2.0 - dots_total_width / 2.0
 			for i in range(max_dots):
 				var dot_pos := Vector2(dots_start_x + i * dot_spacing, top_left.y - 10)
-				draw_circle(dot_pos, dot_radius, FACTION_COLORS[faction])
+				draw_circle(dot_pos, dot_radius, GameCatalog.faction_color(faction))
 				draw_arc(dot_pos, dot_radius, 0, TAU, 8, Color.BLACK, 0.8)
 			if dot_count > 4:
 				var plus_label := "+%d" % [dot_count - 4]
@@ -475,15 +459,11 @@ func _on_round_ended(round_number: int) -> void:
 		var prod: Dictionary = data.production
 
 		# 金币铸造厂特殊显示
-		if data.name == "金币铸造厂":
+		if BuildingRules.is_mint(data):
 			var garr: Array = b.get("garrison", [])
 			var gcount := garr.size()
 			if gcount > 0:
-				var faction_name := ""
-				match b["faction"]:
-					0: faction_name = "精灵"
-					1: faction_name = "矮人"
-					2: faction_name = "兽人"
+				var faction_name := GameCatalog.faction_name(int(b["faction"]))
 				print("[建筑] %s 金币铸造厂: 驻兵 %d → 金币 +%d（消耗金矿石）" % [faction_name, gcount, gcount * 2])
 				_show_production_text(b, {"gold": gcount * 2}, 0, Color(1.0, 0.84, 0.0))
 			continue
@@ -527,7 +507,7 @@ func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int, 
 	var lines: PackedStringArray = []
 	for key in prod:
 		var total: int = prod[key] + gcount
-		var rname: String = RESOURCE_NAMES.get(key, key)
+		var rname: String = GameCatalog.resource_name(key)
 		lines.append("%s +%d" % [rname, total])
 	var text := "\n".join(lines)
 
@@ -590,11 +570,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var building := get_building_at(gpos)
 		if not building.is_empty():
 			var data: BuildingData = building["data"]
-			var fname := ""
-			match building["faction"]:
-				0: fname = "精灵"
-				1: fname = "矮人"
-				2: fname = "兽人"
+			var fname := GameCatalog.faction_name(int(building["faction"]))
 			var hover_text := "%s · %s (HP:%d/%d)" % [fname, data.name, building["hp"], data.hp_max]
 			var garr: Array = building.get("garrison", [])
 			if not garr.is_empty():
@@ -927,31 +903,13 @@ func _get_faction_recruit_template_ids(building: Dictionary) -> Array:
 		return []
 	var data: BuildingData = building["data"]
 	var faction: int = int(building.get("faction", -1))
-	var prefix := ""
-	match faction:
-		0:
-			prefix = "unit.elf"
-		1:
-			prefix = "unit.dwarf"
-		2:
-			prefix = "unit.orc"
-		_:
-			return []
-	if data.category == BuildingData.BuildingCategory.RECRUIT:
-		return ["%s.worker" % prefix]
-	if data.category == BuildingData.BuildingCategory.MILITARY:
-		return ["%s.guard" % prefix, "%s.scout" % prefix]
-	return []
+	return BuildingRules.get_faction_recruit_template_ids(data, faction)
 
 
 func _get_building_template_for_data(data: BuildingData) -> Resource:
 	if data == null or not _template_registry or not _template_registry.has_method("get_building"):
 		return null
-	var template_id := ""
-	if data.category == BuildingData.BuildingCategory.RECRUIT:
-		template_id = "building.recruit_camp"
-	elif data.category == BuildingData.BuildingCategory.MILITARY:
-		template_id = "building.barracks_lv1"
+	var template_id := BuildingRules.get_building_template_id(data)
 	if template_id.is_empty():
 		return null
 	return _template_registry.call("get_building", template_id)

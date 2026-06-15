@@ -16,17 +16,6 @@ var _count_label: Label
 var _summary_label: Label
 var _queue_label: Label
 
-const RESOURCE_NAMES := {
-	"wood": "木材",
-	"stone": "石料",
-	"food": "食物",
-	"iron": "铁矿",
-	"magic_dust": "魔尘",
-	"ancient_wood": "古木",
-	"gold_ore": "金矿石",
-	"gold": "金币",
-}
-
 
 func _ready() -> void:
 	_build_ui()
@@ -204,7 +193,7 @@ func _format_cost(cost: Dictionary) -> String:
 		return "免费"
 	var parts: PackedStringArray = []
 	for key in cost:
-		var name: String = RESOURCE_NAMES.get(key, key)
+		var name: String = GameCatalog.resource_name(key)
 		parts.append("%s %d" % [name, int(cost[key])])
 	return " ".join(parts)
 

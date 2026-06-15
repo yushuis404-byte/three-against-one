@@ -4,16 +4,6 @@ extends Node2D
 ## 工人移动到资源格时由 UnitManager2D 调用 start_gather() 登记
 ## 下一回合该阵营开始时结算：工人还在资源格上 → 获得资源 → 资源点消失
 
-const RESOURCE_DISPLAY_NAMES: Dictionary = {
-	"wood": "木材",
-	"food": "食物",
-	"stone": "石料",
-	"iron": "铁矿",
-	"gold_ore": "金矿石",
-	"ancient_wood": "古木",
-	"magic_dust": "魔尘",
-}
-
 const TILE_SIZE := 32.0
 const GRID_CENTER := Vector2(49.5, 27.5)
 
@@ -80,7 +70,7 @@ func _show_gather_text(grid_pos: Vector2i, results: Array) -> void:
 	var parts: PackedStringArray = []
 	for r in results:
 		var entry: Dictionary = r
-		var display: String = RESOURCE_DISPLAY_NAMES.get(entry["key"], entry["key"])
+		var display: String = GameCatalog.resource_name(str(entry["key"]))
 		parts.append("+%d %s" % [entry["amount"], display])
 	label.text = "\n".join(parts)
 	label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))

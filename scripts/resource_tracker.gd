@@ -14,18 +14,6 @@ var _faction_label: Label = null
 
 signal resources_updated(player: int)
 
-const RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "gold", "ancient_wood", "gold_ore"]
-const RESOURCE_NAMES := {
-	"gold": "金币",
-	"wood": "木材",
-	"stone": "石料",
-	"food": "食物",
-	"iron": "铁矿",
-	"magic_dust": "魔尘",
-	"ancient_wood": "古木",
-	"gold_ore": "金矿石",
-}
-
 
 func _ready() -> void:
 	_init_resources()
@@ -34,7 +22,7 @@ func _ready() -> void:
 func _init_resources() -> void:
 	for p in range(3):
 		var d: Dictionary = {}
-		for key in RESOURCE_KEYS:
+		for key in GameCatalog.RESOURCE_KEYS:
 			d[key] = 0
 		d["gold"] = 0  # 初始金币
 		_resources[p] = d
@@ -107,7 +95,7 @@ func _on_round_ended(_round: int) -> void:
 
 	# 金币铸造厂：消耗金矿石 → 产出金币
 	for b in buildings:
-		if b["data"].name == "金币铸造厂":
+		if BuildingRules.is_mint(b["data"]):
 			var faction: int = b["faction"]
 			var garr: Array = b.get("garrison", [])
 			var gcount := garr.size()
@@ -125,16 +113,11 @@ func update_display(player: int) -> void:
 
 	# 阵营标题
 	if _faction_label:
-		var fname := ""
-		match player:
-			0: fname = "精灵"
-			1: fname = "矮人"
-			2: fname = "兽人"
-		_faction_label.text = "[%s] 资源" % fname
+		_faction_label.text = "[%s] 资源" % GameCatalog.faction_name(player)
 
 	# 资源数值
-	for key in RESOURCE_KEYS:
+	for key in GameCatalog.RESOURCE_KEYS:
 		if _label_refs.has(key):
 			var label: Label = _label_refs[key]
-			var name: String = RESOURCE_NAMES.get(key, key)
+			var name: String = GameCatalog.resource_name(key)
 			label.text = "%s: %d" % [name, res.get(key, 0)]
