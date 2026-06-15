@@ -4,6 +4,9 @@ extends Node2D
 ## 使用 building_grid[y][x] 记录每格所属 building_id（多格建筑多格同 id）
 ## 绘制在迷雾之下但领土之上，单位之下
 
+const GarrisonServiceScript := preload("res://scripts/services/garrison_service.gd")
+const RecruitmentServiceScript := preload("res://scripts/services/recruitment_service.gd")
+
 var grid_cols := 100
 var grid_rows := 56
 var tile_size := 32.0
@@ -20,9 +23,10 @@ var _territory_mgr: Node = null
 var _fog_mgr: Node = null
 var _resource_mgr: Node = null
 var _template_registry: Node = null
+var _garrison_service = GarrisonServiceScript.new()
+var _recruitment_service = RecruitmentServiceScript.new()
 
 var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
-const RECRUIT_QUEUE_CAPACITY := 3
 
 # 放置模式
 var _placement_active := false
@@ -49,6 +53,7 @@ func _ready() -> void:
 	_fog_mgr = get_parent().get_node("FogOfWar2D")
 	_resource_mgr = get_parent().get_node("ResourceManager2D")
 	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
+	_configure_services()
 
 
 func _init_grid() -> void:
@@ -65,10 +70,30 @@ func set_turn_manager(tm: Node) -> void:
 	if tm:
 		tm.player_turn_started.connect(_on_player_turn_started)
 		tm.round_ended.connect(_on_round_ended)
+	_configure_services()
 
 
 func set_resource_tracker(rt: Node) -> void:
 	_resource_tracker = rt
+	_configure_services()
+
+
+func _configure_services() -> void:
+	if _recruitment_service == null:
+		return
+	var unit_mgr = null
+	if is_inside_tree():
+		unit_mgr = get_parent().get_node_or_null("UnitManager2D")
+	_recruitment_service.setup(
+		_buildings,
+		building_grid,
+		grid_cols,
+		grid_rows,
+		_template_registry,
+		_resource_tracker,
+		_turn_manager,
+		unit_mgr
+	)
 
 
 func _on_player_turn_started(player: int) -> void:
@@ -234,77 +259,28 @@ func get_all_buildings() -> Array:
 # ========== 驻兵系统 ==========
 
 func max_garrison(building: Dictionary) -> int:
-	## 驻兵上限：footprint 面积，至少 2
-	var fp: Vector2i = building["data"].footprint
-	return max(2, fp.x * fp.y)
+	return _garrison_service.max_garrison(building)
 
 
 func can_garrison(building_id: int, faction: int, unit_category: int = -1) -> bool:
-	## 检查建筑是否可驻兵
-	## unit_category: UnitData.UnitCategory, 资源生产类建筑只允许工人入驻
-	for b in _buildings:
-		if b["id"] == building_id:
-			if b["faction"] != faction:
-				return false
-			# 必须有产出或是金矿产业链才能驻兵
-			if b["data"].production.is_empty() and not b["data"].is_special_building:
-				return false
-			if b["garrison"].size() >= max_garrison(b):
-				return false
-			# 资源生产类建筑只允许工人入驻
-			if not b["data"].production.is_empty() or b["data"].is_special_building:
-				if unit_category >= 0 and unit_category != UnitData.UnitCategory.WORKER:
-					return false
-			return true
-	return false
+	return _garrison_service.can_garrison(_buildings, building_id, faction, unit_category)
 
 
 func garrison_unit(building_id: int, unit_dict: Dictionary) -> void:
-	## 将单位入驻到建筑中
-	for b in _buildings:
-		if b["id"] == building_id:
-			b["garrison"].append(unit_dict.duplicate())
-			_just_garrisoned[building_id] = true
-			queue_redraw()
-			return
+	if _garrison_service.garrison_unit(_buildings, building_id, unit_dict):
+		_just_garrisoned[building_id] = true
+		queue_redraw()
 
 
 func ungarrison_one(building_id: int) -> Dictionary:
-	## 从建筑撤出一个驻兵，返回该单位的数据
-	for b in _buildings:
-		if b["id"] == building_id:
-			if b["garrison"].is_empty():
-				return {}
-			var unit: Dictionary = b["garrison"].pop_back()
-			queue_redraw()
-			return unit
-	return {}
+	var unit: Dictionary = _garrison_service.ungarrison_one(_buildings, building_id)
+	if not unit.is_empty():
+		queue_redraw()
+	return unit
 
 
 func get_garrison_bonus(building_id: int) -> Dictionary:
-	## 返回驻兵加成字典
-	## 金矿矿井：1 工人 → 2 金矿石
-	## 其他建筑：每驻 1 兵 → 每个产出键 +1
-	for b in _buildings:
-		if b["id"] == building_id:
-			if b["garrison"].is_empty():
-				return {}
-			var data: BuildingData = b["data"]
-			var count: int = b["garrison"].size()
-
-			# 金矿矿井：1 工人 → 2 金矿石
-			if BuildingRules.is_gold_mine_shaft(data):
-				return { "gold_ore": count * 2 }
-
-			# 普通驻兵加成：每驻 1 兵 → 每个产出键 +1
-			var prod: Dictionary = data.production
-			if prod.is_empty():
-				return {}
-			var bonus: Dictionary = {}
-			for key in prod:
-				bonus[key] = count
-			return bonus
-	return {}
+	return _garrison_service.get_garrison_bonus(_buildings, building_id)
 func _find_ungarrison_pos(building: Dictionary) -> Vector2i:
 	## 在建筑周围找第一个空位用于撤出单位
 	var origin: Vector2i = building["origin"]
@@ -715,128 +691,33 @@ func _in_bounds(gx: int, gy: int) -> bool:
 
 
 func request_recruitment(building_id: int, unit_template_id: String, count: int) -> bool:
-	var building: Dictionary = _get_building_by_id(building_id)
-	if not _is_recruit_building(building):
-		return false
-	var faction: int = _turn_manager.current_player if _turn_manager else -1
-	if faction < 0 or building["faction"] != faction:
-		return false
-	var unit_template: Resource = _get_recruit_unit_template(unit_template_id)
-	if unit_template == null:
-		return false
-	if not _building_can_recruit(building, unit_template_id):
-		return false
-
-	var safe_count: int = clampi(count, 1, RECRUIT_QUEUE_CAPACITY)
-	var queue: Array = building.get("recruit_queue", [])
-	if queue.size() + safe_count > RECRUIT_QUEUE_CAPACITY:
-		print("[Recruit] Queue is full.")
-		return false
-
-	var cost: Dictionary = _get_unit_recruit_cost(unit_template)
-	for key in cost:
-		var need: int = int(cost[key]) * safe_count
-		if _resource_tracker and _resource_tracker.get_resource(faction, key) < need:
-			print("[Recruit] Not enough %s." % key)
-			return false
-
-	var ap_cost: int = int(unit_template.get("recruit_ap_cost")) * safe_count
-	if _turn_manager and _turn_manager.get_ap(faction) < ap_cost:
-		print("[Recruit] Not enough AP.")
-		return false
-
-	if _resource_tracker:
-		for key in cost:
-			_resource_tracker.spend_resource(faction, key, int(cost[key]) * safe_count)
-	if _turn_manager:
-		_turn_manager.spend_ap(faction, ap_cost)
-
-	var turns: int = maxi(1, int(unit_template.get("recruit_turns")))
-	for i in range(safe_count):
-		queue.append({
-			"unit_template_id": unit_template_id,
-			"unit_name": str(unit_template.get("display_name")),
-			"remaining_turns": turns,
-			"total_turns": turns,
-		})
-	building["recruit_queue"] = queue
-	recruit_queue_changed.emit(building_id, queue.duplicate(true))
-	_emit_recruit_panel(building)
-	print("[Recruit] Added %d x %s to queue." % [safe_count, unit_template_id])
-	return true
+	var ok: bool = _recruitment_service.request_recruitment(building_id, unit_template_id, count)
+	if ok:
+		var building: Dictionary = _get_building_by_id(building_id)
+		recruit_queue_changed.emit(building_id, building.get("recruit_queue", []).duplicate(true))
+		_emit_recruit_panel(building)
+	return ok
 
 
 func get_recruit_queue(building_id: int) -> Array:
-	var building: Dictionary = _get_building_by_id(building_id)
-	if building.is_empty():
-		return []
-	return building.get("recruit_queue", []).duplicate(true)
+	return _recruitment_service.get_recruit_queue(building_id)
 
 
 func _process_recruit_queues(player: int) -> void:
-	for building in _buildings:
-		if building["faction"] != player:
-			continue
+	var changed_buildings: Array = _recruitment_service.process_recruit_queues(player)
+	for building in changed_buildings:
 		var queue: Array = building.get("recruit_queue", [])
-		if queue.is_empty():
-			continue
-
-		for item in queue:
-			var remaining: int = int(item.get("remaining_turns", 0))
-			if remaining > 0:
-				item["remaining_turns"] = remaining - 1
-
-		var i := 0
-		while i < queue.size():
-			var item: Dictionary = queue[i]
-			if int(item.get("remaining_turns", 0)) <= 0:
-				var spawned: bool = _spawn_recruited_unit(building, str(item.get("unit_template_id", "")))
-				if spawned:
-					queue.remove_at(i)
-					continue
-			i += 1
-
-		building["recruit_queue"] = queue
 		recruit_queue_changed.emit(building["id"], queue.duplicate(true))
 		if building["id"] == _selected_id:
 			_emit_recruit_panel(building)
 
 
 func _spawn_recruited_unit(building: Dictionary, unit_template_id: String) -> bool:
-	var unit_template: Resource = _get_recruit_unit_template(unit_template_id)
-	if unit_template == null:
-		return false
-	var spawn_pos: Vector2i = _find_empty_adjacent_pos(building)
-	if spawn_pos.x < 0:
-		print("[Recruit] No empty adjacent tile; completed unit waits.")
-		return false
-	var unit_mgr = get_parent().get_node("UnitManager2D")
-	if unit_mgr and unit_mgr.has_method("add_unit_from_template"):
-		unit_mgr.add_unit_from_template(building["faction"], unit_template, spawn_pos)
-		print("[Recruit] Spawned %s at %s." % [unit_template_id, str(spawn_pos)])
-		return true
-	return false
+	return _recruitment_service.spawn_recruited_unit(building, unit_template_id)
 
 
 func _find_empty_adjacent_pos(building: Dictionary) -> Vector2i:
-	var origin: Vector2i = building["origin"]
-	var fp: Vector2i = building["data"].footprint
-	var dirs := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
-	var unit_mgr = get_parent().get_node_or_null("UnitManager2D")
-	for dy in range(fp.y):
-		for dx in range(fp.x):
-			for dir in dirs:
-				var n: Vector2i = Vector2i(origin.x + dx, origin.y + dy) + dir
-				if not _in_bounds(n.x, n.y):
-					continue
-				if building_grid[n.y][n.x] >= 0:
-					continue
-				if unit_mgr and unit_mgr.has_method("get_unit_at"):
-					var unit: Dictionary = unit_mgr.get_unit_at(n)
-					if not unit.is_empty():
-						continue
-				return n
-	return Vector2i(-1, -1)
+	return _recruitment_service.find_empty_adjacent_pos(building)
 
 
 func _emit_recruit_panel(building: Dictionary) -> void:
@@ -853,99 +734,35 @@ func _emit_recruit_panel(building: Dictionary) -> void:
 
 
 func _get_recruit_options(building: Dictionary) -> Array:
-	if not _is_recruit_building(building):
-		return []
-	var result: Array = []
-	var template_ids: Array = _get_recruit_template_ids_for_building(building)
-	for template_id in template_ids:
-		var unit_template: Resource = _get_recruit_unit_template(template_id)
-		if unit_template == null:
-			continue
-		result.append({
-			"id": template_id,
-			"name": str(unit_template.get("display_name")),
-			"cost": _get_unit_recruit_cost(unit_template),
-			"ap_cost": int(unit_template.get("recruit_ap_cost")),
-			"turns": int(unit_template.get("recruit_turns")),
-		})
-	return result
+	return _recruitment_service.get_recruit_options(building)
 
 
 func _get_recruit_template_ids_for_building(building: Dictionary) -> Array:
-	var faction_ids: Array = _get_faction_recruit_template_ids(building)
-	if not faction_ids.is_empty():
-		return faction_ids
-
-	var building_template: Resource = _get_building_template_for_data(building["data"])
-	if building_template != null:
-		var recruit_options: Array = building_template.get("recruit_options")
-		if not recruit_options.is_empty():
-			var template_ids: Array = []
-			for unit_template in recruit_options:
-				if unit_template == null:
-					continue
-				var template_id := str(unit_template.get("id"))
-				if not template_id.is_empty():
-					template_ids.append(template_id)
-			if not template_ids.is_empty():
-				return template_ids
-
-	var data: BuildingData = building["data"]
-	if data.category == BuildingData.BuildingCategory.RECRUIT:
-		return ["unit.worker"]
-	if data.category == BuildingData.BuildingCategory.MILITARY:
-		return ["unit.guard", "unit.scout"]
-	return []
+	return _recruitment_service.get_recruit_template_ids_for_building(building)
 
 
 func _get_faction_recruit_template_ids(building: Dictionary) -> Array:
-	if building.is_empty() or not building.has("data"):
-		return []
-	var data: BuildingData = building["data"]
-	var faction: int = int(building.get("faction", -1))
-	return BuildingRules.get_faction_recruit_template_ids(data, faction)
+	return _recruitment_service.get_faction_recruit_template_ids(building)
 
 
 func _get_building_template_for_data(data: BuildingData) -> Resource:
-	if data == null or not _template_registry or not _template_registry.has_method("get_building"):
-		return null
-	var template_id := BuildingRules.get_building_template_id(data)
-	if template_id.is_empty():
-		return null
-	return _template_registry.call("get_building", template_id)
+	return _recruitment_service.get_building_template_for_data(data)
 
 
 func _building_can_recruit(building: Dictionary, unit_template_id: String) -> bool:
-	return unit_template_id in _get_recruit_template_ids_for_building(building)
+	return _recruitment_service.building_can_recruit(building, unit_template_id)
 
 
 func _get_recruit_unit_template(unit_template_id: String) -> Resource:
-	if _template_registry and _template_registry.has_method("get_unit"):
-		return _template_registry.call("get_unit", unit_template_id)
-	return null
+	return _recruitment_service.get_recruit_unit_template(unit_template_id)
 
 
 func _get_unit_recruit_cost(unit_template: Resource) -> Dictionary:
-	var result: Dictionary = {}
-	if unit_template == null:
-		return result
-	var items: Array = unit_template.get("recruit_cost")
-	for item in items:
-		if item == null:
-			continue
-		var key: String = str(item.get("key"))
-		var amount: int = int(item.get("amount"))
-		if key.is_empty() or amount == 0:
-			continue
-		result[key] = int(result.get(key, 0)) + amount
-	return result
+	return _recruitment_service.get_unit_recruit_cost(unit_template)
 
 
 func _is_recruit_building(building: Dictionary) -> bool:
-	if building.is_empty():
-		return false
-	var data: BuildingData = building["data"]
-	return data.category == BuildingData.BuildingCategory.RECRUIT or data.category == BuildingData.BuildingCategory.MILITARY
+	return _recruitment_service.is_recruit_building(building)
 
 
 func _get_building_by_id(building_id: int) -> Dictionary:
