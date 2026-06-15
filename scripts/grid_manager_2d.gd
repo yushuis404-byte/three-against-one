@@ -5,6 +5,8 @@ extends Node2D
 
 @onready var resource_mgr: Node2D = $"../ResourceManager2D"
 
+const GRASS_TEXTURE: Texture2D = preload("res://assets/texture/grass.png")
+
 const GRID_SIZE := 56    # 陆地网格（6阶段管线使用）
 const GRID_COLS := 100   # 总网格宽（陆地+左右海洋）
 const GRID_ROWS := 56    # 总网格高
@@ -522,7 +524,7 @@ func _draw() -> void:
 	if terrain_grid.is_empty():
 		return
 
-	var ts := TILE_SIZE - 2.0
+	var ts := TILE_SIZE - 0.5
 	var half := ts / 2.0
 
 	for y in range(GRID_ROWS):
@@ -541,7 +543,10 @@ func _draw() -> void:
 				color = color.lerp(deep_blue, depth_factor * 0.7)
 			var world_pos := grid_to_world(x, y)
 			var rect := Rect2(world_pos.x - half, world_pos.y - half, ts, ts)
-			draw_rect(rect, color)
+			if t == TerrainData.Terrain.GLADE_ELF:
+				draw_texture_rect(GRASS_TEXTURE, rect, false)
+			else:
+				draw_rect(rect, color)
 
 			# 巨龙巢穴发光效果
 			if t == TerrainData.Terrain.DRAGON_NEST:

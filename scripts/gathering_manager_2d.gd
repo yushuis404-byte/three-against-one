@@ -54,7 +54,7 @@ func _on_player_turn_started(player: int) -> void:
 			var unit: Dictionary = _unit_mgr.get_unit_at(g["pos"])
 			if not unit.is_empty() and unit["faction"] == player:
 				var data: UnitData = unit["data"]
-				if data.category == UnitData.UnitCategory.WORKER:
+				if _can_unit_complete_gather(data, g.get("info", [])):
 					still_gathering = true
 
 		if still_gathering:
@@ -96,6 +96,16 @@ func _show_gather_text(grid_pos: Vector2i, results: Array) -> void:
 	tween.tween_property(label, "position", label.position + Vector2(0, -30), 1.0)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
 	tween.tween_callback(label.queue_free)
+
+
+func _can_unit_complete_gather(data: UnitData, gather_info: Array) -> bool:
+	if data.category == UnitData.UnitCategory.WORKER:
+		return true
+	for result in gather_info:
+		var entry: Dictionary = result
+		if str(entry.get("key", "")) == "food":
+			return true
+	return false
 
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:
 	var offset := Vector2(-GRID_CENTER.x * TILE_SIZE, -GRID_CENTER.y * TILE_SIZE)

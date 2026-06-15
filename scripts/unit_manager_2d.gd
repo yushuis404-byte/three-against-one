@@ -77,7 +77,7 @@ func place_initial_units() -> void:
 			if u["faction"] != p:
 				continue
 			var upos: Vector2i = u["grid_pos"]
-			fog_mgr.reveal_area(p, upos.x, upos.y, u["data"].vision)
+			fog_mgr.reveal_area(p, upos.x, upos.y, _get_unit_data(u).vision)
 
 
 func _add_initial_unit(faction: int, template_id: String, fallback: UnitData, grid_pos: Vector2i) -> int:
@@ -99,6 +99,7 @@ func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:
 	_units.append({
 		"id": uid,
 		"data": data,
+		"template_id": data.template_id,
 		"faction": faction,
 		"grid_pos": spawn_pos,
 		"hp": data.hp_max,
@@ -140,7 +141,7 @@ func _draw() -> void:
 		var pos: Vector2i = u["grid_pos"]
 		var world_pos := _grid_to_world(pos.x, pos.y)
 		var faction: int = u["faction"]
-		var data: UnitData = u["data"]
+		var data: UnitData = _get_unit_data(u)
 		var hp: int = u["hp"]
 		var uid: int = u["id"]
 		var is_selected := uid == _selected_id
@@ -201,7 +202,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				var b: Dictionary = bmgr.get_building_at(gpos)
 				if not b.is_empty():
 					var sel_unit := _get_unit_by_id(_selected_id)
-					if not sel_unit.is_empty() and bmgr.can_garrison(b["id"], _turn_manager.current_player, sel_unit["data"].category):
+					if not sel_unit.is_empty() and bmgr.can_garrison(b["id"], _turn_manager.current_player, _get_unit_data(sel_unit).category):
 						_garrison_unit_to(b["id"], gpos)
 						return
 		_move_selected_to(gpos)
@@ -237,7 +238,7 @@ func _select_unit(uid: int) -> void:
 	for u in _units:
 		if u["id"] == uid:
 			_reachable_tiles = _calc_reachable(u)
-			unit_selected.emit(u.duplicate())
+			unit_selected.emit(_make_unit_view(u))
 			break
 	queue_redraw()
 
@@ -273,21 +274,20 @@ func _move_selected_to(target: Vector2i) -> void:
 			u["has_moved"] = true
 
 			# 移动后揭示视野
-			var data: UnitData = u["data"]
+			var data: UnitData = _get_unit_data(u)
 			var fog_mgr = get_parent().get_node("FogOfWar2D")
 			if fog_mgr:
 				var cp: int = _turn_manager.current_player
 				fog_mgr.reveal_area(cp, target.x, target.y, data.vision)
 
 			# 工人到达资源格 → 通知采集管理器
-			if data.category == UnitData.UnitCategory.WORKER:
-				var gather_mgr = get_parent().get_node("GatheringManager2D")
-				if gather_mgr and gather_mgr.has_method("start_gather"):
-					var res_mgr = get_parent().get_node("ResourceManager2D")
-					if res_mgr and res_mgr.has_method("get_gather_result"):
-						var gather_info: Array = res_mgr.get_gather_result(target.x, target.y)
-						if not gather_info.is_empty():
-							gather_mgr.start_gather(u["faction"], target, gather_info)
+			var gather_mgr = get_parent().get_node("GatheringManager2D")
+			if gather_mgr and gather_mgr.has_method("start_gather"):
+				var res_mgr = get_parent().get_node("ResourceManager2D")
+				if res_mgr and res_mgr.has_method("get_gather_result"):
+					var gather_info: Array = res_mgr.get_gather_result(target.x, target.y)
+					if _can_unit_gather(data, gather_info):
+						gather_mgr.start_gather(u["faction"], target, gather_info)
 
 			# 移动后自动取消选择
 			_clear_selection()
@@ -298,7 +298,7 @@ func _move_selected_to(target: Vector2i) -> void:
 func _calc_reachable(unit: Dictionary) -> Array:
 	## BFS 从单位位置出发，max_depth = move_max
 	var from: Vector2i = unit["grid_pos"]
-	var data: UnitData = unit["data"]
+	var data: UnitData = _get_unit_data(unit)
 	var max_steps: int = data.move_max
 	var result: Array = []
 
@@ -479,7 +479,7 @@ func _combat_tick() -> void:
 		defender = unit_a
 
 	# 造成伤害
-	var dmg: int = attacker["data"].atk
+	var dmg: int = _get_unit_data(attacker).atk
 	defender["hp"] -= dmg
 
 	# 受击视觉效果
@@ -488,7 +488,7 @@ func _combat_tick() -> void:
 	# 刷新 UI（重发选中单位数据）
 	var selected := _get_unit_by_id(_selected_id)
 	if not selected.is_empty():
-		unit_selected.emit(selected.duplicate())
+		unit_selected.emit(_make_unit_view(selected))
 
 	queue_redraw()
 
@@ -602,6 +602,7 @@ func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) ->
 	_units.append({
 		"id": uid,
 		"data": data,
+		"template_id": data.template_id,
 		"faction": faction,
 		"grid_pos": spawn_pos,
 		"hp": hp if hp >= 0 else data.hp_max,
@@ -632,6 +633,45 @@ func _is_tile_passable(gx: int, gy: int) -> bool:
 		var t: int = _grid_manager.get_terrain_at(gx, gy)
 		return TerrainData.is_passable(t)
 	return true
+
+
+func _get_unit_template(unit: Dictionary) -> Resource:
+	if not _template_registry or not _template_registry.has_method("get_unit"):
+		return null
+	var template_id: String = str(unit.get("template_id", ""))
+	if template_id.is_empty() and unit.has("data"):
+		var data: UnitData = unit["data"]
+		template_id = data.template_id
+	if template_id.is_empty():
+		return null
+	return _template_registry.call("get_unit", template_id)
+
+
+func _get_unit_data(unit: Dictionary) -> UnitData:
+	var template: Resource = _get_unit_template(unit)
+	if template != null:
+		return UnitData.from_template(template)
+	if unit.has("data"):
+		return unit["data"]
+	return UnitData.new("", UnitData.UnitCategory.SPECIAL, 0, 0, 1, 0, 0)
+
+
+func _can_unit_gather(data: UnitData, gather_info: Array) -> bool:
+	if gather_info.is_empty():
+		return false
+	if data.category == UnitData.UnitCategory.WORKER:
+		return true
+	for result in gather_info:
+		var entry: Dictionary = result
+		if str(entry.get("key", "")) == "food":
+			return true
+	return false
+
+
+func _make_unit_view(unit: Dictionary) -> Dictionary:
+	var view: Dictionary = unit.duplicate(true)
+	view["data"] = _get_unit_data(unit)
+	return view
 
 
 func _is_tile_empty(gx: int, gy: int) -> bool:

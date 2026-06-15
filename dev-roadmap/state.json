@@ -17,16 +17,16 @@
       "notes": "已完成：UnitManager 初始单位优先从 TemplateRegistry 读取 unit.worker / unit.scout / unit.guard，读取失败时回退旧 UnitData。"
     },
     "U2": {
-      "status": "current",
-      "notes": "下一步：单位实例只保存 template_id、hp、位置和状态，属性从模板读取。"
+      "status": "done",
+      "notes": "已完成混合模式：单位实例保存 template_id，同时保留 data 作为兼容；绘制、移动、视野、战斗和选中 UI 通过 UnitManager helper 获取模板属性。"
     },
     "U3": {
       "status": "done",
       "notes": "已完成第一版：点击招募建筑打开 RecruitUI，可选单位与数量，提交后进入建筑招募队列；按玩家回合开始推进剩余回合，到 0 后在建筑周围出兵。"
     },
     "U4": {
-      "status": "pending",
-      "notes": ""
+      "status": "current",
+      "notes": "下一步：用 UnitTemplate.create_variant() 做精灵/矮人/兽人的阵营兵种差异。"
     },
     "B1R": {
       "status": "pending",
@@ -101,5 +101,5 @@
       "notes": ""
     }
   },
-  "currentId": "U2"
+  "currentId": "U4"
 }
