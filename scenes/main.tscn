@@ -11,9 +11,9 @@
 [ext_resource type="Script" uid="uid://whn7lwmb0lvj" path="res://scripts/building_manager_2d.gd" id="9_build"]
 [ext_resource type="Script" uid="uid://biaixqbx2vixd" path="res://scripts/resource_tracker.gd" id="10_tracker"]
 [ext_resource type="Script" uid="uid://dvgjc8wsiqshi" path="res://scripts/building_ui.gd" id="11_build_ui"]
-[ext_resource type="Script" path="res://scripts/gathering_manager_2d.gd" id="12_gather"]
-[ext_resource type="Script" path="res://scripts/templates/template_registry.gd" id="13_templates"]
-[ext_resource type="Script" path="res://scripts/recruit_ui.gd" id="14_recruit_ui"]
+[ext_resource type="Script" uid="uid://l2ctcvfb7sin" path="res://scripts/gathering_manager_2d.gd" id="12_gather"]
+[ext_resource type="Script" uid="uid://c5t7i3jvv3xbg" path="res://scripts/templates/template_registry.gd" id="13_templates"]
+[ext_resource type="Script" uid="uid://bpshrusa0nihu" path="res://scripts/recruit_ui.gd" id="14_recruit_ui"]
 
 [node name="Main" type="Node2D" unique_id=488890058]
 script = ExtResource("2_main")
@@ -24,7 +24,9 @@ script = ExtResource("1_cam")
 [node name="GameBoard" type="Node2D" parent="." unique_id=654892996]
 
 [node name="GridManager2D" type="Node2D" parent="GameBoard" unique_id=1306955701]
+light_mask = 3
 script = ExtResource("3_grid")
+editor_paint_enabled = true
 
 [node name="ResourceManager2D" type="Node2D" parent="GameBoard" unique_id=402605533]
 script = ExtResource("4_res")
@@ -44,16 +46,17 @@ script = ExtResource("9_build")
 [node name="UnitManager2D" type="Node2D" parent="GameBoard" unique_id=635143604]
 script = ExtResource("8_unit")
 
-[node name="GatheringManager2D" type="Node2D" parent="GameBoard"]
+[node name="GatheringManager2D" type="Node2D" parent="GameBoard" unique_id=1256750961]
 script = ExtResource("12_gather")
 
 [node name="ResourceTracker" type="Node" parent="GameBoard" unique_id=1799745659]
 script = ExtResource("10_tracker")
 
-[node name="TemplateRegistry" type="Node" parent="GameBoard"]
+[node name="TemplateRegistry" type="Node" parent="GameBoard" unique_id=912707473]
 script = ExtResource("13_templates")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=114517761]
+visible = false
 
 [node name="DebugLabel" type="Label" parent="UI" unique_id=254840114]
 offset_left = 16.0
@@ -86,7 +89,7 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "[精灵] 资源"
 
-[node name="LabelGold" type="Label" parent="UI/ResourcePanel/HBox"]
+[node name="LabelGold" type="Label" parent="UI/ResourcePanel/HBox" unique_id=1945322507]
 layout_mode = 2
 text = "金币: 0"
 
@@ -127,7 +130,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("11_build_ui")
 
-[node name="RecruitUI" type="Control" parent="UI"]
+[node name="RecruitUI" type="Control" parent="UI" unique_id=1979798383]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

@@ -15,6 +15,10 @@ var _turn_manager: Node = null
 
 signal resource_hovered(text: String)
 
+const GOLD_MINE_TEXTURE: Texture2D = preload("res://assets/texture/Gold mine.png")
+const QUARRY_TEXTURE: Texture2D = preload("res://assets/texture/stone.png")
+const RESOURCE_TEXTURE_SIZE := 28.0
+
 
 func set_turn_manager(tm: Node) -> void:
 	_turn_manager = tm
@@ -229,10 +233,26 @@ func _draw() -> void:
 			var color: Color = RESOURCE_DEFS[rt - 1][3]
 			color.a = 0.85
 			var pos := _grid_to_world(x, y)
+			if _draw_resource_texture(rt, pos):
+				continue
 			var rect := Rect2(pos.x - MARKER_SIZE, pos.y - MARKER_SIZE, MARKER_SIZE * 2.0, MARKER_SIZE * 2.0)
 			draw_rect(rect, color)
 			var inner := Rect2(pos.x - MARKER_SIZE * 0.4, pos.y - MARKER_SIZE * 0.4, MARKER_SIZE * 0.8, MARKER_SIZE * 0.8)
 			draw_rect(inner, Color(1.0, 1.0, 1.0, 0.3))
+
+
+func _draw_resource_texture(resource_type: int, pos: Vector2) -> bool:
+	var texture: Texture2D = null
+	match resource_type:
+		ResourceType.GOLD_MINE:
+			texture = GOLD_MINE_TEXTURE
+		ResourceType.QUARRY:
+			texture = QUARRY_TEXTURE
+		_:
+			return false
+	var half := RESOURCE_TEXTURE_SIZE * 0.5
+	draw_texture_rect(texture, Rect2(pos.x - half, pos.y - half, RESOURCE_TEXTURE_SIZE, RESOURCE_TEXTURE_SIZE), false)
+	return true
 
 
 # ========== 坐标工具 ==========

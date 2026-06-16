@@ -15,6 +15,7 @@ var current_player := 0
 signal fog_updated(player: int)
 
 var _turn_manager: Node = null
+var _grid_manager: Node = null
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -33,6 +34,7 @@ const FADE_DURATION := 0.3
 
 
 func _ready() -> void:
+	_grid_manager = get_parent().get_node_or_null("GridManager2D")
 	_init_all_fog()
 
 
@@ -90,6 +92,8 @@ func _draw() -> void:
 
 	for y in range(grid_rows):
 		for x in range(grid_cols):
+			if _is_ocean_tile(x, y):
+				continue
 			var raw: float = fog[y][x]
 			if raw <= 0.0:
 				continue
@@ -177,3 +181,9 @@ func _manhattan_dist(x1: int, y1: int, x2: int, y2: int) -> int:
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:
 	var offset := Vector2(-grid_center.x * tile_size, -grid_center.y * tile_size)
 	return Vector2(grid_x * tile_size + offset.x, grid_y * tile_size + offset.y)
+
+
+func _is_ocean_tile(x: int, y: int) -> bool:
+	if not _grid_manager or not _grid_manager.has_method("get_terrain_at"):
+		return false
+	return int(_grid_manager.get_terrain_at(x, y)) == TerrainData.Terrain.WATER
