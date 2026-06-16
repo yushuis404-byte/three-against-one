@@ -24,6 +24,7 @@ func _ready() -> void:
 
 
 func _setup_game() -> void:
+	$UI.visible = true
 	current_state = GameState.PLAYING
 	var tile_count: int = grid_manager.get_rendered_count()
 	debug_label.text = "Three Against One v0.1 | 2.5D 开放世界 | %d 格\n空格+鼠标左键拖拽 平移 | 滚轮 缩放 | Enter/Tab 结束回合" % tile_count

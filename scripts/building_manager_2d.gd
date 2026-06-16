@@ -6,6 +6,7 @@ extends Node2D
 
 const GarrisonServiceScript := preload("res://scripts/services/garrison_service.gd")
 const RecruitmentServiceScript := preload("res://scripts/services/recruitment_service.gd")
+const ELF_CAPITAL_TEXTURE: Texture2D = preload("res://assets/texture/Elven Capital.png")
 
 var grid_cols := 100
 var grid_rows := 56
@@ -44,6 +45,7 @@ signal recruit_queue_changed(building_id: int, queue: Array)
 
 const BUILDING_ALPHA := 0.85
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.6)
+const ELF_CAPITAL_TEXTURE_SCALE := 1.45
 
 
 func _ready() -> void:
@@ -351,11 +353,16 @@ func _draw_buildings() -> void:
 		var color: Color = GameCatalog.faction_color(faction)
 		color.a = BUILDING_ALPHA
 		draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
-
-		# 描边（主城加粗）
-		var border_width: float = 3.0 if data.category == BuildingData.BuildingCategory.TOWN_HALL else 1.5
-		draw_rect(Rect2(top_left.x, top_left.y, w, h),
-			Color.BLACK, false, border_width)
+		if _should_draw_elven_capital_texture(data, faction):
+			var tex_w: float = w * ELF_CAPITAL_TEXTURE_SCALE
+			var tex_h: float = h * ELF_CAPITAL_TEXTURE_SCALE
+			var tex_rect := Rect2(
+				top_left.x + w / 2.0 - tex_w / 2.0,
+				top_left.y + h / 2.0 - tex_h / 2.0,
+				tex_w,
+				tex_h
+			)
+			draw_texture_rect(ELF_CAPITAL_TEXTURE, tex_rect, false)
 
 		# 建筑名称文字
 		var font: Font = ThemeDB.fallback_font
@@ -408,6 +415,10 @@ func _draw_buildings() -> void:
 				var plus_size := font.get_string_size(plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8)
 				var plus_pos := Vector2(dots_start_x + 4 * dot_spacing + 2, top_left.y - 10 + 3)
 				draw_string(font, plus_pos, plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color.WHITE)
+
+
+func _should_draw_elven_capital_texture(data: BuildingData, faction: int) -> bool:
+	return faction == 0 and data.category == BuildingData.BuildingCategory.TOWN_HALL
 
 
 func _draw_placement_ghost() -> void:
