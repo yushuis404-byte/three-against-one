@@ -4,6 +4,7 @@ extends RefCounted
 
 const UnitTemplateScript := preload("res://scripts/templates/unit_template.gd")
 const BuildingTemplateScript := preload("res://scripts/templates/building_template.gd")
+const LordTemplateScript := preload("res://scripts/templates/lord_template.gd")
 const ResourceAmountScript := preload("res://scripts/templates/resource_amount.gd")
 const ProductionRecipeScript := preload("res://scripts/templates/production_recipe.gd")
 
@@ -325,6 +326,62 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	}
 
 
+func make_lord_templates() -> Dictionary:
+	var elf_lord: Resource = _lord_basic(
+		"lord.elf.wind_seer",
+		"Wind Seer",
+		LordTemplateScript.Civilization.ELF,
+		LordTemplateScript.Axis.INFORMATION,
+		{"information": 3, "space": 0, "war": 0},
+		["lord", "elf", "information", "starter"]
+	)
+	elf_lord.description = "Elf route seed lord. Focuses on vision, scouting, and fog interaction."
+	elf_lord.unlock_building_ids = ["building.wind_ancient_tree"]
+	elf_lord.unlock_action_ids = ["action.fog.reveal"]
+	elf_lord.passive_modifiers = {
+		"unit_vision_bonus": 1,
+		"scout_move_bonus": 1,
+	}
+
+	var dwarf_lord: Resource = _lord_basic(
+		"lord.dwarf.stone_warden",
+		"Stone Warden",
+		LordTemplateScript.Civilization.DWARF,
+		LordTemplateScript.Axis.SPACE,
+		{"information": 0, "space": 3, "war": 0},
+		["lord", "dwarf", "space", "starter"]
+	)
+	dwarf_lord.description = "Dwarf route seed lord. Focuses on buildings, walls, and controlled space."
+	dwarf_lord.unlock_building_ids = ["building.stone_wall", "building.watch_tower"]
+	dwarf_lord.unlock_recipe_ids = ["recipe.mithril.basic"]
+	dwarf_lord.passive_modifiers = {
+		"building_hp_bonus": 2,
+		"repair_efficiency_bonus": 1,
+	}
+
+	var orc_lord: Resource = _lord_basic(
+		"lord.orc.blood_chief",
+		"Blood Chief",
+		LordTemplateScript.Civilization.ORC,
+		LordTemplateScript.Axis.WAR,
+		{"information": 0, "space": 0, "war": 3},
+		["lord", "orc", "war", "starter"]
+	)
+	orc_lord.description = "Orc route seed lord. Focuses on combat tempo, plunder, and war economy."
+	orc_lord.unlock_building_ids = ["building.blood_fang_den"]
+	orc_lord.unlock_action_ids = ["action.warband.form"]
+	orc_lord.passive_modifiers = {
+		"kill_gold_reward": 1,
+		"melee_atk_bonus": 1,
+	}
+
+	return {
+		elf_lord.id: elf_lord,
+		dwarf_lord.id: dwarf_lord,
+		orc_lord.id: orc_lord,
+	}
+
+
 func _unit_basic(
 		p_id: String,
 		p_name: String,
@@ -344,6 +401,23 @@ func _unit_basic(
 	template.vision = p_vision
 	template.tags = p_tags.duplicate()
 	template.can_gather = p_role == UnitTemplateScript.UnitRole.WORKER
+	return template
+
+
+func _lord_basic(
+		p_id: String,
+		p_name: String,
+		p_civilization: int,
+		p_primary_axis: int,
+		p_axis_values: Dictionary,
+		p_tags: Array) -> Resource:
+	var template = LordTemplateScript.new()
+	template.id = p_id
+	template.display_name = p_name
+	template.civilization = p_civilization
+	template.primary_axis = p_primary_axis
+	template.axis_values = p_axis_values.duplicate(true)
+	template.tags = p_tags.duplicate()
 	return template
 
 

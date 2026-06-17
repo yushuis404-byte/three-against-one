@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Three Against One - 模块化开发路线图</title>
+<title>Three Against One - 文明路线开发路线图</title>
 <style>
 :root {
   --bg: #171717;
   --surface: #242424;
-  --panel: #2f3133;
   --card: #f4f0e8;
-  --card-ink: #1f2428;
+  --ink: #1f2428;
   --border: #56514a;
   --text: #f0eee8;
   --muted: #b8b0a6;
@@ -18,14 +17,13 @@
   --done: #44b678;
   --current: #e2b84c;
   --pending: #77716a;
-  --track-t: #4aa0a8;
-  --track-m: #8e72c7;
-  --track-s: #d36d4c;
-  --track-g: #71a34d;
-  --track-u: #c28b42;
+  --template: #4aa0a8;
+  --migration: #8e72c7;
+  --architecture: #d36d4c;
+  --gameplay: #71a34d;
+  --ui: #c28b42;
 }
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   min-height: 100vh;
   background: var(--bg);
@@ -43,29 +41,12 @@ body {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.brand {
-  min-width: 230px;
-}
-.brand h1 {
-  font-size: 17px;
-  line-height: 1.2;
-}
-.brand p {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.progress {
-  flex: 1;
-  color: var(--muted);
-  font-size: 13px;
-}
+.brand { min-width: 260px; }
+.brand h1 { font-size: 17px; line-height: 1.2; }
+.brand p { margin-top: 2px; color: var(--muted); font-size: 12px; }
+.progress { flex: 1; color: var(--muted); font-size: 13px; }
 .progress strong { color: var(--text); }
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.toolbar { display: flex; gap: 8px; align-items: center; }
 select, button {
   background: #1f2020;
   color: var(--text);
@@ -76,15 +57,9 @@ select, button {
 }
 button { cursor: pointer; }
 button:hover, select:hover { border-color: var(--accent); }
-.stats {
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--muted);
-}
+.stats { display: flex; gap: 10px; color: var(--muted); font-size: 12px; }
 .stats .done { color: var(--done); }
 .stats .current { color: var(--current); }
-
 .summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -92,21 +67,13 @@ button:hover, select:hover { border-color: var(--accent); }
   padding: 14px 20px 0;
 }
 .summary-card {
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
 }
-.summary-card .label {
-  color: var(--muted);
-  font-size: 11px;
-}
-.summary-card .value {
-  margin-top: 3px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
+.summary-card .label { color: var(--muted); font-size: 11px; }
+.summary-card .value { margin-top: 3px; font-size: 14px; font-weight: 700; line-height: 1.35; }
 .phase-container {
   display: grid;
   grid-template-columns: repeat(6, minmax(220px, 1fr));
@@ -120,34 +87,13 @@ button:hover, select:hover { border-color: var(--accent); }
   border-radius: 8px;
   overflow: hidden;
 }
-.phase-header {
-  padding: 11px 12px;
-  border-bottom: 1px solid var(--border);
-}
-.phase-header h2 {
-  font-size: 14px;
-}
-.phase-header .goal {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.35;
-}
-.bar {
-  height: 4px;
-  background: #151515;
-}
-.bar .fill {
-  height: 100%;
-  background: var(--done);
-  transition: width .2s;
-}
-.phase-body {
-  padding: 9px;
-}
-.track-group {
-  margin-bottom: 10px;
-}
+.phase-header { padding: 11px 12px; border-bottom: 1px solid var(--border); }
+.phase-header h2 { font-size: 14px; }
+.phase-header .goal { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.bar { height: 4px; background: #151515; }
+.bar .fill { height: 100%; background: var(--done); transition: width .2s; }
+.phase-body { padding: 9px; }
+.track-group { margin-bottom: 10px; }
 .track-label {
   display: inline-block;
   margin-bottom: 5px;
@@ -156,17 +102,16 @@ button:hover, select:hover { border-color: var(--accent); }
   font-size: 11px;
   font-weight: 700;
 }
-.track-label.t { color: var(--track-t); background: color-mix(in srgb, var(--track-t) 20%, transparent); }
-.track-label.m { color: var(--track-m); background: color-mix(in srgb, var(--track-m) 20%, transparent); }
-.track-label.s { color: var(--track-s); background: color-mix(in srgb, var(--track-s) 20%, transparent); }
-.track-label.g { color: var(--track-g); background: color-mix(in srgb, var(--track-g) 20%, transparent); }
-.track-label.u { color: var(--track-u); background: color-mix(in srgb, var(--track-u) 20%, transparent); }
-
+.track-label.t { color: var(--template); background: color-mix(in srgb, var(--template) 20%, transparent); }
+.track-label.m { color: var(--migration); background: color-mix(in srgb, var(--migration) 20%, transparent); }
+.track-label.s { color: var(--architecture); background: color-mix(in srgb, var(--architecture) 20%, transparent); }
+.track-label.g { color: var(--gameplay); background: color-mix(in srgb, var(--gameplay) 20%, transparent); }
+.track-label.u { color: var(--ui); background: color-mix(in srgb, var(--ui) 20%, transparent); }
 .card {
   margin-bottom: 6px;
   padding: 8px 9px;
   background: var(--card);
-  color: var(--card-ink);
+  color: var(--ink);
   border: 2px solid transparent;
   border-radius: 6px;
   cursor: pointer;
@@ -178,48 +123,19 @@ button:hover, select:hover { border-color: var(--accent); }
 }
 .card .top {
   display: grid;
-  grid-template-columns: 22px 46px 1fr;
+  grid-template-columns: 22px 50px 1fr;
   gap: 5px;
   align-items: start;
 }
-.status-icon {
-  width: 18px;
-  font-size: 12px;
-  text-align: center;
-}
+.status-icon { width: 18px; font-size: 12px; text-align: center; }
 .status-icon.done { color: var(--done); }
 .status-icon.current { color: #a97800; }
 .status-icon.pending { color: var(--pending); }
-.id {
-  color: #6d665e;
-  font-size: 11px;
-  font-weight: 800;
-}
-.name {
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-.desc {
-  margin-top: 5px;
-  color: #4e4a45;
-  font-size: 11px;
-  line-height: 1.35;
-}
-.meta {
-  margin-top: 5px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  color: #6d665e;
-  font-size: 10px;
-}
-.pill {
-  padding: 2px 5px;
-  border: 1px solid #c8bda9;
-  border-radius: 999px;
-}
-
+.id { color: #6d665e; font-size: 11px; font-weight: 800; }
+.name { font-size: 13px; font-weight: 700; line-height: 1.25; }
+.desc { margin-top: 5px; color: #4e4a45; font-size: 11px; line-height: 1.35; }
+.meta { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 6px; color: #6d665e; font-size: 10px; }
+.pill { padding: 2px 5px; border: 1px solid #c8bda9; border-radius: 999px; }
 .notes-toggle {
   position: fixed;
   right: 0;
@@ -256,13 +172,7 @@ button:hover, select:hover { border-color: var(--accent); }
   border-bottom: 1px solid var(--border);
 }
 .notes-head h3 { font-size: 14px; }
-.module-info {
-  padding: 10px 14px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  border-bottom: 1px solid var(--border);
-}
+.module-info { padding: 10px 14px; color: var(--muted); font-size: 12px; line-height: 1.5; border-bottom: 1px solid var(--border); }
 textarea {
   flex: 1;
   resize: none;
@@ -275,13 +185,7 @@ textarea {
   font-size: 13px;
   line-height: 1.6;
 }
-.notes-foot {
-  padding: 8px 14px;
-  color: var(--muted);
-  font-size: 11px;
-  border-top: 1px solid var(--border);
-  text-align: right;
-}
+.notes-foot { padding: 8px 14px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); text-align: right; }
 .context-menu {
   position: fixed;
   z-index: 60;
@@ -292,12 +196,8 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.context-menu .item {
-  padding: 7px 13px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.context-menu .item:hover { background: var(--panel); }
+.context-menu .item { padding: 7px 13px; font-size: 13px; cursor: pointer; }
+.context-menu .item:hover { background: #2f3133; }
 .toast {
   position: fixed;
   left: 50%;
@@ -330,7 +230,7 @@ textarea {
 <div class="topbar">
   <div class="brand">
     <h1>Three Against One</h1>
-    <p>模板化重构路线图</p>
+    <p>文明路线与领主底座路线图</p>
   </div>
   <div class="progress">当前焦点：<strong id="currentLabel">-</strong></div>
   <div class="toolbar">
@@ -347,10 +247,10 @@ textarea {
 </div>
 
 <section class="summary">
-  <div class="summary-card"><div class="label">开发策略</div><div class="value">先工具包，后内容扩张</div></div>
-  <div class="summary-card"><div class="label">当前阶段</div><div class="value">R2 单位模板迁移</div></div>
-  <div class="summary-card"><div class="label">近期目标</div><div class="value">新增兵种不改核心脚本</div></div>
-  <div class="summary-card"><div class="label">长期目标</div><div class="value">UI / AI / 多人共用 Action</div></div>
+  <div class="summary-card"><div class="label">设计轴心</div><div class="value">信息 / 空间 / 战争</div></div>
+  <div class="summary-card"><div class="label">当前策略</div><div class="value">先做领主模板底座，不做完整大系统</div></div>
+  <div class="summary-card"><div class="label">近期目标</div><div class="value">让文明路线能解锁单位、建筑、规则修正</div></div>
+  <div class="summary-card"><div class="label">验证目标</div><div class="value">精灵看得更深，矮人控得更稳，兽人打得更赚</div></div>
 </section>
 
 <main class="phase-container" id="phaseContainer"></main>
@@ -375,56 +275,50 @@ textarea {
 
 <script>
 const MODULES = [
-  { id:"P0", name:"原型冻结与架构盘点", phase:1, track:"S", trackName:"策略", hours:"0.5d", deps:[], status:"done", desc:"把当前 v0.3 原型作为行为参考版，停止继续硬编码堆功能。" },
-  { id:"P1", name:"模板工具包底座", phase:1, track:"T", trackName:"模板", hours:"1d", deps:["P0"], status:"done", desc:"建立 GameTemplate、UnitTemplate、BuildingTemplate、ProductionRecipe、TemplateRegistry。" },
-  { id:"P2", name:"模板文档与示例", phase:1, track:"T", trackName:"模板", hours:"0.5d", deps:["P1"], status:"done", desc:"说明如何用模板派生兵种、建筑和生产链。" },
+  { id:"F0", name:"原型冻结与现状盘点", phase:1, track:"S", trackName:"架构", hours:"0.5d", deps:[], status:"done", desc:"保留当前 v0.3 原型作为可运行参考，不再在旧结构里硬堆大型系统。" },
+  { id:"F1", name:"模板工具包底座", phase:1, track:"T", trackName:"模板", hours:"1d", deps:["F0"], status:"done", desc:"TemplateRegistry、UnitTemplate、BuildingTemplate、ResourceNodeTemplate、ProductionRecipe 作为后续内容入口。" },
+  { id:"F2", name:"单位/招募/中立单位接入模板", phase:1, track:"M", trackName:"迁移", hours:"2-3d", deps:["F1"], status:"done", desc:"初始单位、招募队列、中立单位优先读取模板，旧 UnitData 仅作为兼容层。" },
+  { id:"F3", name:"地图编辑与水岸画笔", phase:1, track:"U", trackName:"工具", hours:"2-4d", deps:["F0"], status:"done", desc:"编辑器可视化地图、地形/水岸画笔、预览、保存、加载、撤回，为后续空间玩法打底。" },
 
-  { id:"U1", name:"初始单位改读模板", phase:2, track:"M", trackName:"迁移", hours:"1d", deps:["P1"], status:"current", desc:"UnitManager 初始工人、斥候、守卫从 TemplateRegistry 创建。" },
-  { id:"U2", name:"兵种实例模型", phase:2, track:"T", trackName:"模板", hours:"1-2d", deps:["U1"], status:"pending", desc:"单位实例只保存 template_id、hp、位置、状态，属性全部来自模板。" },
-  { id:"U3", name:"招募流程模板化", phase:2, track:"G", trackName:"玩法", hours:"1-2d", deps:["U1"], status:"pending", desc:"招募营和兵营读取 recruit_options，不再写死工人招募。" },
-  { id:"U4", name:"阵营兵种变体", phase:2, track:"T", trackName:"模板", hours:"1d", deps:["U2"], status:"pending", desc:"同一兵种模板派生精灵/矮人/兽人轻微差异。" },
+  { id:"L1", name:"文明轴定义", phase:2, track:"S", trackName:"架构", hours:"0.5d", deps:["F1"], status:"current", desc:"把三文明明确为底层交互轴：精灵=信息，矮人=空间，兽人=战争。只定义规则边界，不急着做终局内容。" },
+  { id:"L2", name:"LordTemplate 领主模板", phase:2, track:"T", trackName:"模板", hours:"1d", deps:["L1"], status:"pending", desc:"新增领主模板：文明归属、标签、解锁建筑/单位/配方、被动修正、可招募条件。" },
+  { id:"L3", name:"PlayerCivilizationState", phase:2, track:"S", trackName:"架构", hours:"1d", deps:["L2"], status:"pending", desc:"每个玩家保存主文明、已招募领主、信息/空间/战争倾向值、解锁列表。" },
+  { id:"L4", name:"文明规则服务", phase:2, track:"T", trackName:"模板", hours:"1-2d", deps:["L3"], status:"pending", desc:"统一查询某玩家是否解锁单位、建筑、资源转化、视野修正、建筑修正、战争收益。" },
+  { id:"L5", name:"最小领主选择 UI", phase:2, track:"U", trackName:"界面", hours:"1d", deps:["L3"], status:"pending", desc:"先做调试/原型级 UI：查看当前文明路线，选择或添加一个领主，验证数据链路。" },
 
-  { id:"B1R", name:"建筑模板迁移", phase:3, track:"M", trackName:"迁移", hours:"2-3d", deps:["P1"], status:"pending", desc:"BuildingData 静态工厂逐步迁移到 BuildingTemplate。" },
-  { id:"B2R", name:"放置规则组件化", phase:3, track:"T", trackName:"模板", hours:"2d", deps:["B1R"], status:"pending", desc:"领地、地形、资源点、footprint、数量限制拆成可复用规则。" },
-  { id:"B3R", name:"建筑 UI 改读模板", phase:3, track:"U", trackName:"界面", hours:"1-2d", deps:["B1R"], status:"pending", desc:"建筑卡片、成本、产出、说明从模板生成。" },
-  { id:"B4R", name:"特殊建筑去 if 化", phase:3, track:"G", trackName:"玩法", hours:"2d", deps:["B2R"], status:"pending", desc:"金矿矿井、金币铸造厂、招募营使用模板字段和配方表达特殊性。" },
+  { id:"E1", name:"精灵信息原型：视野修正", phase:3, track:"G", trackName:"玩法", hours:"1-2d", deps:["L4"], status:"pending", desc:"精灵领主提供侦察/视野加成，验证模板修正能影响 FogOfWar 与单位视野。" },
+  { id:"E2", name:"精灵信息原型：迷雾能力", phase:3, track:"G", trackName:"玩法", hours:"2-3d", deps:["E1"], status:"pending", desc:"实现一个最小技能：驱散迷雾或制造临时迷雾，确认信息控制能形成玩法差异。" },
+  { id:"E3", name:"风语古树与灵息", phase:3, track:"T", trackName:"模板", hours:"1-2d", deps:["L4"], status:"pending", desc:"新增精灵特色建筑与资源产出，但只做基础产出和解锁，不做完整科技树。" },
+  { id:"E4", name:"精灵路线验收", phase:3, track:"S", trackName:"架构", hours:"0.5d", deps:["E1","E2","E3"], status:"pending", desc:"判断精灵是否真的变成“看得更多、行动更灵活、正面较弱”的路线。" },
 
-  { id:"E1R", name:"资源定义模板化", phase:4, track:"M", trackName:"迁移", hours:"1-2d", deps:["P1"], status:"pending", desc:"地图资源点从 ResourceManager 硬编码表迁移到 ResourceNodeTemplate。" },
-  { id:"E2R", name:"生产配方统一", phase:4, track:"T", trackName:"模板", hours:"2d", deps:["B1R","E1R"], status:"pending", desc:"建筑产出、驻军产出、资源转换、采集奖励都走 ProductionRecipe。" },
-  { id:"E3R", name:"经济系统单一入口", phase:4, track:"S", trackName:"策略", hours:"2d", deps:["E2R"], status:"pending", desc:"ResourceTracker 只负责库存，生产结算交给 EconomySystem。" },
-  { id:"E4R", name:"金币链验收", phase:4, track:"G", trackName:"玩法", hours:"1d", deps:["E2R"], status:"pending", desc:"金矿点 -> 矿井驻工 -> gold_ore -> 铸币厂 -> gold 全链路稳定。" },
+  { id:"D1", name:"矮人空间原型：建筑网络", phase:4, track:"G", trackName:"玩法", hours:"2-3d", deps:["L4"], status:"pending", desc:"建筑之间按距离或连通关系提供防御/产出/修复加成，验证空间组织能力。" },
+  { id:"D2", name:"城墙与阻挡规则", phase:4, track:"G", trackName:"玩法", hours:"2-4d", deps:["D1"], status:"pending", desc:"新增石墙、城门或哨塔的最小版本，打通占格、阻挡、可攻击、可修复。" },
+  { id:"D3", name:"熔炉与工业资源", phase:4, track:"T", trackName:"模板", hours:"1-2d", deps:["L4"], status:"pending", desc:"秘银/精钢先作为模板资源占位，配方链只做一条最小闭环。" },
+  { id:"D4", name:"矮人路线验收", phase:4, track:"S", trackName:"架构", hours:"0.5d", deps:["D1","D2","D3"], status:"pending", desc:"判断矮人是否真的变成“控路、筑防、慢扩张但阵地强”的路线。" },
 
-  { id:"A1R", name:"Action 基类", phase:5, track:"S", trackName:"策略", hours:"1-2d", deps:["U2","B2R","E3R"], status:"pending", desc:"所有玩家操作都有 can_execute、execute、cost、error_message。" },
-  { id:"A2R", name:"建造/移动/招募 Action", phase:5, track:"G", trackName:"玩法", hours:"2-3d", deps:["A1R"], status:"pending", desc:"UI 和键鼠操作先改走 Action。" },
-  { id:"A3R", name:"攻击/驻军/采集 Action", phase:5, track:"G", trackName:"玩法", hours:"2-3d", deps:["A1R"], status:"pending", desc:"战斗、驻军、采集也统一为可验证动作。" },
-  { id:"A4R", name:"EventBus 与日志", phase:5, track:"S", trackName:"策略", hours:"1-2d", deps:["A2R"], status:"pending", desc:"Action 结果发事件，UI、音效、AI、网络不直接耦合 Manager。" },
+  { id:"O1", name:"兽人战争原型：击杀收益", phase:5, track:"G", trackName:"玩法", hours:"1-2d", deps:["L4"], status:"pending", desc:"兽人领主提供击杀、摧毁、掠夺收益，验证战争经济是否能形成正反馈。" },
+  { id:"O2", name:"战团编组基础", phase:5, track:"G", trackName:"玩法", hours:"3-5d", deps:["O1"], status:"pending", desc:"先做 2-3 个单位的临时编组与协同行军，不急着做完整阵型系统。" },
+  { id:"O3", name:"血牙巢穴与兽血", phase:5, track:"T", trackName:"模板", hours:"1-2d", deps:["L4"], status:"pending", desc:"新增兽人特色建筑和战争资源，用于战团强化或战斗收益。" },
+  { id:"O4", name:"兽人路线验收", phase:5, track:"S", trackName:"架构", hours:"0.5d", deps:["O1","O2","O3"], status:"pending", desc:"判断兽人是否真的变成“主动打架、靠战争滚收益、长期运营偏弱”的路线。" },
 
-  { id:"C4R", name:"科技树", phase:6, track:"G", trackName:"玩法", hours:"4-5d", deps:["A4R"], status:"pending", desc:"科技解锁模板、建筑、兵种、配方，而不是直接改系统代码。" },
-  { id:"D1R", name:"攻城与掠夺", phase:6, track:"G", trackName:"玩法", hours:"4-5d", deps:["A3R"], status:"pending", desc:"建筑受击、耐久、掠夺收益、修复冷却。" },
-  { id:"D4R", name:"中立生物与巨龙", phase:6, track:"G", trackName:"玩法", hours:"4-6d", deps:["C4R","D1R"], status:"pending", desc:"中立单位、巨龙事件、巢穴互动都作为模板和 Action 扩展。" },
-  { id:"E5R", name:"HUD 与操作面板重构", phase:6, track:"U", trackName:"界面", hours:"5-7d", deps:["A4R"], status:"pending", desc:"界面只读模板、状态和 Action，不承载规则。" },
-  { id:"AI1", name:"Bot AI", phase:6, track:"S", trackName:"策略", hours:"5-7d", deps:["A4R","C4R"], status:"pending", desc:"AI 只选择 Action，不绕过玩家规则。" },
-  { id:"N1", name:"多人网络准备", phase:6, track:"S", trackName:"策略", hours:"待定", deps:["A4R"], status:"pending", desc:"同步 Action 和状态摘要，为远程回合制打基础。" },
+  { id:"X1", name:"文明融合规则", phase:6, track:"S", trackName:"架构", hours:"2-3d", deps:["E4","D4","O4"], status:"pending", desc:"允许玩家通过第二领主获得另一文明的部分能力，形成专精与融合的选择。" },
+  { id:"X2", name:"终极建筑占位", phase:6, track:"T", trackName:"模板", hours:"2-3d", deps:["X1"], status:"pending", desc:"世界树圣域、群山要塞、战争议会先做模板和解锁条件，不急着实现终局大招。" },
+  { id:"X3", name:"Action/EventBus 统一入口", phase:6, track:"S", trackName:"架构", hours:"3-5d", deps:["L4"], status:"pending", desc:"把建造、移动、招募、攻击、技能统一成可验证 Action，为 AI、回放、多人同步做准备。" },
+  { id:"X4", name:"HUD 与路线面板重构", phase:6, track:"U", trackName:"界面", hours:"3-5d", deps:["X1"], status:"pending", desc:"展示文明路线、领主、解锁、当前战略倾向，让玩家理解自己正在走什么路线。" },
+  { id:"X5", name:"AI 与中立事件扩展", phase:6, track:"G", trackName:"玩法", hours:"待定", deps:["X3"], status:"pending", desc:"AI 只选择 Action；中立单位、商队、巨龙事件也走模板和事件系统。" },
 ];
 
 const TRACK_ORDER = ["T","M","S","G","U"];
-const TRACK_LABELS = { T:"模板", M:"迁移", S:"架构", G:"玩法", U:"界面" };
+const TRACK_LABELS = { T:"模板", M:"迁移", S:"架构", G:"玩法", U:"界面/工具" };
 const TRACK_CLASSES = { T:"t", M:"m", S:"s", G:"g", U:"u" };
-const PHASE_NAMES = [
-  "R1 底层模板工具包",
-  "R2 单位模板迁移",
-  "R3 建筑系统模板化",
-  "R4 资源与生产链",
-  "R5 Action 与事件",
-  "R6 内容扩展"
-];
+const PHASE_NAMES = ["R1 已完成底座", "R2 领主与文明底座", "R3 精灵：信息路线", "R4 矮人：空间路线", "R5 兽人：战争路线", "R6 融合与长期架构"];
 const PHASE_GOALS = [
-  "先搭可复用底座，保持现有原型可运行。",
-  "让新增兵种成为填模板，而不是改 UnitManager。",
-  "让建筑、兵营、金矿链从硬编码改为数据规则。",
-  "统一资源点、采集、驻军生产和转换配方。",
-  "为 AI、多人、回放、日志建立统一操作入口。",
-  "在新架构上继续做科技、攻城、巨龙、AI、网络。"
+  "保留已完成模板、招募、中立、地图工具成果，作为新策划的基础设施。",
+  "只做文明/领主数据层与查询服务，避免提前实现完整大系统。",
+  "用最小信息玩法验证精灵路线是否成立。",
+  "用建筑网络和城墙验证矮人的空间控制是否成立。",
+  "用战争收益和战团原型验证兽人的战争组织是否成立。",
+  "在三条路线都能跑通后，再做融合、终局、AI、多人准备。"
 ];
 
 let state = { modules: {}, currentId: null };
@@ -460,7 +354,6 @@ function render() {
     grouped[m.phase][m.track] ??= [];
     grouped[m.phase][m.track].push(m);
   }
-
   for (let phase = 1; phase <= 6; phase++) {
     const phaseModules = MODULES.filter(m => m.phase === phase);
     const done = phaseModules.filter(m => getStatus(m.id) === "done").length;
@@ -482,9 +375,7 @@ function render() {
       const group = document.createElement("div");
       group.className = "track-group";
       group.innerHTML = `<div class="track-label ${TRACK_CLASSES[track]}">${TRACK_LABELS[track]}</div>`;
-      for (const m of mods) {
-        group.appendChild(renderCard(m));
-      }
+      for (const m of mods) group.appendChild(renderCard(m));
       body.appendChild(group);
     }
     container.appendChild(col);
@@ -526,9 +417,7 @@ function selectCard(id) {
   state.currentId = id;
   dirty = true;
   render();
-  if (!document.getElementById("notesPanel").classList.contains("open")) {
-    toggleNotes();
-  }
+  if (!document.getElementById("notesPanel").classList.contains("open")) toggleNotes();
 }
 
 function setCardStatus(status) {
@@ -667,9 +556,7 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     saveState();
   }
-  if (event.key === "Escape") {
-    hideContextMenu();
-  }
+  if (event.key === "Escape") hideContextMenu();
 });
 
 loadState();

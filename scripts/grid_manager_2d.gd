@@ -1351,6 +1351,14 @@ func get_terrain_at(x: int, y: int) -> int:
 	return terrain_grid[y][x]
 
 
+func get_zone_at(x: int, y: int) -> int:
+	if x < 0 or x >= GRID_COLS or y < 0 or y >= GRID_ROWS:
+		return ZoneTag.UNASSIGNED
+	if zone_grid.is_empty():
+		return ZoneTag.UNASSIGNED
+	return int(zone_grid[y][x])
+
+
 func grid_to_world(grid_x: int, grid_y: int) -> Vector2:
 	var world_offset := Vector2(-grid_center.x * TILE_SIZE, -grid_center.y * TILE_SIZE)
 	return Vector2(

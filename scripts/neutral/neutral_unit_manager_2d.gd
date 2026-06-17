@@ -58,6 +58,7 @@ var _turn_manager: Node = null
 var _fog_manager: Node = null
 var _unit_manager: Node = null
 var _resource_tracker: Node = null
+var _template_registry: Node = null
 
 
 func _ready() -> void:
@@ -65,6 +66,7 @@ func _ready() -> void:
 	_fog_manager = get_parent().get_node("FogOfWar2D")
 	_unit_manager = get_parent().get_node("UnitManager2D")
 	_resource_tracker = get_parent().get_node("ResourceTracker")
+	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -123,6 +125,33 @@ func add_neutral_unit(
 	return uid
 
 
+func add_neutral_unit_from_template(template_id: String, grid_pos: Vector2i) -> int:
+	var template: Resource = _get_neutral_unit_template(template_id)
+	if template == null:
+		push_warning("[Neutral] Missing unit template: %s" % template_id)
+		return -1
+	var behavior: String = str(template.get("ai_behavior"))
+	var aggro_range: int = int(template.get("aggro_range"))
+	return add_neutral_unit(
+		template_id,
+		str(template.get("display_name")),
+		grid_pos,
+		int(template.get("hp_max")),
+		int(template.get("hp_max")),
+		int(template.get("atk")),
+		int(template.get("move_max")),
+		int(template.get("vision")),
+		behavior,
+		aggro_range
+	)
+
+
+func _get_neutral_unit_template(template_id: String) -> Resource:
+	if _template_registry == null or not _template_registry.has_method("get_unit"):
+		return null
+	return _template_registry.call("get_unit", template_id)
+
+
 func remove_neutral_unit(uid: int) -> void:
 	for i in range(_neutral_units.size() - 1, -1, -1):
 		if _neutral_units[i]["id"] == uid:
@@ -142,7 +171,12 @@ func select_neutral(uid: int) -> void:
 		if u["id"] == uid:
 			_selected_id = uid
 			var view: Dictionary = u.duplicate(true)
-			var ud: UnitData = UnitData.new(u.get("display_name", "中立单位"), UnitData.UnitCategory.SPECIAL, u.get("move_max", 0), u.get("atk", 0), u.get("hp_max", 1), u.get("vision", 0), 0)
+			var template: Resource = _get_neutral_unit_template(str(u.get("template_id", "")))
+			var ud: UnitData = null
+			if template != null:
+				ud = UnitData.from_template(template)
+			else:
+				ud = UnitData.new(str(u.get("display_name", "Neutral Unit")), UnitData.UnitCategory.SPECIAL, int(u.get("move_max", 0)), int(u.get("atk", 0)), int(u.get("hp_max", 1)), int(u.get("vision", 0)), 0)
 			view["data"] = ud
 			neutral_selected.emit(view)
 			queue_redraw()
@@ -678,7 +712,7 @@ func _spawn_revenge_squad(player: int) -> void:
 	var count := 1 if candidates.size() < 2 else randi() % 2 + 1
 	for i in range(mini(count, candidates.size())):
 		var pos: Vector2i = candidates[i]
-		var uid := add_neutral_unit("neutral.goblin.revenge", "哥布林复仇队", pos, 4, 4, 2, 2, 2, "revenge", 3)
+		var uid := add_neutral_unit_from_template("neutral.goblin.revenge", pos)
 		if uid >= 0:
 			print("[中立] 复仇队生成于 %s (阵营 %d)" % [str(pos), player])
 
@@ -694,21 +728,21 @@ func place_initial_neutral_units() -> void:
 func _place_wyverns() -> void:
 	## 亚龙：围绕中央巨龙巢穴放置（极坐标环状候选）
 	var placements: Array = [
-		# [template_id, name, seed_offset, count, hp, atk, move, vision]
-		["neutral.wyvern.fire", "火焰亚龙", 0, 3, 6, 3, 1, 2],
-		["neutral.wyvern.frost", "冰霜亚龙", 100, 2, 8, 2, 1, 2],
-		["neutral.wyvern.toxic", "毒液亚龙", 200, 2, 5, 3, 1, 2],
+		# [template_id, seed_offset, count]
+		["neutral.wyvern.fire", 0, 3],
+		["neutral.wyvern.frost", 100, 2],
+		["neutral.wyvern.toxic", 200, 2],
 	]
 
 	for p in placements:
-		var template_id: String = p[0]
-		var name: String = p[1]
-		var seed_off: int = p[2]
-		var count: int = p[3]
-		var hp: int = p[4]
-		var atk: int = p[5]
-		var move: int = p[6]
-		var vision: int = p[7]
+		var template_id: String = str(p[0])
+		var template: Resource = _get_neutral_unit_template(template_id)
+		if template == null:
+			push_warning("[Neutral] Missing wyvern template: %s" % template_id)
+			continue
+		var name: String = str(template.get("display_name"))
+		var seed_off: int = int(p[1])
+		var count: int = int(p[2])
 		var placed := 0
 
 		for attempt in range(200):
@@ -748,7 +782,7 @@ func _place_wyverns() -> void:
 			if _is_near_spawn(pos, 5):
 				continue
 
-			var uid := add_neutral_unit(template_id, name, pos, hp, hp, atk, move, vision, "guard", 2)
+			var uid := add_neutral_unit_from_template(template_id, pos)
 			if uid >= 0:
 				placed += 1
 
@@ -783,7 +817,7 @@ func _place_wyverns() -> void:
 					continue
 				if _is_near_spawn(pos, 3):
 					continue
-				var uid := add_neutral_unit(template_id, name, pos, hp, hp, atk, move, vision, "guard", 2)
+				var uid := add_neutral_unit_from_template(template_id, pos)
 				if uid >= 0:
 					placed += 1
 
@@ -814,7 +848,7 @@ func _place_wander_traders() -> void:
 			if _is_near_spawn(pos, 6):
 				continue
 
-			var uid := add_neutral_unit("neutral.trader.wander", "流浪商队", pos, 1, 1, 0, 0, 0, "hidden_trader", 0)
+			var uid := add_neutral_unit_from_template("neutral.trader.wander", pos)
 			if uid >= 0:
 				placed += 1
 

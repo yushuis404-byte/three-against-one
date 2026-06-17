@@ -11,6 +11,7 @@ The current prototype can keep running while managers migrate one feature at a t
 - `unit_template.gd`: reusable unit definition.
 - `building_template.gd`: reusable building definition.
 - `resource_node_template.gd`: reusable map resource definition.
+- `lord_template.gd`: reusable lord/civilization route definition.
 - `default_template_library.gd`: code-side defaults used before `.tres` data files are authored.
 - `template_registry.gd`: loader/query node for all templates.
 
@@ -39,6 +40,22 @@ unit_manager.add_unit_from_template(player, registry.get_unit("unit.worker"), gr
 
 Existing `UnitData` still works. `UnitTemplate.to_unit_data()` and `UnitData.from_template()` let old systems consume new templates.
 
+## Lord Template Pattern
+
+`LordTemplate` is the reusable data block for the civilization route system. A lord does not execute gameplay by itself. It describes civilization axis values, unlocks, and passive modifier keys that later systems can query.
+
+```gdscript
+var lord: LordTemplate = registry.get_lord("lord.elf.wind_seer")
+var vision_bonus: int = int(lord.get_modifier("unit_vision_bonus", 0))
+var unlocks_tree: bool = lord.unlocks_building("building.wind_ancient_tree")
+```
+
+The first default lords are:
+
+- `lord.elf.wind_seer`: information route, vision and scouting modifiers.
+- `lord.dwarf.stone_warden`: space route, building and repair modifiers.
+- `lord.orc.blood_chief`: war route, kill reward and melee attack modifiers.
+
 ## Migration Order
 
 1. Move unit spawning to `TemplateRegistry`.
@@ -46,5 +63,6 @@ Existing `UnitData` still works. `UnitTemplate.to_unit_data()` and `UnitData.fro
 3. Move building UI card data to `BuildingTemplate`.
 4. Move production and garrison bonuses to `ProductionRecipe`.
 5. Move map resource definitions to `ResourceNodeTemplate`.
+6. Use `LordTemplate` to unlock civilization-specific content without branching manager code.
 
 The rule of thumb: new content should be template data first, system code only when the rule itself is new.
