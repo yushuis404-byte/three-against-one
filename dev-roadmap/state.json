@@ -29,10 +29,13 @@
       "notes": "已新增三个路线状态节点：ElfCivilizationState、DwarfCivilizationState、OrcCivilizationState。每个节点会从默认领主汇总三轴值、解锁列表和被动修正。"
     },
     "L4": {
-      "status": "current",
-      "notes": "下一步：做文明规则服务，给其他系统提供统一查询入口。"
+      "status": "done",
+      "notes": "已新增 CivilizationRuleService，统一查询三方文明路线状态、解锁项、三轴值和被动修正。"
     },
-    "L5": { "status": "pending", "notes": "" },
+    "L5": {
+      "status": "current",
+      "notes": "已新增临时 CivilizationDebugPanel 显示三方路线摘要。下一步可以做正式路线面板或接入第一个真实效果。"
+    },
     "E1": { "status": "pending", "notes": "" },
     "E2": { "status": "pending", "notes": "" },
     "E3": { "status": "pending", "notes": "" },
@@ -51,5 +54,5 @@
     "X4": { "status": "pending", "notes": "" },
     "X5": { "status": "pending", "notes": "" }
   },
-  "currentId": "L4"
+  "currentId": "L5"
 }
