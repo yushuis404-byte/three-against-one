@@ -50,6 +50,21 @@ var vision_bonus: int = int(lord.get_modifier("unit_vision_bonus", 0))
 var unlocks_tree: bool = lord.unlocks_building("building.wind_ancient_tree")
 ```
 
+Each player now has one visible route-state node under `GameBoard`:
+
+- `ElfCivilizationState`
+- `DwarfCivilizationState`
+- `OrcCivilizationState`
+
+They all use `CivilizationRouteState` and aggregate owned lord templates into route values, unlock lists, and passive modifiers.
+
+```gdscript
+var elf_route = get_node("GameBoard/ElfCivilizationState")
+var info_value: int = elf_route.get_axis_value("information")
+var vision_bonus: int = elf_route.get_modifier_int("unit_vision_bonus")
+var buildings: Array = elf_route.get_unlocked_buildings()
+```
+
 The first default lords are:
 
 - `lord.elf.wind_seer`: information route, vision and scouting modifiers.

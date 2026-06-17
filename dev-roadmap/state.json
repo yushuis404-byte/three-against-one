@@ -25,10 +25,13 @@
       "notes": "已新增 LordTemplate、TemplateRegistry 领主加载/查询、默认三文明领主样例与文档说明。"
     },
     "L3": {
-      "status": "current",
-      "notes": "下一步：为每个玩家保存主文明、已招募领主、信息/空间/战争倾向值、解锁列表。"
+      "status": "done",
+      "notes": "已新增三个路线状态节点：ElfCivilizationState、DwarfCivilizationState、OrcCivilizationState。每个节点会从默认领主汇总三轴值、解锁列表和被动修正。"
     },
-    "L4": { "status": "pending", "notes": "" },
+    "L4": {
+      "status": "current",
+      "notes": "下一步：做文明规则服务，给其他系统提供统一查询入口。"
+    },
     "L5": { "status": "pending", "notes": "" },
     "E1": { "status": "pending", "notes": "" },
     "E2": { "status": "pending", "notes": "" },
@@ -48,5 +51,5 @@
     "X4": { "status": "pending", "notes": "" },
     "X5": { "status": "pending", "notes": "" }
   },
-  "currentId": "L3"
+  "currentId": "L4"
 }
