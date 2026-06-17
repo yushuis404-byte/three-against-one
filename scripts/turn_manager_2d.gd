@@ -8,9 +8,11 @@ signal round_started(round: int)
 signal player_turn_started(player: int)
 signal player_turn_ended(player: int)
 signal round_ended(round: int)
+signal neutral_turn_started()
+signal neutral_turn_ended()
 signal ap_changed(player: int, ap: int)
 
-enum TurnPhase { ROUND_START, PLAYER_TURN, ROUND_END }
+enum TurnPhase { ROUND_START, PLAYER_TURN, ROUND_END, NEUTRAL_TURN }
 
 var round_number := 0
 var current_player := 0
@@ -64,6 +66,22 @@ func end_player_turn(player: int) -> void:
 func _end_round() -> void:
 	turn_phase = TurnPhase.ROUND_END
 	round_ended.emit(round_number)
+	# 在所有玩家回合结束后、下一回合开始前，插入中立阶段
+	_start_neutral_turn()
+
+
+func _start_neutral_turn() -> void:
+	turn_phase = TurnPhase.NEUTRAL_TURN
+	neutral_turn_started.emit()
+
+	# 如果 AI 触发了战斗（Timer 异步），等待战斗结束后再继续
+	var nmgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+	if nmgr != null and nmgr.has_method("is_in_combat") and nmgr.is_in_combat():
+		await get_tree().process_frame
+		while is_instance_valid(nmgr) and nmgr.is_in_combat():
+			await get_tree().create_timer(0.5).timeout
+
+	neutral_turn_ended.emit()
 	_start_new_round()
 
 

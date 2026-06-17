@@ -122,6 +122,16 @@ func get_player_units(player: int) -> Array:
 	return result
 
 
+func get_all_units() -> Array:
+	## 返回所有单位的副本（供 NeutralUnitManager2D 查询）
+	return _units.duplicate()
+
+
+func get_unit_by_id(uid: int) -> Dictionary:
+	## 公开版 _get_unit_by_id
+	return _get_unit_by_id(uid)
+
+
 # ========== 绘制 ==========
 
 func _draw() -> void:
@@ -135,7 +145,7 @@ func _draw() -> void:
 
 	for u in _units:
 		var pos: Vector2i = u["grid_pos"]
-		var world_pos := _grid_to_world(pos.x, pos.y)
+		var world_pos: Vector2 = _grid_to_world(pos.x, pos.y)
 		var faction: int = u["faction"]
 		var data: UnitData = _get_unit_data(u)
 		var hp: int = u["hp"]
@@ -179,8 +189,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.button_index != MOUSE_BUTTON_LEFT or not event.pressed:
 		return
 
-	# 战斗中锁定所有操作
+	# 战斗中锁定所有操作（含中立战斗）
 	if _in_combat:
+		return
+	var numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+	if numgr and numgr.has_method("is_in_combat") and numgr.is_in_combat():
 		return
 
 	var cursor := get_global_mouse_position()
@@ -210,9 +223,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not src.is_empty():
 			var target := get_unit_at(gpos)
 			if not target.is_empty() and target["faction"] != src["faction"]:
+				# 中立单位（faction == -1）→ 调用 NeutralUnitManager2D 战斗
 				if _is_adjacent(src["grid_pos"], target["grid_pos"]):
-					_initiate_combat(_selected_id, target["id"])
-					return
+					if target["faction"] == -1:
+						numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+						if numgr and numgr.has_method("engage_combat") and not numgr.is_in_combat():
+							numgr.engage_combat(_selected_id, target["id"])
+							return
+					else:
+						_initiate_combat(_selected_id, target["id"])
+						return
+
+			# 追加：检查中立单位
+			if target.is_empty():
+				if numgr and numgr.has_method("get_neutral_unit_at"):
+					var ntarget: Dictionary = numgr.get_neutral_unit_at(gpos)
+					if not ntarget.is_empty() and _is_adjacent(src["grid_pos"], ntarget.get("grid_pos", Vector2i(-1, -1))):
+						if numgr.has_method("engage_combat") and not numgr.is_in_combat():
+							numgr.engage_combat(_selected_id, ntarget["id"])
+							return
+
 
 	# 检查是否点击了己方单位（选择）
 	var unit := get_unit_at(gpos)
@@ -223,6 +253,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		if unit["faction"] == current_player:
 			_select_unit(unit["id"])
 			return
+
+	# 检查是否点击了中立单位（选择查看数值）
+	if unit.is_empty():
+		if numgr and numgr.has_method("get_unit_at_world"):
+			var neutral: Dictionary = numgr.get_unit_at_world(cursor)
+			if not neutral.is_empty() and numgr.has_method("select_neutral"):
+				numgr.select_neutral(neutral["id"])
+				return
 
 	# 点击其他 → 取消选择
 	_clear_selection()
@@ -286,10 +324,32 @@ func _move_selected_to(target: Vector2i) -> void:
 						gather_mgr.start_gather(u["faction"], target, gather_info)
 
 			# 移动后自动取消选择
+			# 检查相邻隐藏商队
+			_trigger_hidden_trader_if_adjacent(target, u["faction"])
+
 			_clear_selection()
 			queue_redraw()
 			break
 
+
+
+func _trigger_hidden_trader_if_adjacent(target: Vector2i, faction: int) -> void:
+	"""检查目标格相邻是否有隐藏商队，有则触发交易"""
+	var numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+	if not numgr or not numgr.has_method("get_neutral_unit_at"):
+		return
+
+	var dirs := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	for dir in dirs:
+		var adj := Vector2i(target.x + dir.x, target.y + dir.y)
+		var nu: Dictionary = numgr.get_neutral_unit_at(adj)
+		if not nu.is_empty():
+			var ai: Dictionary = numgr.get_ai_data_for(nu.get("id", -1))
+			if ai.get("behavior", "") == "hidden_trader":
+				print("[中立] 发现隐藏商队，触发交易 (阵营 %d)" % faction)
+				# TODO: Stage 3 弹出交易面板
+				numgr.remove_neutral_unit(nu["id"])
+				return
 
 func _calc_reachable(unit: Dictionary) -> Array:
 	## BFS 从单位位置出发，max_depth = move_max
@@ -571,7 +631,7 @@ func _show_damage_text(grid_pos: Vector2i, damage: int) -> void:
 	label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	add_child(label)
 
-	var world_pos := _grid_to_world(grid_pos.x, grid_pos.y)
+	var world_pos: Vector2 = _grid_to_world(grid_pos.x, grid_pos.y)
 	label.position = Vector2(world_pos.x - 10, world_pos.y - 24)
 	label.z_index = 10
 
@@ -584,6 +644,49 @@ func _show_damage_text(grid_pos: Vector2i, damage: int) -> void:
 
 func is_in_combat() -> bool:
 	return _in_combat
+
+
+func notify_combat_started() -> void:
+	## 公开接口：通知 unit_manager 进入战斗状态（供 NeutralUnitManager2D 调用）
+	_in_combat = true
+
+
+func notify_combat_ended(re_select_id: int = -1) -> void:
+	## 公开接口：通知 unit_manager 战斗结束（供 NeutralUnitManager2D 调用）
+	## re_select_id >= 0 时自动选中该单位
+	_in_combat = false
+	_combat_data = {}
+	if re_select_id >= 0:
+		_select_unit(re_select_id)
+	else:
+		_clear_selection()
+
+
+func play_hit_effect_at(grid_pos: Vector2i, damage: int, unit_id: int = -1) -> void:
+	## 公开接口：在指定格播放受击视觉效果（供 NeutralUnitManager2D 调用）
+	## 传入 unit_id 时触发完整效果（闪白 + shake + 飘字）
+	if unit_id >= 0:
+		_play_hit_effect(unit_id, grid_pos, damage)
+	else:
+		_show_damage_text(grid_pos, damage)
+
+
+func remove_unit_by_id(uid: int) -> void:
+	## 公开接口：按 ID 移除单位（供 NeutralUnitManager2D 战斗后调用）
+	for i in range(_units.size() - 1, -1, -1):
+		if _units[i]["id"] == uid:
+			_units.remove_at(i)
+			break
+	queue_redraw()
+
+
+func get_unit_atk_value(uid: int) -> int:
+	## 公开接口：获取单位的攻击力（供 NeutralUnitManager2D 战斗使用）
+	var unit := _get_unit_by_id(uid)
+	if unit.is_empty():
+		return 0
+	var data := _get_unit_data(unit)
+	return data.atk
 
 
 func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) -> int:
@@ -680,6 +783,11 @@ func _is_tile_empty(gx: int, gy: int) -> bool:
 	var bmgr = get_parent().get_node("BuildingManager2D")
 	if bmgr and bmgr.is_tile_occupied(gx, gy):
 		return false
+	# 中立单位占用检查
+	var numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+	if numgr and numgr.has_method("get_neutral_unit_at"):
+		if not numgr.get_neutral_unit_at(pos).is_empty():
+			return false
 	return true
 
 

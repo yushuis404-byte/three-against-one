@@ -345,6 +345,12 @@ func _load_editor_terrain_map() -> bool:
 	var rows: Array = data.get("terrain", [])
 	if rows.size() != GRID_ROWS:
 		return false
+
+	# 保存程序生成的 zone_grid，加载后恢复（editor_terrain_map.json 只存了地形数据）
+	var saved_zone: Array = []
+	for row in zone_grid:
+		saved_zone.append(row.duplicate())
+
 	terrain_grid = []
 	zone_grid = []
 	for y in range(GRID_ROWS):
@@ -354,7 +360,12 @@ func _load_editor_terrain_map() -> bool:
 		for x in range(GRID_COLS):
 			var terrain_type: int = int(source_row[x])
 			terrain_row.append(terrain_type)
-			zone_row.append(ZoneTag.OCEAN if terrain_type == TerrainData.Terrain.WATER else ZoneTag.UNASSIGNED)
+			if terrain_type == TerrainData.Terrain.WATER:
+				zone_row.append(ZoneTag.OCEAN)
+			elif y < saved_zone.size() and x < saved_zone[y].size():
+				zone_row.append(saved_zone[y][x])
+			else:
+				zone_row.append(ZoneTag.UNASSIGNED)
 		terrain_grid.append(terrain_row)
 		zone_grid.append(zone_row)
 	return true
@@ -1112,6 +1123,12 @@ func get_terrain_at(x: int, y: int) -> int:
 	if x < 0 or x >= GRID_COLS or y < 0 or y >= GRID_ROWS:
 		return TerrainData.Terrain.VOID
 	return terrain_grid[y][x]
+
+
+func get_zone_at(x: int, y: int) -> int:
+	if x < 0 or x >= GRID_COLS or y < 0 or y >= GRID_ROWS:
+		return -1
+	return zone_grid[y][x]
 
 
 func grid_to_world(grid_x: int, grid_y: int) -> Vector2:
