@@ -1,105 +1,55 @@
 {
   "modules": {
-    "P0": {
+    "F0": {
       "status": "done",
-      "notes": "当前 v0.3 原型作为行为参考版，不继续在旧结构上硬堆大系统。"
+      "notes": "当前 v0.3 原型作为行为参考版本，不继续在旧结构里硬堆大型系统。"
     },
-    "P1": {
+    "F1": {
       "status": "done",
-      "notes": "已新增 scripts/templates/ 下的模板工具包，并挂载 TemplateRegistry。"
+      "notes": "已完成模板工具包底座：TemplateRegistry、UnitTemplate、BuildingTemplate、ResourceNodeTemplate、ProductionRecipe。"
     },
-    "P2": {
+    "F2": {
       "status": "done",
-      "notes": "已新增 docs/template_toolkit.md。"
+      "notes": "已完成初始单位、招募队列、中立单位的模板化接入。"
     },
-    "U1": {
+    "F3": {
       "status": "done",
-      "notes": "已完成：UnitManager 初始单位优先从 TemplateRegistry 读取 unit.worker / unit.scout / unit.guard，读取失败时回退旧 UnitData。"
+      "notes": "已完成编辑器地图可视化、地形/水岸画笔、预览、保存加载、5步撤回等工具。"
     },
-    "U2": {
+    "L1": {
       "status": "done",
-      "notes": "已完成混合模式：单位实例保存 template_id，同时保留 data 作为兼容；绘制、移动、视野、战斗和选中 UI 通过 UnitManager helper 获取模板属性。"
+      "notes": "新策划焦点已确定：精灵=信息，矮人=空间，兽人=战争。"
     },
-    "U3": {
+    "L2": {
       "status": "done",
-      "notes": "已完成第一版：点击招募建筑打开 RecruitUI，可选单位与数量，提交后进入建筑招募队列；按玩家回合开始推进剩余回合，到 0 后在建筑周围出兵。"
+      "notes": "已新增 LordTemplate、TemplateRegistry 领主加载/查询、默认三文明领主样例与文档说明。"
     },
-    "U4": {
+    "L3": {
+      "status": "done",
+      "notes": "已新增三个路线状态节点：ElfCivilizationState、DwarfCivilizationState、OrcCivilizationState。每个节点会从默认领主汇总三轴值、解锁列表和被动修正。"
+    },
+    "L4": {
       "status": "current",
-      "notes": "下一步：用 UnitTemplate.create_variant() 做精灵/矮人/兽人的阵营兵种差异。"
+      "notes": "下一步：做文明规则服务，给其他系统提供统一查询入口。"
     },
-    "B1R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "B2R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "B3R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "B4R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "E1R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "E2R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "E3R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "E4R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "A1R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "A2R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "A3R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "A4R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "C4R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "D1R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "D4R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "E5R": {
-      "status": "pending",
-      "notes": ""
-    },
-    "AI1": {
-      "status": "pending",
-      "notes": ""
-    },
-    "N1": {
-      "status": "pending",
-      "notes": ""
-    }
+    "L5": { "status": "pending", "notes": "" },
+    "E1": { "status": "pending", "notes": "" },
+    "E2": { "status": "pending", "notes": "" },
+    "E3": { "status": "pending", "notes": "" },
+    "E4": { "status": "pending", "notes": "" },
+    "D1": { "status": "pending", "notes": "" },
+    "D2": { "status": "pending", "notes": "" },
+    "D3": { "status": "pending", "notes": "" },
+    "D4": { "status": "pending", "notes": "" },
+    "O1": { "status": "pending", "notes": "" },
+    "O2": { "status": "pending", "notes": "" },
+    "O3": { "status": "pending", "notes": "" },
+    "O4": { "status": "pending", "notes": "" },
+    "X1": { "status": "pending", "notes": "" },
+    "X2": { "status": "pending", "notes": "" },
+    "X3": { "status": "pending", "notes": "" },
+    "X4": { "status": "pending", "notes": "" },
+    "X5": { "status": "pending", "notes": "" }
   },
-  "currentId": "D4R"
+  "currentId": "L4"
 }

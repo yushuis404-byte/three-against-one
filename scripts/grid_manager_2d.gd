@@ -14,10 +14,34 @@ const WATER_SINGLE_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_ce
 const WATER_DOUBLE_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_center2x.png"
 const WATER_SIDE_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_Middle.png"
 const WATER_TOP_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_Middle_up.png"
+const WATER_BOTTOM_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_Middle_down.png"
+const WATER_OUTCORNER_UP_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_outcorner_up.png"
 const WATER_OUTCORNER_DOWN_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_outcorner_down.png"
 const WATER_OUTCORNER_UP_DOUBLE_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_outcorner_up2x.png"
 const WATER_U_BOTTOM_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_U_up.png"
+const WATER_U_LEFT_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_U_left.png"
 const EDITOR_TERRAIN_MAP_PATH := "res://data/editor_terrain_map.json"
+const CLIF_NONE := 0
+const CLIF_MIDDLE_RIGHT := 1
+const CLIF_MIDDLE_LEFT := 2
+const CLIF_MIDDLE_UP := 3
+const CLIF_MIDDLE_DOWN := 4
+const CLIF_CORNER_UP_RIGHT := 5
+const CLIF_CORNER_UP_LEFT := 6
+const CLIF_CORNER_DOWN_RIGHT := 7
+const CLIF_CORNER_DOWN_LEFT := 8
+const CLIF_OUTCORNER_UP_LEFT := 9
+const CLIF_OUTCORNER_UP_RIGHT := 10
+const CLIF_OUTCORNER_UP_DOUBLE := 11
+const CLIF_OUTCORNER_DOWN_LEFT := 12
+const CLIF_OUTCORNER_DOWN_RIGHT := 13
+const CLIF_U_UP := 14
+const CLIF_CENTER := 15
+const CLIF_CENTER_2X_VERTICAL := 16
+const CLIF_U_UP_MIRROR := 17
+const CLIF_U_LEFT := 18
+const CLIF_U_LEFT_MIRROR := 19
+const CLIF_ERASER := 99
 
 const GRID_SIZE := 56    # 陆地网格（6阶段管线使用）
 const GRID_COLS := 100   # 总网格宽（陆地+左右海洋）
@@ -99,15 +123,39 @@ const BAY_PENINSULA_INTENSITY := 0.7
 		editor_paint_enabled = value
 		if Engine.is_editor_hint():
 			set_process_input(value)
+@export_enum("Terrain", "Clif")
+var editor_brush_layer: int = 0:
+	set(value):
+		editor_brush_layer = value
+		if Engine.is_editor_hint():
+			_update_editor_brush_preview()
 @export_enum("Void", "Water", "Dwarf Plain", "Dwarf Mountain", "Elf Forest", "Elf Glade", "Orc Wasteland", "Orc Swamp", "Dragon Mount", "Dragon Nest", "Corridor", "Ruins")
 var editor_brush_terrain: int = TerrainData.Terrain.WATER:
 	set(value):
 		editor_brush_terrain = value
 		if Engine.is_editor_hint():
+			editor_brush_layer = 0
+			_update_editor_brush_preview()
+@export_enum("Erase", "Middle Right", "Middle Left Mirror", "Middle Up", "Middle Down", "Corner Up", "Corner Up Mirror", "Corner Down", "Corner Down Mirror", "Outcorner Up", "Outcorner Up Mirror", "Outcorner Up Double", "Outcorner Down", "Outcorner Down Mirror", "U Up", "Center", "Center 2x Vertical", "U Down Mirror", "U Left", "U Left Mirror")
+var editor_brush_clif: int = CLIF_MIDDLE_RIGHT:
+	set(value):
+		editor_brush_clif = value
+		if Engine.is_editor_hint():
+			editor_brush_layer = 1
 			_update_editor_brush_preview()
 @export var editor_brush_preview: Texture2D = null
 @export_range(1, 8, 1) var editor_brush_size := 1
 @export var editor_log_paint_cells := false
+@export var auto_water_cliffs_enabled := false:
+	set(value):
+		auto_water_cliffs_enabled = value
+		if Engine.is_editor_hint():
+			queue_redraw()
+@export var editor_undo_paint := false:
+	set(value):
+		editor_undo_paint = false
+		if value and Engine.is_editor_hint():
+			_undo_editor_paint()
 @export var editor_save_map := false:
 	set(value):
 		editor_save_map = false
@@ -118,12 +166,14 @@ var editor_brush_terrain: int = TerrainData.Terrain.WATER:
 		editor_load_map = false
 		if value and Engine.is_editor_hint():
 			_load_editor_terrain_map()
+			_clear_editor_undo_stack()
 			queue_redraw()
 @export var editor_regenerate_map := false:
 	set(value):
 		editor_regenerate_map = false
 		if value and Engine.is_editor_hint():
 			_generate_terrain()
+			_clear_editor_undo_stack()
 			queue_redraw()
 
 enum ZoneTag {
@@ -144,6 +194,7 @@ enum ZoneTag {
 
 var terrain_grid: Array = []
 var zone_grid: Array = []
+var clif_grid: Array = []
 var _water_middle_texture: Texture2D = null
 var _water_corner_texture: Texture2D = null
 var _water_corner_up_texture: Texture2D = null
@@ -151,10 +202,15 @@ var _water_single_texture: Texture2D = null
 var _water_double_texture: Texture2D = null
 var _water_side_texture: Texture2D = null
 var _water_top_texture: Texture2D = null
+var _water_bottom_texture: Texture2D = null
+var _water_outcorner_up_texture: Texture2D = null
 var _water_outcorner_down_texture: Texture2D = null
 var _water_outcorner_up_double_texture: Texture2D = null
 var _water_u_bottom_texture: Texture2D = null
+var _water_u_left_texture: Texture2D = null
 var _editor_preview_refresh_frames := 0
+var _editor_undo_stack: Array[Dictionary] = []
+var _editor_paint_stroke_active := false
 
 
 func _enter_tree() -> void:
@@ -171,9 +227,12 @@ func _ready() -> void:
 	_water_double_texture = _load_image_texture(WATER_DOUBLE_PATH, "Double water")
 	_water_side_texture = _load_image_texture(WATER_SIDE_PATH, "Water side")
 	_water_top_texture = _load_image_texture(WATER_TOP_PATH, "Water top")
+	_water_bottom_texture = _load_image_texture(WATER_BOTTOM_PATH, "Water bottom")
+	_water_outcorner_up_texture = _load_image_texture(WATER_OUTCORNER_UP_PATH, "Water outcorner up")
 	_water_outcorner_down_texture = _load_image_texture(WATER_OUTCORNER_DOWN_PATH, "Water outcorner down")
 	_water_outcorner_up_double_texture = _load_image_texture(WATER_OUTCORNER_UP_DOUBLE_PATH, "Water outcorner up double")
 	_water_u_bottom_texture = _load_image_texture(WATER_U_BOTTOM_PATH, "Water U bottom")
+	_water_u_left_texture = _load_image_texture(WATER_U_LEFT_PATH, "Water U left")
 	if Engine.is_editor_hint():
 		set_process_input(editor_paint_enabled)
 		set_process(true)
@@ -222,6 +281,12 @@ func _load_image_texture(path: String, label: String) -> Texture2D:
 func _update_editor_brush_preview() -> void:
 	if not Engine.is_editor_hint():
 		return
+	if editor_brush_layer == 1:
+		editor_brush_preview = _get_clif_brush_preview(editor_brush_clif)
+		if editor_brush_preview == null:
+			editor_brush_preview = _make_color_preview(Color(0.0, 0.0, 0.0, 0.0))
+		notify_property_list_changed()
+		return
 	match editor_brush_terrain:
 		TerrainData.Terrain.WATER:
 			editor_brush_preview = _load_image_texture(WATER_MIDDLE_PATH, "Brush water preview")
@@ -230,6 +295,58 @@ func _update_editor_brush_preview() -> void:
 		_:
 			editor_brush_preview = _make_color_preview(TerrainData.get_color(editor_brush_terrain as TerrainData.Terrain))
 	notify_property_list_changed()
+
+
+func _get_clif_brush_texture(clif_type: int) -> Texture2D:
+	match clif_type:
+		CLIF_MIDDLE_RIGHT: return _water_side_texture
+		CLIF_MIDDLE_LEFT: return _water_side_texture
+		CLIF_MIDDLE_UP: return _water_top_texture
+		CLIF_MIDDLE_DOWN: return _water_bottom_texture
+		CLIF_CORNER_UP_RIGHT: return _water_corner_up_texture
+		CLIF_CORNER_UP_LEFT: return _water_corner_up_texture
+		CLIF_CORNER_DOWN_RIGHT: return _water_corner_texture
+		CLIF_CORNER_DOWN_LEFT: return _water_corner_texture
+		CLIF_OUTCORNER_UP_LEFT: return _water_outcorner_up_texture
+		CLIF_OUTCORNER_UP_RIGHT: return _water_outcorner_up_texture
+		CLIF_OUTCORNER_UP_DOUBLE: return _water_outcorner_up_double_texture
+		CLIF_OUTCORNER_DOWN_LEFT: return _water_outcorner_down_texture
+		CLIF_OUTCORNER_DOWN_RIGHT: return _water_outcorner_down_texture
+		CLIF_U_UP: return _water_u_bottom_texture
+		CLIF_U_UP_MIRROR: return _water_u_bottom_texture
+		CLIF_U_LEFT: return _water_u_left_texture
+		CLIF_U_LEFT_MIRROR: return _water_u_left_texture
+		CLIF_CENTER: return _water_single_texture
+		CLIF_CENTER_2X_VERTICAL: return _water_double_texture
+	return null
+
+
+func _get_clif_brush_preview(clif_type: int) -> Texture2D:
+	var texture: Texture2D = _get_clif_brush_texture(clif_type)
+	if texture == null:
+		return _make_color_preview(Color(0.0, 0.0, 0.0, 0.15))
+	match clif_type:
+		CLIF_MIDDLE_LEFT, CLIF_CORNER_UP_LEFT, CLIF_CORNER_DOWN_LEFT, CLIF_OUTCORNER_UP_RIGHT, CLIF_OUTCORNER_DOWN_RIGHT, CLIF_U_LEFT_MIRROR:
+			return _make_flipped_preview(texture)
+		CLIF_U_UP_MIRROR:
+			return _make_flipped_v_preview(texture)
+	return texture
+
+
+func _make_flipped_preview(texture: Texture2D) -> Texture2D:
+	var image: Image = texture.get_image()
+	if image == null or image.is_empty():
+		return texture
+	image.flip_x()
+	return ImageTexture.create_from_image(image)
+
+
+func _make_flipped_v_preview(texture: Texture2D) -> Texture2D:
+	var image: Image = texture.get_image()
+	if image == null or image.is_empty():
+		return texture
+	image.flip_y()
+	return ImageTexture.create_from_image(image)
 
 
 func _make_color_preview(color: Color) -> Texture2D:
@@ -245,10 +362,20 @@ func _make_color_preview(color: Color) -> Texture2D:
 func _input(event: InputEvent) -> void:
 	if not Engine.is_editor_hint() or not editor_paint_enabled or not editor_map_visible:
 		return
+	if event is InputEventKey:
+		var key_event: InputEventKey = event
+		if key_event.pressed and key_event.ctrl_pressed and key_event.keycode == KEY_Z:
+			_undo_editor_paint()
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventMouseButton:
 		var mouse_event: InputEventMouseButton = event
-		if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
-			_paint_editor_cell_at_mouse()
+		if mouse_event.button_index == MOUSE_BUTTON_LEFT:
+			if mouse_event.pressed:
+				_begin_editor_paint_stroke()
+				_paint_editor_cell_at_mouse()
+			else:
+				_editor_paint_stroke_active = false
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		var motion_event: InputEventMouseMotion = event
@@ -264,7 +391,10 @@ func editor_handle_canvas_paint_event(event: InputEvent) -> bool:
 		var mouse_event: InputEventMouseButton = event
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT:
 			if mouse_event.pressed:
+				_begin_editor_paint_stroke()
 				_paint_editor_cell_at_mouse()
+			else:
+				_editor_paint_stroke_active = false
 			return true
 	elif event is InputEventMouseMotion:
 		var motion_event: InputEventMouseMotion = event
@@ -272,6 +402,11 @@ func editor_handle_canvas_paint_event(event: InputEvent) -> bool:
 			_paint_editor_cell_at_mouse()
 			return true
 	return false
+
+
+func editor_undo_from_plugin() -> void:
+	if Engine.is_editor_hint():
+		_undo_editor_paint()
 
 
 func _ensure_editor_terrain() -> void:
@@ -287,6 +422,43 @@ func _paint_editor_cell_at_mouse() -> void:
 	_paint_editor_cell(cell)
 
 
+func _begin_editor_paint_stroke() -> void:
+	if _editor_paint_stroke_active:
+		return
+	_ensure_editor_terrain()
+	_push_editor_undo_snapshot()
+	_editor_paint_stroke_active = true
+
+
+func _push_editor_undo_snapshot() -> void:
+	var snapshot: Dictionary = {
+		"terrain": terrain_grid.duplicate(true),
+		"zone": zone_grid.duplicate(true),
+		"clif": clif_grid.duplicate(true),
+	}
+	_editor_undo_stack.append(snapshot)
+	while _editor_undo_stack.size() > 5:
+		_editor_undo_stack.pop_front()
+
+
+func _undo_editor_paint() -> void:
+	if _editor_undo_stack.is_empty():
+		print("[Grid2D] Editor undo stack is empty.")
+		return
+	var snapshot: Dictionary = _editor_undo_stack.pop_back()
+	terrain_grid = (snapshot.get("terrain", []) as Array).duplicate(true)
+	zone_grid = (snapshot.get("zone", []) as Array).duplicate(true)
+	clif_grid = (snapshot.get("clif", []) as Array).duplicate(true)
+	_editor_paint_stroke_active = false
+	queue_redraw()
+	print("[Grid2D] Editor paint undo. Remaining steps: %d" % _editor_undo_stack.size())
+
+
+func _clear_editor_undo_stack() -> void:
+	_editor_undo_stack.clear()
+	_editor_paint_stroke_active = false
+
+
 func _paint_editor_cell(cell: Vector2i) -> void:
 	if cell.x < 0 or cell.x >= GRID_COLS or cell.y < 0 or cell.y >= GRID_ROWS:
 		return
@@ -297,8 +469,11 @@ func _paint_editor_cell(cell: Vector2i) -> void:
 		for x in range(cell.x - radius, cell.x + radius + 1):
 			if x < 0 or x >= GRID_COLS or y < 0 or y >= GRID_ROWS:
 				continue
-			terrain_grid[y][x] = editor_brush_terrain
-			zone_grid[y][x] = ZoneTag.OCEAN if editor_brush_terrain == TerrainData.Terrain.WATER else ZoneTag.UNASSIGNED
+			if editor_brush_layer == 1:
+				clif_grid[y][x] = editor_brush_clif
+			else:
+				terrain_grid[y][x] = editor_brush_terrain
+				zone_grid[y][x] = ZoneTag.OCEAN if editor_brush_terrain == TerrainData.Terrain.WATER else ZoneTag.UNASSIGNED
 	queue_redraw()
 
 
@@ -312,15 +487,20 @@ func _editor_local_to_grid(local_position: Vector2) -> Vector2i:
 func _save_editor_terrain_map() -> void:
 	_ensure_editor_terrain()
 	var rows: Array = []
+	var clif_rows: Array = []
 	for y in range(GRID_ROWS):
 		var row: Array = []
+		var clif_row: Array = []
 		for x in range(GRID_COLS):
 			row.append(int(terrain_grid[y][x]))
+			clif_row.append(int(clif_grid[y][x]))
 		rows.append(row)
+		clif_rows.append(clif_row)
 	var payload := {
 		"cols": GRID_COLS,
 		"rows": GRID_ROWS,
 		"terrain": rows,
+		"clif": clif_rows,
 	}
 	var file := FileAccess.open(EDITOR_TERRAIN_MAP_PATH, FileAccess.WRITE)
 	if file == null:
@@ -345,29 +525,26 @@ func _load_editor_terrain_map() -> bool:
 	var rows: Array = data.get("terrain", [])
 	if rows.size() != GRID_ROWS:
 		return false
-
-	# 保存程序生成的 zone_grid，加载后恢复（editor_terrain_map.json 只存了地形数据）
-	var saved_zone: Array = []
-	for row in zone_grid:
-		saved_zone.append(row.duplicate())
-
 	terrain_grid = []
 	zone_grid = []
+	clif_grid = []
+	var clif_rows: Array = data.get("clif", [])
 	for y in range(GRID_ROWS):
 		var source_row: Array = rows[y]
 		var terrain_row: Array = []
 		var zone_row: Array = []
+		var clif_row: Array = []
+		var source_clif_row: Array = []
+		if clif_rows.size() == GRID_ROWS:
+			source_clif_row = clif_rows[y]
 		for x in range(GRID_COLS):
 			var terrain_type: int = int(source_row[x])
 			terrain_row.append(terrain_type)
-			if terrain_type == TerrainData.Terrain.WATER:
-				zone_row.append(ZoneTag.OCEAN)
-			elif y < saved_zone.size() and x < saved_zone[y].size():
-				zone_row.append(saved_zone[y][x])
-			else:
-				zone_row.append(ZoneTag.UNASSIGNED)
+			zone_row.append(ZoneTag.OCEAN if terrain_type == TerrainData.Terrain.WATER else ZoneTag.UNASSIGNED)
+			clif_row.append(int(source_clif_row[x]) if source_clif_row.size() == GRID_COLS else CLIF_NONE)
 		terrain_grid.append(terrain_row)
 		zone_grid.append(zone_row)
+		clif_grid.append(clif_row)
 	return true
 
 
@@ -378,6 +555,7 @@ func _load_editor_terrain_map() -> bool:
 func _generate_terrain() -> void:
 	terrain_grid = []
 	zone_grid = []
+	clif_grid = []
 	for y in range(GRID_SIZE):
 		var trow: Array = []
 		var zrow: Array = []
@@ -418,6 +596,16 @@ func _generate_terrain() -> void:
 
 	terrain_grid = expanded_terrain
 	zone_grid = expanded_zone
+	_init_clif_grid()
+
+
+func _init_clif_grid() -> void:
+	clif_grid = []
+	for y in range(GRID_ROWS):
+		var row: Array = []
+		for x in range(GRID_COLS):
+			row.append(CLIF_NONE)
+		clif_grid.append(row)
 
 	# Expand resource grid to match expanded terrain
 	resource_mgr.expand_grid(GRID_COLS, GRID_ROWS, LAND_OFFSET_X)
@@ -840,11 +1028,49 @@ func _draw() -> void:
 				var glow := Rect2(world_pos.x - ts * 0.6, world_pos.y - ts * 0.6, ts * 1.2, ts * 1.2)
 				draw_rect(glow, Color(1.0, 0.2, 0.05, 0.35), false, 2.0)
 
+	_draw_clif_layer()
+
 	if SHOW_SPAWN_MARKERS:
 		_draw_spawn_markers()
 
 
+func _draw_clif_layer() -> void:
+	if clif_grid.is_empty():
+		return
+	var ts := TILE_SIZE - 0.5
+	var half := ts / 2.0
+	for y in range(GRID_ROWS):
+		for x in range(GRID_COLS):
+			var clif_type: int = int(clif_grid[y][x])
+			if clif_type == CLIF_NONE:
+				continue
+			var world_pos := grid_to_world(x, y)
+			var rect := Rect2(world_pos.x - half, world_pos.y - half, ts, ts)
+			_draw_clif_tile(clif_type, rect)
+
+
+func _draw_clif_tile(clif_type: int, rect: Rect2) -> void:
+	var texture: Texture2D = _get_clif_brush_texture(clif_type)
+	if texture == null:
+		return
+	match clif_type:
+		CLIF_MIDDLE_LEFT, CLIF_CORNER_UP_LEFT, CLIF_CORNER_DOWN_LEFT, CLIF_OUTCORNER_UP_RIGHT, CLIF_OUTCORNER_DOWN_RIGHT, CLIF_U_LEFT_MIRROR:
+			_draw_texture_flipped_h(texture, rect)
+		CLIF_U_UP_MIRROR:
+			_draw_texture_flipped_v(texture, rect)
+		CLIF_CENTER_2X_VERTICAL:
+			draw_texture_rect(texture, Rect2(rect.position, Vector2(rect.size.x, rect.size.y * 2.0)), false)
+		_:
+			draw_texture_rect(texture, rect, false)
+
+
 func _draw_water_tile(x: int, y: int, rect: Rect2) -> void:
+	if not auto_water_cliffs_enabled:
+		if _water_middle_texture != null:
+			draw_texture_rect(_water_middle_texture, rect, false)
+		else:
+			draw_rect(rect, Color(0.1, 0.45, 0.85))
+		return
 	if _is_double_water_tail(x, y):
 		return
 	if _is_vertical_double_water_head(x, y):
@@ -1127,8 +1353,10 @@ func get_terrain_at(x: int, y: int) -> int:
 
 func get_zone_at(x: int, y: int) -> int:
 	if x < 0 or x >= GRID_COLS or y < 0 or y >= GRID_ROWS:
-		return -1
-	return zone_grid[y][x]
+		return ZoneTag.UNASSIGNED
+	if zone_grid.is_empty():
+		return ZoneTag.UNASSIGNED
+	return int(zone_grid[y][x])
 
 
 func grid_to_world(grid_x: int, grid_y: int) -> Vector2:

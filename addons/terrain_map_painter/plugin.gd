@@ -14,6 +14,11 @@ func _forward_canvas_gui_input(event: InputEvent) -> bool:
 	var grid_manager: Node = _get_selected_grid_manager()
 	if grid_manager == null:
 		return false
+	if event is InputEventKey:
+		var key_event: InputEventKey = event
+		if key_event.pressed and key_event.ctrl_pressed and key_event.keycode == KEY_Z:
+			grid_manager.call("editor_undo_from_plugin")
+			return true
 	return bool(grid_manager.call("editor_handle_canvas_paint_event", event))
 
 

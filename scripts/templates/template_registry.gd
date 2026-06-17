@@ -6,16 +6,19 @@ const GameTemplateScript := preload("res://scripts/templates/game_template.gd")
 const UnitTemplateScript := preload("res://scripts/templates/unit_template.gd")
 const BuildingTemplateScript := preload("res://scripts/templates/building_template.gd")
 const ResourceNodeTemplateScript := preload("res://scripts/templates/resource_node_template.gd")
+const LordTemplateScript := preload("res://scripts/templates/lord_template.gd")
 const DefaultTemplateLibraryScript := preload("res://scripts/templates/default_template_library.gd")
 
 @export var unit_template_dir: String = "res://data/templates/units"
 @export var building_template_dir: String = "res://data/templates/buildings"
 @export var resource_template_dir: String = "res://data/templates/resources"
+@export var lord_template_dir: String = "res://data/templates/lords"
 @export var include_code_defaults: bool = true
 
 var units: Dictionary = {}
 var buildings: Dictionary = {}
 var resources: Dictionary = {}
+var lords: Dictionary = {}
 
 
 func _ready() -> void:
@@ -26,15 +29,18 @@ func load_all() -> void:
 	units.clear()
 	buildings.clear()
 	resources.clear()
+	lords.clear()
 
 	if include_code_defaults:
 		var defaults = DefaultTemplateLibraryScript.new()
 		units.merge(defaults.make_unit_templates(), true)
 		buildings.merge(defaults.make_building_templates(units), true)
+		lords.merge(defaults.make_lord_templates(), true)
 
 	_load_templates_from_dir(unit_template_dir, "unit", units)
 	_load_templates_from_dir(building_template_dir, "building", buildings)
 	_load_templates_from_dir(resource_template_dir, "resource", resources)
+	_load_templates_from_dir(lord_template_dir, "lord", lords)
 
 
 func get_unit(id: String) -> Resource:
@@ -47,6 +53,10 @@ func get_building(id: String) -> Resource:
 
 func get_resource_node(id: String) -> Resource:
 	return resources.get(id, null)
+
+
+func get_lord(id: String) -> Resource:
+	return lords.get(id, null)
 
 
 func get_units_with_tag(tag: String) -> Array:
@@ -64,6 +74,24 @@ func get_buildings_with_tag(tag: String) -> Array:
 		var building_template: Resource = template
 		if building_template.has_tag(tag):
 			result.append(building_template)
+	return result
+
+
+func get_lords_with_tag(tag: String) -> Array:
+	var result: Array = []
+	for template in lords.values():
+		var lord_template: Resource = template
+		if lord_template.has_tag(tag):
+			result.append(lord_template)
+	return result
+
+
+func get_lords_by_civilization(civilization: int) -> Array:
+	var result: Array = []
+	for template in lords.values():
+		var lord_template: Resource = template
+		if int(lord_template.get("civilization")) == civilization:
+			result.append(lord_template)
 	return result
 
 
@@ -93,4 +121,6 @@ func _is_expected_template(resource: Resource, expected_kind: String) -> bool:
 			return resource.get_script() == BuildingTemplateScript
 		"resource":
 			return resource.get_script() == ResourceNodeTemplateScript
+		"lord":
+			return resource.get_script() == LordTemplateScript
 	return false
