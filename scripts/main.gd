@@ -97,8 +97,9 @@ func _setup_game() -> void:
 	goblin_market_ui.set_resource_tracker(resource_tracker)
 	goblin_market_ui.set_neutral_manager(neutral_unit_manager)
 	goblin_market_ui.hide()
+	unit_manager.hidden_trader_discovered.connect(_on_hidden_trader_discovered)
 
-	# 单位信息面板初始化
+		# 单位信息面板初始化
 	_init_unit_info_panel()
 
 	# 所有信号就绪后启动第一回合
@@ -269,6 +270,11 @@ func _on_end_turn() -> void:
 		return
 	turn_manager.end_player_turn(turn_manager.current_player)
 
+
+
+func _on_hidden_trader_discovered(faction: int) -> void:
+	var mult: float = neutral_unit_manager.get_price_multiplier(faction)
+	goblin_market_ui.show_market(faction, mult)
 
 func _on_neutral_combat_started() -> void:
 	debug_label.text = "战斗中..."

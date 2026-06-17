@@ -7,6 +7,7 @@ signal unit_selected(unit_data: Dictionary)
 signal selection_cleared()
 signal combat_started()
 signal combat_ended()
+signal hidden_trader_discovered(faction: int)
 
 var grid_cols := 100
 var grid_rows := 56
@@ -239,9 +240,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				if numgr and numgr.has_method("get_neutral_unit_at"):
 					var ntarget: Dictionary = numgr.get_neutral_unit_at(gpos)
 					if not ntarget.is_empty() and _is_adjacent(src["grid_pos"], ntarget.get("grid_pos", Vector2i(-1, -1))):
-						if numgr.has_method("engage_combat") and not numgr.is_in_combat():
-							numgr.engage_combat(_selected_id, ntarget["id"])
-							return
+						var behavior: String = ""
+						if numgr.has_method("get_ai_data_for"):
+							behavior = numgr.get_ai_data_for(ntarget["id"]).get("behavior", "")
+						if behavior == "hidden_trader":
+							# 花费 1 AP 触发交易
+							if _turn_manager and _turn_manager.spend_ap(_turn_manager.current_player, 1):
+								numgr.remove_neutral_unit(ntarget["id"])
+								hidden_trader_discovered.emit(_turn_manager.current_player)
+								return
+						else:
+							if numgr.has_method("engage_combat") and not numgr.is_in_combat():
+								numgr.engage_combat(_selected_id, ntarget["id"])
+								return
 
 
 	# 检查是否点击了己方单位（选择）
@@ -314,6 +325,11 @@ func _move_selected_to(target: Vector2i) -> void:
 				var cp: int = _turn_manager.current_player
 				fog_mgr.reveal_area(cp, target.x, target.y, data.vision)
 
+			# 通知中立单位管理器重绘（新揭示区域的中立单位立即显示）
+			var numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+			if numgr:
+				numgr.queue_redraw()
+
 			# 工人到达资源格 → 通知采集管理器
 			var gather_mgr = get_parent().get_node("GatheringManager2D")
 			if gather_mgr and gather_mgr.has_method("start_gather"):
@@ -324,9 +340,6 @@ func _move_selected_to(target: Vector2i) -> void:
 						gather_mgr.start_gather(u["faction"], target, gather_info)
 
 			# 移动后自动取消选择
-			# 检查相邻隐藏商队
-			_trigger_hidden_trader_if_adjacent(target, u["faction"])
-
 			_clear_selection()
 			queue_redraw()
 			break
@@ -347,8 +360,8 @@ func _trigger_hidden_trader_if_adjacent(target: Vector2i, faction: int) -> void:
 			var ai: Dictionary = numgr.get_ai_data_for(nu.get("id", -1))
 			if ai.get("behavior", "") == "hidden_trader":
 				print("[中立] 发现隐藏商队，触发交易 (阵营 %d)" % faction)
-				# TODO: Stage 3 弹出交易面板
 				numgr.remove_neutral_unit(nu["id"])
+				hidden_trader_discovered.emit(faction)
 				return
 
 func _calc_reachable(unit: Dictionary) -> Array:

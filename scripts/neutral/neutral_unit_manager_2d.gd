@@ -789,39 +789,60 @@ func _place_wyverns() -> void:
 
 		print("[中立] %s 放置完毕: %d 只" % [name, placed])
 func _place_wander_traders() -> void:
-	## 流浪商队：放置在缓冲区非出生点附近
-	var zones := [10, 11, 12]  # EMERALD_WOODLANDS, RIFT_HIGHLANDS, SCORCHED_BADLANDS
+	## 流浪商队：放置在阵营版图交界处，远离巨龙巢穴
 	var count := 6
 	var placed := 0
+	var buffer_zones := [10, 11, 12]  # EMERALD_WOODLANDS, RIFT_HIGHLANDS, SCORCHED_BADLANDS
+	var territory_zones := [7, 8, 9]  # ELF, DWARF, ORC
+	var candidates: Array = []
+	var dirs := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
 
-	# 先分散到三个缓冲区
-	for zone in zones:
-		if placed >= count:
-			break
-		for attempt in range(100):
-			if placed >= count:
-				break
-			var x: int = int(_simple_hash(attempt, zone * 30, 0) * GRID_COLS)
-			var y: int = int(_simple_hash(attempt, zone * 30 + 1, 0) * GRID_ROWS)
-			x = (x + GRID_COLS) % GRID_COLS
-			y = (y + GRID_ROWS) % GRID_ROWS
+	# 扫描全图，收集位于版图交界处且远离中心的候选格
+	for y in range(GRID_ROWS):
+		for x in range(GRID_COLS):
 			var zt: int = _grid_manager.get_zone_at(x, y) if _grid_manager else -1
-			if zt != zone:
+			if zt not in buffer_zones:
+				continue
+			# 检查是否至少有一个邻格是阵营领土
+			var adj_to_territory := false
+			for dir in dirs:
+				var nx: int = x + dir.x
+				var ny: int = y + dir.y
+				if _in_bounds(nx, ny):
+					var nzt: int = _grid_manager.get_zone_at(nx, ny) if _grid_manager else -1
+					if nzt in territory_zones:
+						adj_to_territory = true
+						break
+			if not adj_to_territory:
+				continue
+			# 远离巨龙巢穴
+			var dist_from_center: int = abs(x - int(MOUNTAIN_CENTER.x)) + abs(y - int(MOUNTAIN_CENTER.y))
+			if dist_from_center < 12:
 				continue
 			var pos := Vector2i(x, y)
 			if not _is_valid_placement(pos):
 				continue
 			if _is_near_spawn(pos, 6):
 				continue
+			candidates.append(pos)
 
-			var uid := add_neutral_unit("neutral.trader.wander", "流浪商队", pos, 1, 1, 0, 0, 0, "hidden_trader", 0)
-			if uid >= 0:
-				placed += 1
+	# 确定性洗牌
+	for i in range(candidates.size()):
+		var j: int = int(_simple_hash(i, 42, 0) * candidates.size()) % candidates.size()
+		var tmp: Vector2i = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = tmp
 
-	print("[中立] 流浪商队放置: %d 个" % placed)
+	# 放置
+	for pos in candidates:
+		if placed >= count:
+			break
+		var uid := add_neutral_unit("neutral.trader.wander", "流浪商队", pos, 1, 1, 0, 0, 0, "hidden_trader", 0)
+		if uid >= 0:
+			placed += 1
 
+	print("[中立] 流浪商队放置: %d 个 (候选 %d)" % [placed, candidates.size()])
 
-# ========== 工具方法 ==========
 
 func _is_valid_placement(pos: Vector2i) -> bool:
 	if not _in_bounds(pos.x, pos.y):
