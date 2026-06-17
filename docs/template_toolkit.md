@@ -65,6 +65,16 @@ var vision_bonus: int = elf_route.get_modifier_int("unit_vision_bonus")
 var buildings: Array = elf_route.get_unlocked_buildings()
 ```
 
+`CivilizationRuleService` is the common query surface for other gameplay systems:
+
+```gdscript
+var rules = get_node("GameBoard/CivilizationRuleService")
+var vision_bonus: int = rules.get_modifier_int(player, "unit_vision_bonus")
+var can_build_tree: bool = rules.unlocks_building(player, "building.wind_ancient_tree")
+```
+
+`UI/CivilizationDebugPanel` is a temporary read-only panel that shows each player's route summary during development.
+
 The first default lords are:
 
 - `lord.elf.wind_seer`: information route, vision and scouting modifiers.
