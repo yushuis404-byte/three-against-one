@@ -19,6 +19,10 @@ enum UnitRole { WORKER, SCOUT, GUARD, ELITE, SIEGE, SPECIAL }
 @export var can_attack_units: bool = true
 @export var can_attack_buildings: bool = false
 
+# 中立单位 AI 行为
+@export var ai_behavior: String = ""       # "guard" | "hidden_trader" | "revenge"
+@export var aggro_range: int = 0
+
 
 static func make_basic(
 		p_id: String,

@@ -170,6 +170,72 @@ func make_unit_templates() -> Dictionary:
 	)
 	_config_recruit(orc_guard, [_amount("gold", 80), _amount("food", 30), _amount("iron", 10)], 1, 2, 2, true)
 
+	# ========== 中立生物模板 ==========
+	var wyvern_fire = _unit_basic(
+		"neutral.wyvern.fire",
+		"火焰亚龙",
+		UnitTemplateScript.UnitRole.GUARD,
+		1, 3, 6, 2,
+		["neutral", "wyvern", "fire"]
+	)
+	wyvern_fire.ai_behavior = "guard"
+	wyvern_fire.aggro_range = 2
+	wyvern_fire.can_attack_units = true
+	wyvern_fire.can_gather = false
+	wyvern_fire.can_garrison = false
+
+	var wyvern_frost = _unit_basic(
+		"neutral.wyvern.frost",
+		"冰霜亚龙",
+		UnitTemplateScript.UnitRole.GUARD,
+		1, 2, 8, 2,
+		["neutral", "wyvern", "frost"]
+	)
+	wyvern_frost.ai_behavior = "guard"
+	wyvern_frost.aggro_range = 2
+	wyvern_frost.can_attack_units = true
+	wyvern_frost.can_gather = false
+	wyvern_frost.can_garrison = false
+
+	var wyvern_toxic = _unit_basic(
+		"neutral.wyvern.toxic",
+		"毒液亚龙",
+		UnitTemplateScript.UnitRole.GUARD,
+		1, 3, 5, 2,
+		["neutral", "wyvern", "toxic"]
+	)
+	wyvern_toxic.ai_behavior = "guard"
+	wyvern_toxic.aggro_range = 2
+	wyvern_toxic.can_attack_units = true
+	wyvern_toxic.can_gather = false
+	wyvern_toxic.can_garrison = false
+
+	var trader = _unit_basic(
+		"neutral.trader.wander",
+		"流浪商队",
+		UnitTemplateScript.UnitRole.SPECIAL,
+		0, 0, 1, 0,
+		["neutral", "trader", "hidden"]
+	)
+	trader.ai_behavior = "hidden_trader"
+	trader.aggro_range = 0
+	trader.can_attack_units = false
+	trader.can_gather = false
+	trader.can_garrison = false
+
+	var goblin_revenge = _unit_basic(
+		"neutral.goblin.revenge",
+		"哥布林复仇队",
+		UnitTemplateScript.UnitRole.GUARD,
+		2, 2, 4, 2,
+		["neutral", "goblin", "revenge"]
+	)
+	goblin_revenge.ai_behavior = "revenge"
+	goblin_revenge.aggro_range = 3
+	goblin_revenge.can_attack_units = true
+	goblin_revenge.can_gather = false
+	goblin_revenge.can_garrison = false
+
 	return {
 		worker.id: worker,
 		scout.id: scout,
@@ -184,6 +250,11 @@ func make_unit_templates() -> Dictionary:
 		orc_worker.id: orc_worker,
 		orc_scout.id: orc_scout,
 		orc_guard.id: orc_guard,
+		wyvern_fire.id: wyvern_fire,
+		wyvern_frost.id: wyvern_frost,
+		wyvern_toxic.id: wyvern_toxic,
+		trader.id: trader,
+		goblin_revenge.id: goblin_revenge,
 	}
 
 

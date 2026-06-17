@@ -13,6 +13,8 @@ extends Node2D
 @onready var resource_panel: Panel = $UI/ResourcePanel
 @onready var building_ui: Control = $UI/BuildingUI
 @onready var recruit_ui: Control = $UI/RecruitUI
+@onready var neutral_unit_manager: Node2D = $GameBoard/NeutralUnitManager2D
+@onready var goblin_market_ui: Control = $UI/GoblinMarketUI
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
@@ -70,6 +72,12 @@ func _setup_game() -> void:
 	# 单位系统初始化
 	unit_manager.set_turn_manager(turn_manager)
 	unit_manager.place_initial_units()
+
+	# 中立生物系统初始化
+	neutral_unit_manager.set_turn_manager(turn_manager)
+	neutral_unit_manager.place_initial_neutral_units()
+	neutral_unit_manager.neutral_combat_started.connect(_on_neutral_combat_started)
+	neutral_unit_manager.neutral_combat_ended.connect(_on_neutral_combat_ended)
 	# 资源追踪系统初始化
 	resource_tracker.set_turn_manager(turn_manager)
 	resource_tracker.set_building_manager(building_manager)
@@ -84,6 +92,11 @@ func _setup_game() -> void:
 	building_ui.refresh(turn_manager.current_player)
 
 	recruit_ui.recruit_requested.connect(_on_recruit_requested)
+
+	# 哥布林商队面板初始化
+	goblin_market_ui.set_resource_tracker(resource_tracker)
+	goblin_market_ui.set_neutral_manager(neutral_unit_manager)
+	goblin_market_ui.hide()
 
 	# 单位信息面板初始化
 	_init_unit_info_panel()
@@ -179,6 +192,11 @@ func _on_player_turn_started(player: int) -> void:
 	turn_label.label_settings = _make_label_settings(GameCatalog.faction_color(player))
 	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
 	resource_tracker.update_display(player)
+	# 海克斯商队触发检查
+	if neutral_unit_manager.is_caravan_round(turn_manager.round_number):
+		if neutral_unit_manager.should_caravan_visit(player):
+			var mult: float = neutral_unit_manager.get_price_multiplier(player)
+			goblin_market_ui.show_market(player, mult)
 	building_ui.refresh(player)
 
 
@@ -229,6 +247,11 @@ func _init_unit_info_panel() -> void:
 	unit_manager.unit_selected.connect(panel.show_unit)
 	unit_manager.selection_cleared.connect(panel.hide_panel)
 
+	# 中立单位选择信号
+	neutral_unit_manager.neutral_selected.connect(panel.show_unit)
+	neutral_unit_manager.selection_cleared.connect(panel.hide_panel)
+	unit_manager.selection_cleared.connect(neutral_unit_manager.clear_selection)
+
 
 func _input(event: InputEvent) -> void:
 	# Enter 或 Tab 都可结束回合（Tab 在编辑器内嵌模式可能被截获）
@@ -242,4 +265,15 @@ func _on_end_turn() -> void:
 		return
 	if unit_manager.is_in_combat():
 		return
+	if neutral_unit_manager.is_in_combat():
+		return
 	turn_manager.end_player_turn(turn_manager.current_player)
+
+
+func _on_neutral_combat_started() -> void:
+	debug_label.text = "战斗中..."
+
+
+func _on_neutral_combat_ended() -> void:
+	var cp: int = turn_manager.current_player
+	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(cp), turn_manager.get_ap(cp)]
