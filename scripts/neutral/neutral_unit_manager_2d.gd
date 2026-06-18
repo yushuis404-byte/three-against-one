@@ -1,4 +1,5 @@
 extends Node2D
+const GameStageRulesScript = preload("res://scripts/rules/game_stage_rules.gd")
 ## 中立生物管理器 — 亚龙、流浪商队、哥布林复仇队
 ##
 ## 独立于 UnitManager2D，作为 GameBoard 同级子节点
@@ -15,7 +16,6 @@ const GRID_ROWS := 56
 const TILE_SIZE := 32.0
 const GRID_CENTER := Vector2(49.5, 27.5)
 const NEXT_ID_START := 100000
-const CARAVAN_INTERVAL := 3  # TODO: N 待定 — 每 N 回合触发海克斯商队
 
 # ========== 渲染常量 ==========
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
@@ -209,8 +209,7 @@ func get_price_multiplier(player: int) -> float:
 
 
 func is_caravan_round(round_number: int) -> bool:
-	## 判断当前回合是否是海克斯商队触发回合
-	return round_number > 0 and round_number % CARAVAN_INTERVAL == 0
+	return GameStageRulesScript.is_goblin_market_stage_start(round_number)
 
 
 func should_caravan_visit(player: int) -> bool:

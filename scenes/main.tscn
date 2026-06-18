@@ -115,8 +115,8 @@ horizontal_alignment = 1
 [node name="CivilizationDebugPanel" type="PanelContainer" parent="UI" unique_id=105336459]
 offset_left = 16.0
 offset_top = 54.0
-offset_right = 920.0
-offset_bottom = 160.0
+offset_right = 716.0
+offset_bottom = 132.0
 script = ExtResource("19_civ_debug")
 
 [node name="ResourcePanel" type="Panel" parent="UI" unique_id=339982073]

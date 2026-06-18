@@ -1,4 +1,6 @@
 extends Node2D
+const GameStageRulesScript = preload("res://scripts/rules/game_stage_rules.gd")
+const StageEventServiceScript = preload("res://scripts/services/stage_event_service.gd")
 ## 主场景控制器 — 2.5D 三人竞技棋
 
 @onready var camera: Camera2D = $GameCamera
@@ -18,6 +20,9 @@ extends Node2D
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
+var stage_label: Label = null
+var stage_event_service: StageEventService = null
+var _goblin_market_round := -1
 
 
 func _ready() -> void:
@@ -28,6 +33,7 @@ func _ready() -> void:
 func _setup_game() -> void:
 	$UI.visible = true
 	current_state = GameState.PLAYING
+	_init_stage_label()
 	var tile_count: int = grid_manager.get_rendered_count()
 	debug_label.text = "Three Against One v0.1 | 2.5D 开放世界 | %d 格\n空格+鼠标左键拖拽 平移 | 滚轮 缩放 | Enter/Tab 结束回合" % tile_count
 	resource_manager.resource_hovered.connect(_on_resource_hovered)
@@ -68,6 +74,7 @@ func _setup_game() -> void:
 	turn_manager.player_turn_started.connect(_on_player_turn_started)
 	turn_manager.round_ended.connect(_on_round_ended)
 	turn_manager.ap_changed.connect(_on_ap_changed)
+	_init_stage_event_service()
 
 	# 单位系统初始化
 	unit_manager.set_turn_manager(turn_manager)
@@ -186,6 +193,7 @@ func _on_round_started(round: int) -> void:
 	var p: int = turn_manager.current_player
 	turn_label.text = "第 %d 回合 · %s" % [round, GameCatalog.faction_name(p)]
 	turn_label.label_settings = _make_label_settings(GameCatalog.faction_color(p))
+	_update_stage_label(round)
 
 
 func _on_player_turn_started(player: int) -> void:
@@ -194,7 +202,7 @@ func _on_player_turn_started(player: int) -> void:
 	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
 	resource_tracker.update_display(player)
 	# 海克斯商队触发检查
-	if neutral_unit_manager.is_caravan_round(turn_manager.round_number):
+	if _goblin_market_round == turn_manager.round_number:
 		if neutral_unit_manager.should_caravan_visit(player):
 			var mult: float = neutral_unit_manager.get_price_multiplier(player)
 			goblin_market_ui.show_market(player, mult)
@@ -228,6 +236,55 @@ func _init_resource_labels() -> void:
 func _on_resources_updated(_player: int) -> void:
 	var cp: int = turn_manager.current_player
 	resource_tracker.update_display(cp)
+
+
+func _init_stage_event_service() -> void:
+	stage_event_service = StageEventServiceScript.new()
+	stage_event_service.name = "StageEventService"
+	$GameBoard.add_child(stage_event_service)
+	stage_event_service.stage_started.connect(_on_stage_started)
+	stage_event_service.goblin_market_started.connect(_on_goblin_market_started)
+	stage_event_service.set_turn_manager(turn_manager)
+
+
+func _on_stage_started(stage: int, round_number: int) -> void:
+	debug_label.text = "第 %d 阶段开始" % stage
+	print("[阶段] 第 %d 阶段开始，回合 %d" % [stage, round_number])
+
+
+func _on_goblin_market_started(stage: int, round_number: int) -> void:
+	_goblin_market_round = round_number
+	debug_label.text = "第 %d 阶段开始：哥布林商队出现" % stage
+	print("[阶段事件] 哥布林商队出现：阶段 %d，回合 %d" % [stage, round_number])
+
+
+func _init_stage_label() -> void:
+	stage_label = Label.new()
+	stage_label.name = "StageLabel"
+	stage_label.position = Vector2(760, 48)
+	stage_label.size = Vector2(400, 28)
+	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_label.add_theme_font_size_override("font_size", 16)
+	stage_label.add_theme_color_override("font_color", Color(0.86, 0.92, 1.0))
+	stage_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
+	stage_label.add_theme_constant_override("shadow_offset_x", 1)
+	stage_label.add_theme_constant_override("shadow_offset_y", 1)
+	$UI.add_child(stage_label)
+	_update_stage_label(maxi(turn_manager.round_number, 1))
+
+
+func _update_stage_label(round_number: int) -> void:
+	if not stage_label:
+		return
+	var stage: int = GameStageRulesScript.get_stage_for_round(round_number)
+	var round_in_stage: int = GameStageRulesScript.get_round_in_stage(round_number)
+	stage_label.text = "第 %d / %d 阶段 · 阶段回合 %d / %d" % [
+		stage,
+		GameStageRulesScript.TOTAL_STAGES,
+		round_in_stage,
+		GameStageRulesScript.ROUNDS_PER_STAGE,
+	]
 
 func _make_label_settings(color: Color) -> LabelSettings:
 	var s := LabelSettings.new()

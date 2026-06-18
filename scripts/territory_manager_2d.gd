@@ -14,6 +14,7 @@ var grid_center := Vector2(49.5, 27.5)
 # -1=无主/未探索, 0=精灵, 1=矮人, 2=兽人
 var owner_grid: Array = []
 var town_halls: Array = [[], [], []]  # [player]: Array[Vector2i]
+var _turn_manager: Node = null
 
 const BORDER_COLORS := [
 	Color(0.18, 0.60, 0.15),   # 0 Elf green
@@ -24,6 +25,9 @@ const BORDER_WIDTH := 2.5
 
 
 func _ready() -> void:
+	_turn_manager = get_parent().get_node_or_null("TurnManager2D")
+	if _turn_manager != null and _turn_manager.has_signal("player_turn_started"):
+		_turn_manager.player_turn_started.connect(func(_player: int): queue_redraw())
 	_init_owner_grid()
 
 
@@ -104,11 +108,14 @@ func _draw() -> void:
 	if owner_grid.is_empty():
 		return
 
+	var viewer: int = _get_current_viewer()
 	var half := tile_size / 2.0
 	for y in range(grid_rows):
 		for x in range(grid_cols):
 			var owner: int = owner_grid[y][x]
 			if owner < 0:
+				continue
+			if viewer >= 0 and owner != viewer:
 				continue
 
 			var color: Color = BORDER_COLORS[owner]
@@ -154,6 +161,12 @@ func get_cell_owner(x: int, y: int) -> int:
 
 func is_territory(player: int, x: int, y: int) -> bool:
 	return get_cell_owner(x, y) == player
+
+
+func _get_current_viewer() -> int:
+	if _turn_manager == null:
+		return -1
+	return int(_turn_manager.current_player)
 
 
 # ========== 工具 ==========

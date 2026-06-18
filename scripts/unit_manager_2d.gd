@@ -1,4 +1,9 @@
 extends Node2D
+const ORC_BLOOD_AXE_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png")
+const ORC_BLOOD_AXE_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Walk.png")
+const ORC_BLOOD_AXE_HURT_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Hurt.png")
+const ORC_BLOOD_AXE_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Attack01.png")
+const ORC_BLOOD_AXE_DEATH_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Death.png")
 ## 单位管理器 — 放置、绘制、选择、移动、战斗
 ##
 ## 单位绘制在迷雾之下（原型简化），阵营色圆圈 + 中文名 + HP
@@ -21,12 +26,18 @@ var _reachable_tiles: Array = []  # 当前选中单位的可达格列表
 
 var _turn_manager: Node = null
 var _grid_manager: Node = null
+var _fog_manager: Node = null
 var _template_registry: Node = null
 
 # 战斗系统
 var _in_combat := false
 var _combat_timer: Timer = null
 var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
+var _move_visuals: Dictionary = {}  # unit_id -> { from: Vector2, to: Vector2, t: float }
+var _hurt_visuals: Dictionary = {}  # unit_id -> { t: float }
+var _attack_visuals: Dictionary = {}  # unit_id -> { t: float, flip_x: bool }
+var _death_visuals: Dictionary = {}  # unit_id -> { pos: Vector2, t: float, flip_x: bool }
+var _unit_facing_flip: Dictionary = {}  # unit_id -> bool
 
 # 战斗视觉效果
 var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
@@ -36,11 +47,31 @@ const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
 const UNIT_RADIUS := 8.0
 const SPAWN_SEARCH_RADIUS := 8
+const MOVE_VISUAL_DURATION := 1.0
+const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
+const ORC_BLOOD_AXE_IDLE_FRAMES := 6
+const ORC_BLOOD_AXE_WALK_FRAMES := 8
+const ORC_BLOOD_AXE_HURT_FRAMES := 4
+const ORC_BLOOD_AXE_ATTACK_FRAMES := 6
+const ORC_BLOOD_AXE_DEATH_FRAMES := 4
+const ORC_BLOOD_AXE_FRAME_SIZE := Vector2(100, 100)
+const ORC_BLOOD_AXE_DRAW_SIZE := Vector2(96, 96)
+const ORC_BLOOD_AXE_IDLE_FRAME_SECONDS := 0.18
+const ORC_BLOOD_AXE_HURT_DURATION := 0.28
+const ORC_BLOOD_AXE_ATTACK_DURATION := 0.36
+const ORC_BLOOD_AXE_DEATH_DURATION := 0.48
 
 
 func _ready() -> void:
 	_grid_manager = get_parent().get_node("GridManager2D")
+	_fog_manager = get_parent().get_node_or_null("FogOfWar2D")
 	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	if not _move_visuals.is_empty() or not _hurt_visuals.is_empty() or not _attack_visuals.is_empty() or not _death_visuals.is_empty() or _has_orc_blood_axe_units():
+		queue_redraw()
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -115,6 +146,13 @@ func get_unit_at(grid_pos: Vector2i) -> Dictionary:
 	return {}
 
 
+func get_visible_unit_at(grid_pos: Vector2i) -> Dictionary:
+	for u in _units:
+		if u["grid_pos"] == grid_pos and _is_unit_visible_to_current_player(u):
+			return u
+	return {}
+
+
 func get_player_units(player: int) -> Array:
 	var result: Array = []
 	for u in _units:
@@ -133,10 +171,23 @@ func get_unit_by_id(uid: int) -> Dictionary:
 	return _get_unit_by_id(uid)
 
 
+func _is_unit_visible_to_current_player(unit: Dictionary) -> bool:
+	if _turn_manager == null or _fog_manager == null:
+		return true
+	var viewer: int = int(_turn_manager.current_player)
+	var faction: int = int(unit.get("faction", -1))
+	if faction == viewer:
+		return true
+	var pos: Vector2i = unit.get("grid_pos", Vector2i(-1, -1))
+	if pos.x < 0:
+		return false
+	return float(_fog_manager.get_fog(viewer, pos.x, pos.y)) <= 0.0
+
+
 # ========== 绘制 ==========
 
 func _draw() -> void:
-	if _units.is_empty():
+	if _units.is_empty() and _death_visuals.is_empty():
 		return
 
 	# 绘制可达格高亮
@@ -145,41 +196,49 @@ func _draw() -> void:
 		draw_circle(pos2, UNIT_RADIUS * 1.5, REACHABLE_COLOR)
 
 	for u in _units:
-		var pos: Vector2i = u["grid_pos"]
-		var world_pos: Vector2 = _grid_to_world(pos.x, pos.y)
+		if not _is_unit_visible_to_current_player(u):
+			continue
+		var world_pos: Vector2 = _get_unit_draw_world_pos(u)
 		var faction: int = u["faction"]
 		var data: UnitData = _get_unit_data(u)
 		var hp: int = u["hp"]
 		var uid: int = u["id"]
 		var is_selected := uid == _selected_id
 		var draw_pos: Vector2 = world_pos + _shake_offsets.get(uid, Vector2.ZERO)
+		var uses_orc_sprite: bool = _is_orc_blood_axe(u)
 
-		# 选中高亮
 		if is_selected:
 			draw_circle(draw_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
 
-		# 阵营色填充圆（受击闪白）
-		var color: Color = GameCatalog.faction_color(faction)
-		if _hit_flash.has(uid):
-			color = Color(1.0, 0.9, 0.85)
-		draw_circle(draw_pos, UNIT_RADIUS, color)
+		if uses_orc_sprite:
+			_draw_orc_blood_axe(u, draw_pos)
+		else:
+			var color: Color = GameCatalog.faction_color(faction)
+			if _hit_flash.has(uid):
+				color = Color(1.0, 0.9, 0.85)
+			draw_circle(draw_pos, UNIT_RADIUS, color)
+			draw_arc(draw_pos, UNIT_RADIUS, 0, TAU, 16, Color.BLACK, 1.5)
 
-		# 黑色描边
-		draw_arc(draw_pos, UNIT_RADIUS, 0, TAU, 16, Color.BLACK, 1.5)
-
-		# 中文名称（圆上方）
 		var font: Font = ThemeDB.fallback_font
 		var fsize := 11
 		var label := data.unit_name
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var name_pos := Vector2(draw_pos.x - text_size.x / 2.0, draw_pos.y - UNIT_RADIUS - 4.0)
+		var name_offset_y: float = -30.0 if uses_orc_sprite else -UNIT_RADIUS - 4.0
+		var name_pos := Vector2(draw_pos.x - text_size.x / 2.0, draw_pos.y + name_offset_y)
 		draw_string(font, name_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
-		# HP 数字（圆下方）
 		var hp_label := str(hp)
 		var hp_size := font.get_string_size(hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var hp_pos := Vector2(draw_pos.x - hp_size.x / 2.0, draw_pos.y + UNIT_RADIUS + 14.0)
+		var hp_offset_y: float = 32.0 if uses_orc_sprite else UNIT_RADIUS + 14.0
+		var hp_pos := Vector2(draw_pos.x - hp_size.x / 2.0, draw_pos.y + hp_offset_y)
 		draw_string(font, hp_pos, hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
+
+	for unit_id_variant in _death_visuals.keys():
+		var unit_id: int = int(unit_id_variant)
+		var death: Dictionary = _death_visuals[unit_id]
+		var death_pos: Vector2 = death.get("pos", Vector2.ZERO)
+		var draw_pos: Vector2 = death_pos + _shake_offsets.get(unit_id, Vector2.ZERO)
+		_draw_orc_blood_axe_death(unit_id, draw_pos)
 
 
 # ========== 交互 ==========
@@ -192,6 +251,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	# 战斗中锁定所有操作（含中立战斗）
 	if _in_combat:
+		return
+	if not _move_visuals.is_empty():
 		return
 	var numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
 	if numgr and numgr.has_method("is_in_combat") and numgr.is_in_combat():
@@ -222,7 +283,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _selected_id >= 0:
 		var src := _get_unit_by_id(_selected_id)
 		if not src.is_empty():
-			var target := get_unit_at(gpos)
+			var target := get_visible_unit_at(gpos)
 			if not target.is_empty() and target["faction"] != src["faction"]:
 				# 中立单位（faction == -1）→ 调用 NeutralUnitManager2D 战斗
 				if _is_adjacent(src["grid_pos"], target["grid_pos"]):
@@ -256,7 +317,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 	# 检查是否点击了己方单位（选择）
-	var unit := get_unit_at(gpos)
+	var unit := get_visible_unit_at(gpos)
 	if not unit.is_empty():
 		var current_player := 0
 		if _turn_manager:
@@ -317,6 +378,7 @@ func _move_selected_to(target: Vector2i) -> void:
 
 			u["grid_pos"] = target
 			u["has_moved"] = true
+			_start_move_visual(u["id"], from, target)
 
 			# 移动后揭示视野
 			var data: UnitData = _get_unit_data(u)
@@ -344,6 +406,117 @@ func _move_selected_to(target: Vector2i) -> void:
 			queue_redraw()
 			break
 
+
+func _start_move_visual(unit_id: int, from: Vector2i, to: Vector2i) -> void:
+	if not is_inside_tree():
+		return
+	_move_visuals[unit_id] = {
+		"from": _grid_to_world(from.x, from.y),
+		"to": _grid_to_world(to.x, to.y),
+		"t": 0.0,
+		"flip_x": to.x < from.x,
+	}
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.tween_method(_set_move_visual_t.bind(unit_id), 0.0, 1.0, MOVE_VISUAL_DURATION)
+	tween.tween_callback(_finish_move_visual.bind(unit_id))
+
+
+func _set_move_visual_t(t: float, unit_id: int) -> void:
+	if not _move_visuals.has(unit_id):
+		return
+	var visual: Dictionary = _move_visuals[unit_id]
+	visual["t"] = clampf(t, 0.0, 1.0)
+	_move_visuals[unit_id] = visual
+	queue_redraw()
+
+
+func _finish_move_visual(unit_id: int) -> void:
+	_move_visuals.erase(unit_id)
+	queue_redraw()
+
+
+func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
+	var uid: int = unit.get("id", -1)
+	if _move_visuals.has(uid):
+		var visual: Dictionary = _move_visuals[uid]
+		var from: Vector2 = visual.get("from", Vector2.ZERO)
+		var to: Vector2 = visual.get("to", Vector2.ZERO)
+		var t: float = float(visual.get("t", 1.0))
+		return from.lerp(to, t)
+	var pos: Vector2i = unit["grid_pos"]
+	return _grid_to_world(pos.x, pos.y)
+
+
+func _has_orc_blood_axe_units() -> bool:
+	for unit in _units:
+		if _is_orc_blood_axe(unit):
+			return true
+	return false
+
+
+func _is_orc_blood_axe(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ORC_BLOOD_AXE_TEMPLATE_ID
+
+
+func _draw_orc_blood_axe(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var is_hurt: bool = _hurt_visuals.has(uid)
+	var is_attacking: bool = _attack_visuals.has(uid)
+	var texture: Texture2D = ORC_BLOOD_AXE_IDLE_TEXTURE
+	var frame_count: int = ORC_BLOOD_AXE_IDLE_FRAMES
+	if is_hurt:
+		texture = ORC_BLOOD_AXE_HURT_TEXTURE
+		frame_count = ORC_BLOOD_AXE_HURT_FRAMES
+	elif is_attacking:
+		texture = ORC_BLOOD_AXE_ATTACK_TEXTURE
+		frame_count = ORC_BLOOD_AXE_ATTACK_FRAMES
+	elif is_moving:
+		texture = ORC_BLOOD_AXE_WALK_TEXTURE
+		frame_count = ORC_BLOOD_AXE_WALK_FRAMES
+	var frame: int = 0
+	if is_hurt:
+		var hurt: Dictionary = _hurt_visuals.get(uid, {})
+		var hurt_t: float = float(hurt.get("t", 0.0))
+		frame = clampi(int(floor(hurt_t * float(frame_count))), 0, frame_count - 1)
+	elif is_attacking:
+		var attack: Dictionary = _attack_visuals.get(uid, {})
+		var attack_t: float = float(attack.get("t", 0.0))
+		frame = clampi(int(floor(attack_t * float(frame_count))), 0, frame_count - 1)
+	elif is_moving:
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(frame_count))), 0, frame_count - 1)
+	else:
+		var seconds: float = float(Time.get_ticks_msec()) / 1000.0
+		frame = int(floor(seconds / ORC_BLOOD_AXE_IDLE_FRAME_SECONDS)) % frame_count
+	var src := Rect2(Vector2(ORC_BLOOD_AXE_FRAME_SIZE.x * frame, 0.0), ORC_BLOOD_AXE_FRAME_SIZE)
+	var dst := Rect2(-ORC_BLOOD_AXE_DRAW_SIZE * 0.5, ORC_BLOOD_AXE_DRAW_SIZE)
+	var modulate := Color.WHITE
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_attacking:
+		var attack_visual: Dictionary = _attack_visuals.get(uid, {})
+		flip_x = bool(attack_visual.get("flip_x", flip_x))
+	elif is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, modulate)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_orc_blood_axe_death(unit_id: int, draw_pos: Vector2) -> void:
+	var death: Dictionary = _death_visuals.get(unit_id, {})
+	var t: float = float(death.get("t", 0.0))
+	var frame: int = clampi(int(floor(t * float(ORC_BLOOD_AXE_DEATH_FRAMES))), 0, ORC_BLOOD_AXE_DEATH_FRAMES - 1)
+	var src := Rect2(Vector2(ORC_BLOOD_AXE_FRAME_SIZE.x * frame, 0.0), ORC_BLOOD_AXE_FRAME_SIZE)
+	var dst := Rect2(-ORC_BLOOD_AXE_DRAW_SIZE * 0.5, ORC_BLOOD_AXE_DRAW_SIZE)
+	var flip_x: bool = bool(death.get("flip_x", false))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(ORC_BLOOD_AXE_DEATH_TEXTURE, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _trigger_hidden_trader_if_adjacent(target: Vector2i, faction: int) -> void:
@@ -549,6 +722,7 @@ func _combat_tick() -> void:
 
 	# 造成伤害
 	var dmg: int = _get_unit_data(attacker).atk
+	_play_attack_effect(attacker, defender)
 	defender["hp"] -= dmg
 
 	# 受击视觉效果
@@ -563,14 +737,14 @@ func _combat_tick() -> void:
 
 	# 检查是否死亡
 	if defender["hp"] <= 0:
-		_end_combat(attacker["id"])
+		_end_combat(attacker["id"], attacker["grid_pos"], defender["grid_pos"])
 		return
 
 	# 交替攻击方
 	_combat_data["next_attacker_id"] = defender["id"]
 
 
-func _end_combat(winner_id: int) -> void:
+func _end_combat(winner_id: int, attacker_pos: Vector2i = Vector2i(-1, -1), loser_pos: Vector2i = Vector2i(-1, -1)) -> void:
 	## 结束决斗：停止 Timer，移除死亡单位，清除状态
 	if _combat_timer:
 		_combat_timer.stop()
@@ -587,33 +761,148 @@ func _end_combat(winner_id: int) -> void:
 	if loser_id >= 0:
 		for i in range(_units.size() - 1, -1, -1):
 			if _units[i]["id"] == loser_id:
+				var loser: Dictionary = _units[i]
+				if _is_orc_blood_axe(loser):
+					_start_death_visual(loser_id, loser["grid_pos"], attacker_pos, loser_pos)
+				_move_visuals.erase(loser_id)
+				_hurt_visuals.erase(loser_id)
+				_attack_visuals.erase(loser_id)
 				_units.remove_at(i)
 				break
 
+	if _death_visuals.has(loser_id):
+		_combat_data = {}
+		_clear_selection()
+		return
+
+	_finish_combat_state()
+
+
+# ========== 战斗视觉效果 ==========
+
+
+func _play_attack_effect(attacker: Dictionary, defender: Dictionary) -> void:
+	if attacker.is_empty() or defender.is_empty():
+		return
+	if not _is_orc_blood_axe(attacker):
+		return
+	var attacker_pos: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var defender_pos: Vector2i = defender.get("grid_pos", Vector2i.ZERO)
+	var flip_x: bool = defender_pos.x < attacker_pos.x
+	var attacker_id: int = int(attacker.get("id", -1))
+	_unit_facing_flip[attacker_id] = flip_x
+	_start_attack_visual(attacker_id, flip_x)
+
+
+func _start_attack_visual(unit_id: int, flip_x: bool) -> void:
+	if not is_inside_tree():
+		return
+	_attack_visuals[unit_id] = {"t": 0.0, "flip_x": flip_x}
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_method(_set_attack_visual_t.bind(unit_id), 0.0, 1.0, ORC_BLOOD_AXE_ATTACK_DURATION)
+	tween.tween_callback(_finish_attack_visual.bind(unit_id))
+
+
+func _set_attack_visual_t(t: float, unit_id: int) -> void:
+	if not _attack_visuals.has(unit_id):
+		return
+	var visual: Dictionary = _attack_visuals[unit_id]
+	visual["t"] = clampf(t, 0.0, 1.0)
+	_attack_visuals[unit_id] = visual
+	queue_redraw()
+
+
+func _finish_attack_visual(unit_id: int) -> void:
+	_attack_visuals.erase(unit_id)
+	queue_redraw()
+
+
+func _start_death_visual(unit_id: int, grid_pos: Vector2i, attacker_pos: Vector2i, loser_pos: Vector2i) -> void:
+	if not is_inside_tree():
+		return
+	var flip_x: bool = bool(_unit_facing_flip.get(unit_id, false))
+	if attacker_pos.x >= 0 and loser_pos.x >= 0:
+		flip_x = attacker_pos.x < loser_pos.x
+	_unit_facing_flip[unit_id] = flip_x
+	_death_visuals[unit_id] = {
+		"pos": _grid_to_world(grid_pos.x, grid_pos.y),
+		"t": 0.0,
+		"flip_x": flip_x,
+	}
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_method(_set_death_visual_t.bind(unit_id), 0.0, 1.0, ORC_BLOOD_AXE_DEATH_DURATION)
+	tween.tween_callback(_finish_death_visual.bind(unit_id))
+
+
+func _set_death_visual_t(t: float, unit_id: int) -> void:
+	if not _death_visuals.has(unit_id):
+		return
+	var visual: Dictionary = _death_visuals[unit_id]
+	visual["t"] = clampf(t, 0.0, 1.0)
+	_death_visuals[unit_id] = visual
+	queue_redraw()
+
+
+func _finish_death_visual(unit_id: int) -> void:
+	_death_visuals.erase(unit_id)
+	_shake_offsets.erase(unit_id)
+	_unit_facing_flip.erase(unit_id)
+	if _in_combat and _combat_data.is_empty():
+		_finish_combat_state()
+	queue_redraw()
+
+
+func _finish_combat_state() -> void:
 	_in_combat = false
 	_combat_data = {}
 	combat_ended.emit()
 	_clear_selection()
 
-
-# ========== 战斗视觉效果 ==========
-
 func _play_hit_effect(unit_id: int, grid_pos: Vector2i, damage: int) -> void:
-	## 触发受击视觉链：闪白 + 震动 + 伤害数字
 	if not is_inside_tree():
 		return
-	_hit_flash[unit_id] = true
+	var unit: Dictionary = _get_unit_by_id(unit_id)
+	if not unit.is_empty() and _is_orc_blood_axe(unit):
+		_start_hurt_visual(unit_id)
+	else:
+		_hit_flash[unit_id] = true
 	_hit_shake(unit_id)
 	_show_damage_text(grid_pos, damage)
 	queue_redraw()
 
-	# 延迟清除闪白
-	await get_tree().create_timer(0.15).timeout
-	if not is_inside_tree():
+	if _hit_flash.has(unit_id):
+		await get_tree().create_timer(0.15).timeout
+		if not is_inside_tree():
+			return
+		_hit_flash.erase(unit_id)
+		queue_redraw()
+
+
+func _start_hurt_visual(unit_id: int) -> void:
+	_hurt_visuals[unit_id] = {"t": 0.0}
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_method(_set_hurt_visual_t.bind(unit_id), 0.0, 1.0, ORC_BLOOD_AXE_HURT_DURATION)
+	tween.tween_callback(_finish_hurt_visual.bind(unit_id))
+
+
+func _set_hurt_visual_t(t: float, unit_id: int) -> void:
+	if not _hurt_visuals.has(unit_id):
 		return
-	_hit_flash.erase(unit_id)
+	var visual: Dictionary = _hurt_visuals[unit_id]
+	visual["t"] = clampf(t, 0.0, 1.0)
+	_hurt_visuals[unit_id] = visual
 	queue_redraw()
 
+
+func _finish_hurt_visual(unit_id: int) -> void:
+	_hurt_visuals.erase(unit_id)
+	queue_redraw()
 
 func _hit_shake(unit_id: int) -> void:
 	## 受击震动：随机偏移 → 快速衰减归零（~0.12s）
@@ -688,6 +977,11 @@ func remove_unit_by_id(uid: int) -> void:
 	## 公开接口：按 ID 移除单位（供 NeutralUnitManager2D 战斗后调用）
 	for i in range(_units.size() - 1, -1, -1):
 		if _units[i]["id"] == uid:
+			_move_visuals.erase(uid)
+			_hurt_visuals.erase(uid)
+			_attack_visuals.erase(uid)
+			_death_visuals.erase(uid)
+			_unit_facing_flip.erase(uid)
 			_units.remove_at(i)
 			break
 	queue_redraw()
