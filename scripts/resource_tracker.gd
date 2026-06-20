@@ -8,6 +8,17 @@ var _resources: Array = [{}, {}, {}]  # Array[Dictionary]
 var _building_mgr: Node = null
 var _turn_mgr: Node = null
 
+const CAPPED_RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore"]
+const BASE_RESOURCE_CAPS := {
+	"wood": 50,
+	"stone": 50,
+	"food": 50,
+	"iron": 40,
+	"magic_dust": 30,
+	"ancient_wood": 30,
+	"gold_ore": 40,
+}
+
 # UI Label 引用：_label_refs["wood"] = Label 等
 var _label_refs: Dictionary = {}
 var _faction_label: Label = null
@@ -49,7 +60,12 @@ func set_resource_label(key: String, label: Label) -> void:
 func add_resource(player: int, key: String, amount: int) -> void:
 	if not _resources[player].has(key):
 		return
-	_resources[player][key] += amount
+	var current: int = int(_resources[player][key])
+	var next_value: int = current + amount
+	var cap: int = get_resource_cap(player, key)
+	if cap >= 0:
+		next_value = mini(next_value, cap)
+	_resources[player][key] = next_value
 	resources_updated.emit(player)
 
 
@@ -70,6 +86,35 @@ func spend_resource(player: int, key: String, amount: int) -> bool:
 
 func get_all(player: int) -> Dictionary:
 	return _resources[player].duplicate()
+
+
+func get_resource_cap(player: int, key: String) -> int:
+	if not (key in CAPPED_RESOURCE_KEYS):
+		return -1
+	var cap: int = int(BASE_RESOURCE_CAPS.get(key, 0))
+	if not _building_mgr or not _building_mgr.has_method("get_all_buildings"):
+		return cap
+	var buildings: Array = _building_mgr.get_all_buildings()
+	for building in buildings:
+		if int(building.get("faction", -1)) != player:
+			continue
+		var data: BuildingData = building.get("data", null)
+		if data == null:
+			continue
+		var level: int = int(building.get("level", maxi(1, data.storage_level)))
+		var bonus: Dictionary = data.storage_bonus
+		if not data.storage_bonus_by_level.is_empty():
+			bonus = data.storage_bonus_by_level.get(level, data.storage_bonus)
+		if bonus.has(key):
+			cap += int(bonus[key])
+	return cap
+
+
+func get_resource_caps(player: int) -> Dictionary:
+	var result: Dictionary = {}
+	for key in CAPPED_RESOURCE_KEYS:
+		result[key] = get_resource_cap(player, key)
+	return result
 
 
 func _on_round_ended(_round: int) -> void:
@@ -120,4 +165,8 @@ func update_display(player: int) -> void:
 		if _label_refs.has(key):
 			var label: Label = _label_refs[key]
 			var name: String = GameCatalog.resource_name(key)
-			label.text = "%s: %d" % [name, res.get(key, 0)]
+			var cap: int = get_resource_cap(player, key)
+			if cap >= 0:
+				label.text = "%s: %d/%d" % [name, res.get(key, 0), cap]
+			else:
+				label.text = "%s: %d" % [name, res.get(key, 0)]

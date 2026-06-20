@@ -7,7 +7,7 @@ var _turn_manager: Node = null
 var _building_manager: Node = null
 var _resource_tracker: Node = null
 var _current_player := 0
-var _selected_cat: BuildingData.BuildingCategory = BuildingData.BuildingCategory.INFRA
+var _selected_cat: BuildingData.BuildingCategory = BuildingData.BuildingCategory.ECONOMY
 
 # 节点引用
 var _title_label: Label
@@ -19,28 +19,34 @@ var _detail_desc: Label
 var _cat_buttons: Dictionary = {}  # BuildingCategory → Button
 
 const CATEGORY_NAMES := {
-	BuildingData.BuildingCategory.INFRA: "基础",
-	BuildingData.BuildingCategory.T1_RESOURCE: "资源",
-	BuildingData.BuildingCategory.MILITARY: "军事",
-	BuildingData.BuildingCategory.SCOUT: "侦察",
-	BuildingData.BuildingCategory.RECRUIT: "招募",
-	BuildingData.BuildingCategory.TOWN_HALL: "主城",
+	BuildingData.BuildingCategory.CORE: "\u6838\u5fc3",
+	BuildingData.BuildingCategory.ECONOMY: "\u7ecf\u6d4e",
+	BuildingData.BuildingCategory.STORAGE: "\u540e\u52e4",
+	BuildingData.BuildingCategory.EXPANSION: "\u6269\u5f20",
+	BuildingData.BuildingCategory.SCOUT: "\u4fa6\u5bdf",
+	BuildingData.BuildingCategory.RECRUITMENT: "\u62db\u52df",
+	BuildingData.BuildingCategory.INDUSTRY: "\u5de5\u4e1a",
+	BuildingData.BuildingCategory.GOLD_CHAIN: "\u91d1\u5e01",
+	BuildingData.BuildingCategory.RARE: "\u7a00\u6709",
 }
 
 const CATEGORY_ORDER := [
-	BuildingData.BuildingCategory.INFRA,
-	BuildingData.BuildingCategory.T1_RESOURCE,
-	BuildingData.BuildingCategory.MILITARY,
+	BuildingData.BuildingCategory.CORE,
+	BuildingData.BuildingCategory.ECONOMY,
+	BuildingData.BuildingCategory.STORAGE,
+	BuildingData.BuildingCategory.EXPANSION,
 	BuildingData.BuildingCategory.SCOUT,
-	BuildingData.BuildingCategory.RECRUIT,
-	BuildingData.BuildingCategory.TOWN_HALL,
+	BuildingData.BuildingCategory.RECRUITMENT,
+	BuildingData.BuildingCategory.INDUSTRY,
+	BuildingData.BuildingCategory.GOLD_CHAIN,
+	BuildingData.BuildingCategory.RARE,
 ]
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS  # 根节点不拦截地图区域的点击
 	_build_ui()
-	_select_category(BuildingData.BuildingCategory.INFRA)
+	_select_category(BuildingData.BuildingCategory.ECONOMY)
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -358,6 +364,9 @@ func _format_cost(d: BuildingData) -> String:
 
 
 func _format_production(d: BuildingData) -> String:
+	if d.storage_level > 0:
+		var bonus: int = int(d.storage_bonus.get("wood", 0))
+		return "储存上限 +%d" % bonus
 	if d.production.is_empty():
 		return ""
 	var parts: PackedStringArray = []

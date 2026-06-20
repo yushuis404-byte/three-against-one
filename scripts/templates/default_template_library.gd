@@ -22,6 +22,7 @@ func make_unit_templates() -> Dictionary:
 	)
 	worker.recruit_cost = [_amount("food", 1)]
 	worker.recruit_ap_cost = 1
+	worker.recruit_ap = 1
 	worker.recruit_turns = 1
 	worker.can_attack_units = false
 
@@ -35,9 +36,10 @@ func make_unit_templates() -> Dictionary:
 		3,
 		["scout", "military", "light"]
 	)
-	scout.food_cost = 1
-	scout.recruit_cost = [_amount("food", 1), _amount("wood", 5)]
-	scout.recruit_ap_cost = 1
+	scout.food_cost = 2
+	scout.recruit_cost = [_amount("food", 2)]
+	scout.recruit_ap_cost = 2
+	scout.recruit_ap = 2
 	scout.recruit_turns = 2
 
 	var guard = _unit_basic(
@@ -50,10 +52,11 @@ func make_unit_templates() -> Dictionary:
 		1,
 		["guard", "military", "melee"]
 	)
-	guard.food_cost = 2
-	guard.recruit_cost = [_amount("food", 2), _amount("wood", 5), _amount("stone", 5)]
-	guard.recruit_ap_cost = 1
-	guard.recruit_turns = 2
+	guard.food_cost = 3
+	guard.recruit_cost = [_amount("food", 3)]
+	guard.recruit_ap_cost = 3
+	guard.recruit_ap = 3
+	guard.recruit_turns = 3
 
 	var veteran_guard: Resource = guard.create_variant("unit.guard.veteran", {
 		"display_name": "精锐守卫",
@@ -85,7 +88,7 @@ func make_unit_templates() -> Dictionary:
 		4,
 		["elf", "scout", "military", "light", "forest_move_bonus", "high_vision"]
 	)
-	_config_recruit(elf_scout, [_amount("gold", 50), _amount("wood", 20)], 1, 2, 1, true)
+	_config_recruit(elf_scout, [_amount("food", 2)], 2, 2, 2, true)
 
 	var elf_guard = _unit_basic(
 		"unit.elf.guard",
@@ -97,7 +100,7 @@ func make_unit_templates() -> Dictionary:
 		2,
 		["elf", "guard", "military", "melee", "mobile_attacker"]
 	)
-	_config_recruit(elf_guard, [_amount("gold", 80), _amount("wood", 20), _amount("ancient_wood", 10)], 1, 2, 2, true)
+	_config_recruit(elf_guard, [_amount("food", 3)], 3, 3, 3, true)
 
 	var dwarf_worker = _unit_basic(
 		"unit.dwarf.worker",
@@ -121,7 +124,7 @@ func make_unit_templates() -> Dictionary:
 		2,
 		["dwarf", "scout", "military", "light", "resource_detect_bonus", "mountain_move_bonus"]
 	)
-	_config_recruit(dwarf_scout, [_amount("gold", 50), _amount("stone", 20)], 1, 2, 1, true)
+	_config_recruit(dwarf_scout, [_amount("food", 2)], 2, 2, 2, true)
 
 	var dwarf_guard = _unit_basic(
 		"unit.dwarf.guard",
@@ -133,7 +136,7 @@ func make_unit_templates() -> Dictionary:
 		1,
 		["dwarf", "guard", "military", "melee", "high_hp", "defender"]
 	)
-	_config_recruit(dwarf_guard, [_amount("gold", 80), _amount("stone", 20), _amount("iron", 10)], 1, 2, 2, true)
+	_config_recruit(dwarf_guard, [_amount("food", 3)], 3, 3, 3, true)
 
 	var orc_worker = _unit_basic(
 		"unit.orc.worker",
@@ -157,7 +160,7 @@ func make_unit_templates() -> Dictionary:
 		2,
 		["orc", "scout", "military", "beast", "bonus_vs_worker"]
 	)
-	_config_recruit(orc_scout, [_amount("gold", 50), _amount("food", 30)], 1, 2, 0, true)
+	_config_recruit(orc_scout, [_amount("food", 2)], 2, 2, 2, true)
 
 	var orc_guard = _unit_basic(
 		"unit.orc.guard",
@@ -169,7 +172,7 @@ func make_unit_templates() -> Dictionary:
 		1,
 		["orc", "guard", "military", "melee", "high_attack"]
 	)
-	_config_recruit(orc_guard, [_amount("gold", 80), _amount("food", 30), _amount("iron", 10)], 1, 2, 2, true)
+	_config_recruit(orc_guard, [_amount("food", 3)], 3, 3, 3, true)
 
 	# ========== 中立生物模板 ==========
 	var wyvern_fire = _unit_basic(
@@ -285,10 +288,14 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	lumber_camp.display_name = "Lumber Camp"
 	lumber_camp.role = BuildingTemplateScript.BuildingRole.INFRA
 	lumber_camp.hp_max = 4
-	lumber_camp.build_cost = [_amount("wood", 3)]
+	lumber_camp.build_cost = [_amount("wood", 8)]
 	lumber_camp.production = [
 		_recipe_outputs("recipe.wood.flat", [_amount("wood", 3)])
 	]
+	lumber_camp.can_garrison = true
+	lumber_camp.garrison_capacity = 2
+	lumber_camp.allowed_garrison_unit_tags = ["worker"]
+	lumber_camp.preferred_worker_tag = "elf"
 	lumber_camp.max_per_faction = 7
 	lumber_camp.tags = ["infra", "production", "wood"]
 
@@ -300,7 +307,6 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	gold_mine.build_cost = [
 		_amount("wood", 20),
 		_amount("stone", 15),
-		_amount("iron", 5),
 	]
 	gold_mine.needs_resource_point = true
 	gold_mine.required_resource_tags = ["gold"]
@@ -430,6 +436,7 @@ func _config_recruit(
 		can_attack: bool) -> void:
 	template.recruit_cost = cost
 	template.recruit_ap_cost = ap_cost
+	template.recruit_ap = ap_cost
 	template.recruit_turns = turns
 	template.food_cost = food_cost
 	template.can_attack_units = can_attack

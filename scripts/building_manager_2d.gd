@@ -6,6 +6,7 @@ extends Node2D
 
 const GarrisonServiceScript := preload("res://scripts/services/garrison_service.gd")
 const RecruitmentServiceScript := preload("res://scripts/services/recruitment_service.gd")
+const BuildingUpgradeServiceScript := preload("res://scripts/services/building_upgrade_service.gd")
 const ELF_CAPITAL_TEXTURE: Texture2D = preload("res://assets/texture/Elven Capital.png")
 
 var grid_cols := 100
@@ -26,6 +27,7 @@ var _resource_mgr: Node = null
 var _template_registry: Node = null
 var _garrison_service = GarrisonServiceScript.new()
 var _recruitment_service = RecruitmentServiceScript.new()
+var _upgrade_service = BuildingUpgradeServiceScript.new()
 
 var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
 
@@ -96,6 +98,8 @@ func _configure_services() -> void:
 		_turn_manager,
 		unit_mgr
 	)
+	if _upgrade_service:
+		_upgrade_service.setup(_buildings, _resource_tracker, _turn_manager)
 
 
 func _on_player_turn_started(player: int) -> void:
@@ -121,7 +125,7 @@ func _reveal_town_hall_vision(player: int) -> void:
 	for b in _buildings:
 		if b["faction"] == player:
 			var data: BuildingData = b["data"]
-			if data.category == BuildingData.BuildingCategory.TOWN_HALL:
+			if data.category == BuildingData.BuildingCategory.CORE:
 				var origin: Vector2i = b["origin"]
 				var fp: Vector2i = data.footprint
 				var cx: int = origin.x + fp.x / 2
@@ -149,6 +153,7 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		"faction": faction,
 		"origin": origin,
 		"hp": data.hp_max,
+		"level": maxi(1, data.storage_level),
 		"garrison": [],
 		"recruit_queue": [],
 	})
@@ -167,6 +172,9 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 
 	if BuildingRules.is_outpost(data) and _territory_mgr and _territory_mgr.has_method("recalc_territory"):
 		_territory_mgr.recalc_territory(faction)
+
+	if data.storage_level > 0 and _resource_tracker and _resource_tracker.has_method("update_display"):
+		_resource_tracker.update_display(faction)
 
 	# 金矿矿井消耗金矿资源点
 	if data.needs_resource_point:
@@ -234,6 +242,15 @@ func _can_place(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 			return false
 
 	# 阵营上限检查
+	if data.storage_level > 0:
+		var warehouse_count := 0
+		for b in _buildings:
+			var existing_data: BuildingData = b["data"]
+			if b["faction"] == faction and existing_data.storage_level > 0:
+				warehouse_count += 1
+		if warehouse_count >= data.max_per_faction:
+			return false
+
 	if data.max_per_faction < 99:
 		var count := 0
 		for b in _buildings:
@@ -256,6 +273,20 @@ func count_buildings(faction: int, name_filter: String = "") -> int:
 
 func get_all_buildings() -> Array:
 	return _buildings.duplicate()
+
+
+func get_upgrade_info(building_id: int) -> Dictionary:
+	return _upgrade_service.get_upgrade_info(building_id)
+
+
+func upgrade_building(building_id: int) -> bool:
+	var ok: bool = _upgrade_service.upgrade(building_id)
+	if ok:
+		var building: Dictionary = _get_building_by_id(building_id)
+		if not building.is_empty() and _resource_tracker and _resource_tracker.has_method("update_display"):
+			_resource_tracker.update_display(int(building.get("faction", 0)))
+		queue_redraw()
+	return ok
 
 
 # ========== 驻兵系统 ==========
@@ -342,7 +373,7 @@ func _draw_buildings() -> void:
 				SELECT_COLOR, false, 4.0)
 
 		# 主城特殊效果：外发光
-		if data.category == BuildingData.BuildingCategory.TOWN_HALL:
+		if data.category == BuildingData.BuildingCategory.CORE:
 			var glow_color: Color = GameCatalog.faction_color(faction)
 			glow_color.a = 0.3
 			draw_rect(Rect2(top_left.x - 4, top_left.y - 4, w + 8, h + 8), glow_color, true)
@@ -366,8 +397,10 @@ func _draw_buildings() -> void:
 
 		# 建筑名称文字
 		var font: Font = ThemeDB.fallback_font
-		var fsize: int = 13 if data.category == BuildingData.BuildingCategory.TOWN_HALL else 11
+		var fsize: int = 13 if data.category == BuildingData.BuildingCategory.CORE else 11
 		var label: String = data.name
+		if int(b.get("level", 1)) > 1 and data.max_level > 1:
+			label = "%s Lv%d" % [data.name, int(b.get("level", 1))]
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
 		var label_pos := Vector2(
 			top_left.x + w / 2.0 - text_size.x / 2.0,
@@ -378,7 +411,7 @@ func _draw_buildings() -> void:
 		draw_string(font, label_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
 		# 主城特殊标记：顶部显示城堡图标 ★
-		if data.category == BuildingData.BuildingCategory.TOWN_HALL:
+		if data.category == BuildingData.BuildingCategory.CORE:
 			var star_text := "★ 主城 ★"
 			var star_size := font.get_string_size(star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
 			var star_pos := Vector2(
@@ -418,7 +451,7 @@ func _draw_buildings() -> void:
 
 
 func _should_draw_elven_capital_texture(data: BuildingData, faction: int) -> bool:
-	return faction == 0 and data.category == BuildingData.BuildingCategory.TOWN_HALL
+	return faction == 0 and data.category == BuildingData.BuildingCategory.CORE
 
 
 func _draw_placement_ghost() -> void:
@@ -469,12 +502,14 @@ func _on_round_ended(round_number: int) -> void:
 
 		# 驻兵加成日志
 		var garrison: Array = b.get("garrison", [])
-		var gcount := garrison.size()
+		var gcount: int = garrison.size()
 		if gcount > 0:
+			var garrison_bonus: Dictionary = get_garrison_bonus(b["id"])
 			var bonus_parts: PackedStringArray = []
-			for key in prod:
-				bonus_parts.append("%s +%d" % [key, gcount])
-			print("[建筑] 驻兵加成 %s: %s" % [data.name, ", ".join(bonus_parts)])
+			for key in garrison_bonus:
+				bonus_parts.append("%s +%d" % [key, garrison_bonus[key]])
+			if not bonus_parts.is_empty():
+				print("[Building] garrison bonus %s: %s" % [data.name, ", ".join(bonus_parts)])
 
 		# 建筑上方飘浮产量文字
 		_show_production_text(b, prod, gcount)
@@ -492,8 +527,9 @@ func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int, 
 	var world_pos := _grid_to_world(cx, cy)
 
 	var lines: PackedStringArray = []
+	var bonus: Dictionary = get_garrison_bonus(building["id"])
 	for key in prod:
-		var total: int = prod[key] + gcount
+		var total: int = int(prod[key]) + int(bonus.get(key, 0))
 		var rname: String = GameCatalog.resource_name(key)
 		lines.append("%s +%d" % [rname, total])
 	var text := "\n".join(lines)
@@ -521,6 +557,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		_handle_placement_input(event)
 		return
 
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_U and _selected_id >= 0:
+			var building: Dictionary = _get_building_by_id(_selected_id)
+			if not building.is_empty() and _turn_manager and int(building.get("faction", -1)) == _turn_manager.current_player:
+				upgrade_building(_selected_id)
+			return
+
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var cursor := get_global_mouse_position()
 		var gpos := _world_to_grid(cursor)
@@ -531,7 +574,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not building.is_empty():
 			# 检查撤出驻兵：点击己方有驻兵的建筑 → 撤出一个
 			var garr: Array = building.get("garrison", [])
-			if not garr.is_empty() and _turn_manager and not _just_garrisoned.has(building["id"]):
+			var building_data: BuildingData = building["data"]
+			if not garr.is_empty() and building_data.upgrade_rules.is_empty() and _turn_manager and not _just_garrisoned.has(building["id"]):
 				var cp: int = _turn_manager.current_player
 				if building["faction"] == cp:
 					var unit_dict := ungarrison_one(building["id"])
@@ -558,7 +602,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not building.is_empty():
 			var data: BuildingData = building["data"]
 			var fname := GameCatalog.faction_name(int(building["faction"]))
-			var hover_text := "%s · %s (HP:%d/%d)" % [fname, data.name, building["hp"], data.hp_max]
+			var building_name: String = data.name
+			if int(building.get("level", 1)) > 1 and data.max_level > 1:
+				building_name = "%s Lv%d" % [data.name, int(building.get("level", 1))]
+			var hover_text := "%s · %s (HP:%d/%d)" % [fname, building_name, building["hp"], data.hp_max]
 			var garr: Array = building.get("garrison", [])
 			if not garr.is_empty():
 				hover_text += " 驻军:%d" % garr.size()

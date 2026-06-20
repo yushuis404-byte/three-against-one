@@ -59,7 +59,7 @@ func request_recruitment(building_id: int, unit_template_id: String, count: int)
 			print("[Recruit] Not enough %s." % key)
 			return false
 
-	var ap_cost: int = int(unit_template.get("recruit_ap_cost")) * safe_count
+	var ap_cost: int = get_unit_recruit_ap_cost(unit_template) * safe_count
 	if turn_manager and turn_manager.get_ap(faction) < ap_cost:
 		print("[Recruit] Not enough AP.")
 		return false
@@ -132,7 +132,7 @@ func get_recruit_options(building: Dictionary) -> Array:
 			"id": template_id,
 			"name": str(unit_template.get("display_name")),
 			"cost": get_unit_recruit_cost(unit_template),
-			"ap_cost": int(unit_template.get("recruit_ap_cost")),
+			"ap_cost": get_unit_recruit_ap_cost(unit_template),
 			"turns": int(unit_template.get("recruit_turns")),
 		})
 	return result
@@ -158,9 +158,9 @@ func get_recruit_template_ids_for_building(building: Dictionary) -> Array:
 				return template_ids
 
 	var data: BuildingData = building["data"]
-	if data.category == BuildingData.BuildingCategory.RECRUIT:
+	if "recruit_camp" in data.tags:
 		return ["unit.worker"]
-	if data.category == BuildingData.BuildingCategory.MILITARY:
+	if "barracks" in data.tags:
 		return ["unit.guard", "unit.scout"]
 	return []
 
@@ -208,11 +208,20 @@ func get_unit_recruit_cost(unit_template: Resource) -> Dictionary:
 	return result
 
 
+func get_unit_recruit_ap_cost(unit_template: Resource) -> int:
+	if unit_template == null:
+		return 0
+	var ap_cost: int = int(unit_template.get("recruit_ap_cost"))
+	if ap_cost <= 0:
+		ap_cost = int(unit_template.get("recruit_ap"))
+	return maxi(0, ap_cost)
+
+
 func is_recruit_building(building: Dictionary) -> bool:
 	if building.is_empty():
 		return false
 	var data: BuildingData = building["data"]
-	return data.category == BuildingData.BuildingCategory.RECRUIT or data.category == BuildingData.BuildingCategory.MILITARY
+	return "recruit" in data.tags
 
 
 func spawn_recruited_unit(building: Dictionary, unit_template_id: String) -> bool:

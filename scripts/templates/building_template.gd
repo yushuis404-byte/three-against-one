@@ -20,6 +20,7 @@ enum BuildingRole { INFRA, RESOURCE, GOLD_CHAIN, MILITARY, SCOUT, RECRUIT, TOWN_
 @export var can_garrison: bool = false
 @export var garrison_capacity: int = 0
 @export var allowed_garrison_unit_tags: Array = []
+@export var preferred_worker_tag: String = ""
 @export var recruit_options: Array = []
 
 
