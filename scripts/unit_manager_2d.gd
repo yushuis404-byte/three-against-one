@@ -13,6 +13,7 @@ signal selection_cleared()
 signal combat_started()
 signal combat_ended()
 signal hidden_trader_discovered(faction: int)
+signal action_preview_changed(preview: Dictionary)
 
 var grid_cols := 100
 var grid_rows := 56
@@ -38,6 +39,9 @@ var _hurt_visuals: Dictionary = {}  # unit_id -> { t: float }
 var _attack_visuals: Dictionary = {}  # unit_id -> { t: float, flip_x: bool }
 var _death_visuals: Dictionary = {}  # unit_id -> { pos: Vector2, t: float, flip_x: bool }
 var _unit_facing_flip: Dictionary = {}  # unit_id -> bool
+var _pending_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
+var _last_action_preview_key := ""
+var _current_action_preview: Dictionary = {}
 
 # 战斗视觉效果
 var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
@@ -45,6 +49,8 @@ var _shake_offsets: Dictionary = {}  # unit_id -> Vector2（受击偏移）
 
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
+const ATTACK_APPROACH_OK_COLOR := Color(0.2, 1.0, 0.35, 0.38)
+const ATTACK_APPROACH_BLOCKED_COLOR := Color(1.0, 0.35, 0.18, 0.42)
 const UNIT_RADIUS := 8.0
 const SPAWN_SEARCH_RADIUS := 8
 const MOVE_VISUAL_DURATION := 1.0
@@ -70,6 +76,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_update_action_preview()
 	if not _move_visuals.is_empty() or not _hurt_visuals.is_empty() or not _attack_visuals.is_empty() or not _death_visuals.is_empty() or _has_orc_blood_axe_units():
 		queue_redraw()
 
@@ -195,6 +202,8 @@ func _draw() -> void:
 		var pos2 := _grid_to_world(t.x, t.y)
 		draw_circle(pos2, UNIT_RADIUS * 1.5, REACHABLE_COLOR)
 
+	_draw_action_preview_highlight()
+
 	for u in _units:
 		if not _is_unit_visible_to_current_player(u):
 			continue
@@ -295,6 +304,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					else:
 						_initiate_combat(_selected_id, target["id"])
 						return
+				elif target["faction"] != -1 and _try_move_to_attack(src, target):
+					return
 
 			# 追加：检查中立单位
 			if target.is_empty():
@@ -352,11 +363,106 @@ func _select_unit(uid: int) -> void:
 func _clear_selection() -> void:
 	_selected_id = -1
 	_reachable_tiles = []
+	_emit_action_preview({})
 	selection_cleared.emit()
 	queue_redraw()
 
 
 # ========== 移动 ==========
+
+
+func _update_action_preview() -> void:
+	if _selected_id < 0 or _in_combat or not _move_visuals.is_empty():
+		_emit_action_preview({})
+		return
+	var attacker: Dictionary = _get_unit_by_id(_selected_id)
+	if attacker.is_empty():
+		_emit_action_preview({})
+		return
+	var cursor := get_global_mouse_position()
+	var gpos := _world_to_grid(cursor)
+	if not _in_bounds(gpos.x, gpos.y):
+		_emit_action_preview({})
+		return
+	var target: Dictionary = get_visible_unit_at(gpos)
+	if target.is_empty() or target["faction"] == attacker["faction"] or target["faction"] == -1:
+		_emit_action_preview({})
+		return
+	_emit_action_preview(_make_attack_preview(attacker, target))
+
+
+func _emit_action_preview(preview: Dictionary) -> void:
+	var key := ""
+	if not preview.is_empty():
+		key = JSON.stringify(preview)
+	if key == _last_action_preview_key:
+		return
+	_last_action_preview_key = key
+	_current_action_preview = preview.duplicate(true)
+	action_preview_changed.emit(preview)
+	queue_redraw()
+
+
+func _draw_action_preview_highlight() -> void:
+	if _current_action_preview.is_empty():
+		return
+	var approach_pos: Vector2i = _current_action_preview.get("approach_pos", Vector2i(-1, -1))
+	if approach_pos.x < 0:
+		return
+	var center: Vector2 = _grid_to_world(approach_pos.x, approach_pos.y)
+	var rect := Rect2(center - Vector2(tile_size, tile_size) * 0.5, Vector2(tile_size, tile_size))
+	var can_attack: bool = bool(_current_action_preview.get("can_attack", false))
+	var color: Color = ATTACK_APPROACH_OK_COLOR if can_attack else ATTACK_APPROACH_BLOCKED_COLOR
+	draw_rect(rect.grow(-2.0), color, true)
+	draw_rect(rect.grow(-2.0), Color(color.r, color.g, color.b, 0.92), false, 2.0)
+
+
+func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionary:
+	var attacker_data: UnitData = _get_unit_data(attacker)
+	var target_data: UnitData = _get_unit_data(target)
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	var preview := {
+		"visible": true,
+		"action": "attack",
+		"attacker_name": attacker_data.unit_name,
+		"target_name": target_data.unit_name,
+		"target_pos": target_pos,
+		"approach_pos": Vector2i(-1, -1),
+		"ap_cost": 0,
+		"can_attack": false,
+		"reason": "",
+	}
+
+	if _is_adjacent(from, target_pos):
+		preview["approach_pos"] = from
+		preview["can_attack"] = true
+		preview["reason"] = "已相邻，可以攻击"
+		return preview
+
+	var approach_tile: Vector2i = _find_attack_approach_tile(attacker, target)
+	if approach_tile.x < 0:
+		preview["reason"] = "没有可用的接敌格"
+		return preview
+
+	var steps: int = _calc_path_length(from, approach_tile)
+	preview["approach_pos"] = approach_tile
+	preview["ap_cost"] = maxi(steps, 0)
+	if steps <= 0:
+		preview["reason"] = "无法到达接敌格"
+		return preview
+
+	var current_ap := 0
+	if _turn_manager:
+		current_ap = int(_turn_manager.get_ap(_turn_manager.current_player))
+	if _turn_manager and steps > current_ap:
+		preview["reason"] = "AP 不足"
+		return preview
+
+	preview["can_attack"] = true
+	preview["reason"] = "移动到接敌格后攻击"
+	return preview
+
 
 func _move_selected_to(target: Vector2i) -> void:
 	if _selected_id < 0:
@@ -407,6 +513,78 @@ func _move_selected_to(target: Vector2i) -> void:
 			break
 
 
+func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
+	if attacker.is_empty() or target.is_empty():
+		return false
+	var attacker_id: int = int(attacker.get("id", -1))
+	if attacker_id != _selected_id:
+		return false
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	var approach_tile: Vector2i = _find_attack_approach_tile(attacker, target)
+	if approach_tile.x < 0:
+		return false
+	var steps: int = _calc_path_length(from, approach_tile)
+	if steps <= 0:
+		return false
+	if _turn_manager:
+		var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, steps)
+		if not ok:
+			return false
+
+	for u in _units:
+		if u["id"] == attacker_id:
+			u["grid_pos"] = approach_tile
+			u["has_moved"] = true
+			_pending_attack_after_move[attacker_id] = int(target.get("id", -1))
+			_start_move_visual(attacker_id, from, approach_tile)
+			var data: UnitData = _get_unit_data(u)
+			var fog_mgr = get_parent().get_node("FogOfWar2D")
+			if fog_mgr and _turn_manager:
+				fog_mgr.reveal_area(_turn_manager.current_player, approach_tile.x, approach_tile.y, data.vision)
+			_reachable_tiles = []
+			queue_redraw()
+			return true
+	return false
+
+
+func _find_attack_approach_tile(attacker: Dictionary, target: Dictionary) -> Vector2i:
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	var candidates: Array[Vector2i] = _get_attack_approach_candidates(from, target_pos)
+	var reachable: Array = _calc_reachable(attacker)
+	for candidate in candidates:
+		if candidate in reachable:
+			return candidate
+	return Vector2i(-1, -1)
+
+
+func _get_attack_approach_candidates(from: Vector2i, target_pos: Vector2i) -> Array[Vector2i]:
+	var dirs: Array[Vector2i] = [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	var preferred := Vector2i.ZERO
+	var dx: int = from.x - target_pos.x
+	var dy: int = from.y - target_pos.y
+	if absi(dy) >= absi(dx) and dy != 0:
+		var y_dir := 1
+		if dy < 0:
+			y_dir = -1
+		preferred = Vector2i(0, y_dir)
+	elif dx != 0:
+		var x_dir := 1
+		if dx < 0:
+			x_dir = -1
+		preferred = Vector2i(x_dir, 0)
+
+	var result: Array[Vector2i] = []
+	if preferred != Vector2i.ZERO:
+		result.append(target_pos + preferred)
+	for dir in dirs:
+		if dir == preferred:
+			continue
+		result.append(target_pos + dir)
+	return result
+
+
 func _start_move_visual(unit_id: int, from: Vector2i, to: Vector2i) -> void:
 	if not is_inside_tree():
 		return
@@ -434,6 +612,15 @@ func _set_move_visual_t(t: float, unit_id: int) -> void:
 
 func _finish_move_visual(unit_id: int) -> void:
 	_move_visuals.erase(unit_id)
+	if _pending_attack_after_move.has(unit_id):
+		var defender_id: int = int(_pending_attack_after_move.get(unit_id, -1))
+		_pending_attack_after_move.erase(unit_id)
+		var attacker: Dictionary = _get_unit_by_id(unit_id)
+		var defender: Dictionary = _get_unit_by_id(defender_id)
+		if not attacker.is_empty() and not defender.is_empty():
+			if _is_adjacent(attacker["grid_pos"], defender["grid_pos"]):
+				_initiate_combat(unit_id, defender_id)
+				return
 	queue_redraw()
 
 
@@ -767,6 +954,7 @@ func _end_combat(winner_id: int, attacker_pos: Vector2i = Vector2i(-1, -1), lose
 				_move_visuals.erase(loser_id)
 				_hurt_visuals.erase(loser_id)
 				_attack_visuals.erase(loser_id)
+				_pending_attack_after_move.erase(loser_id)
 				_units.remove_at(i)
 				break
 
@@ -982,6 +1170,7 @@ func remove_unit_by_id(uid: int) -> void:
 			_attack_visuals.erase(uid)
 			_death_visuals.erase(uid)
 			_unit_facing_flip.erase(uid)
+			_pending_attack_after_move.erase(uid)
 			_units.remove_at(i)
 			break
 	queue_redraw()

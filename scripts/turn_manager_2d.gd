@@ -20,7 +20,7 @@ var turn_phase: TurnPhase = TurnPhase.ROUND_START
 var player_ap := [6, 6, 6]
 var player_finished := [false, false, false]
 
-const AP_PER_ROUND := 6
+const AP_PER_ROUND := 12
 const AP_MAX := 12
 
 

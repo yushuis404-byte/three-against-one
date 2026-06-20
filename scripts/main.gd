@@ -23,6 +23,8 @@ var current_state: GameState = GameState.LOADING
 var stage_label: Label = null
 var stage_event_service: StageEventService = null
 var _goblin_market_round := -1
+var action_preview_panel: Control = null
+var ap_status_label: Label = null
 
 
 func _ready() -> void:
@@ -74,6 +76,7 @@ func _setup_game() -> void:
 	turn_manager.player_turn_started.connect(_on_player_turn_started)
 	turn_manager.round_ended.connect(_on_round_ended)
 	turn_manager.ap_changed.connect(_on_ap_changed)
+	_init_ap_status_label()
 	_init_stage_event_service()
 
 	# 单位系统初始化
@@ -108,6 +111,7 @@ func _setup_game() -> void:
 
 		# 单位信息面板初始化
 	_init_unit_info_panel()
+	_init_action_preview_panel()
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
@@ -200,6 +204,7 @@ func _on_player_turn_started(player: int) -> void:
 	turn_label.text = "第 %d 回合 · %s" % [turn_manager.round_number, GameCatalog.faction_name(player)]
 	turn_label.label_settings = _make_label_settings(GameCatalog.faction_color(player))
 	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
+	_update_ap_status_label(player)
 	resource_tracker.update_display(player)
 	# 海克斯商队触发检查
 	if _goblin_market_round == turn_manager.round_number:
@@ -216,6 +221,7 @@ func _on_round_ended(round: int) -> void:
 
 func _on_ap_changed(player: int, ap: int) -> void:
 	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
+	_update_ap_status_label(player)
 	resource_tracker.update_display(player)
 	building_ui.refresh(player)
 
@@ -286,6 +292,33 @@ func _update_stage_label(round_number: int) -> void:
 		GameStageRulesScript.ROUNDS_PER_STAGE,
 	]
 
+
+func _init_ap_status_label() -> void:
+	ap_status_label = Label.new()
+	ap_status_label.name = "APStatusLabel"
+	ap_status_label.position = Vector2(16, 138)
+	ap_status_label.size = Vector2(220, 34)
+	ap_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ap_status_label.add_theme_font_size_override("font_size", 18)
+	ap_status_label.add_theme_color_override("font_color", Color.WHITE)
+	ap_status_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	ap_status_label.add_theme_constant_override("shadow_offset_x", 1)
+	ap_status_label.add_theme_constant_override("shadow_offset_y", 1)
+	$UI.add_child(ap_status_label)
+	_update_ap_status_label(turn_manager.current_player)
+
+
+func _update_ap_status_label(player: int) -> void:
+	if not ap_status_label:
+		return
+	var color: Color = GameCatalog.faction_color(player)
+	ap_status_label.add_theme_color_override("font_color", color)
+	ap_status_label.text = "%s AP: %d / %d" % [
+		GameCatalog.faction_name(player),
+		turn_manager.get_ap(player),
+		turn_manager.AP_MAX,
+	]
+
 func _make_label_settings(color: Color) -> LabelSettings:
 	var s := LabelSettings.new()
 	s.font_size = 22
@@ -309,6 +342,15 @@ func _init_unit_info_panel() -> void:
 	neutral_unit_manager.neutral_selected.connect(panel.show_unit)
 	neutral_unit_manager.selection_cleared.connect(panel.hide_panel)
 	unit_manager.selection_cleared.connect(neutral_unit_manager.clear_selection)
+
+
+func _init_action_preview_panel() -> void:
+	var panel_script := preload("res://scripts/ui/action_preview_panel.gd")
+	action_preview_panel = Control.new()
+	action_preview_panel.name = "ActionPreviewPanel"
+	action_preview_panel.script = panel_script
+	$UI.add_child(action_preview_panel)
+	unit_manager.action_preview_changed.connect(action_preview_panel.show_preview)
 
 
 func _input(event: InputEvent) -> void:
