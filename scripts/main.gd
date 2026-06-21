@@ -17,6 +17,7 @@ const StageEventServiceScript = preload("res://scripts/services/stage_event_serv
 @onready var recruit_ui: Control = $UI/RecruitUI
 @onready var neutral_unit_manager: Node2D = $GameBoard/NeutralUnitManager2D
 @onready var goblin_market_ui: Control = $UI/GoblinMarketUI
+@onready var civilization_rules: Node = $GameBoard/CivilizationRuleService
 
 enum GameState { LOADING, PLAYING, TURN_RESOLVE, GAME_OVER }
 var current_state: GameState = GameState.LOADING
@@ -98,6 +99,8 @@ func _setup_game() -> void:
 	building_ui.set_turn_manager(turn_manager)
 	building_ui.set_building_manager(building_manager)
 	building_ui.set_resource_tracker(resource_tracker)
+	if building_ui.has_method("set_civilization_rules"):
+		building_ui.set_civilization_rules(civilization_rules)
 	building_ui.building_selected.connect(_on_building_selected)
 	building_ui.refresh(turn_manager.current_player)
 

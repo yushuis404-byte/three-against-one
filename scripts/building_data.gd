@@ -11,6 +11,7 @@ enum BuildingCategory {
 	INDUSTRY,
 	GOLD_CHAIN,
 	RARE,
+	LORD_SPECIAL,
 }
 
 var name: String
@@ -28,6 +29,9 @@ var max_per_faction: int
 var description: String
 var tech_tier: int = 0
 var tags: Array[String] = []
+var unique_effect_id: String = ""
+var lord_requirement: String = ""
+var civilization_tag: String = ""
 var is_special_building: bool = false  # 特殊建筑标记（如金矿矿井需金矿资源点+驻兵产出）
 var needs_resource_point: bool = false
 var storage_level: int = 0
@@ -231,6 +235,167 @@ static func recruit_camp() -> BuildingData:
 	b.tags = ["recruit", "worker", "recruit_camp"]
 	return b
 
+
+static func lord_wind_speaking_tree() -> BuildingData:
+	var b := BuildingData.new(
+		"\u98ce\u8bed\u53e4\u6811", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 30, 20, 0, 0,
+		8, { "ancient_wood": 1 },
+		[TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF],
+		1, "\u7cbe\u7075\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u5468\u56f4\u89c6\u91ce +1\uff0c\u6bcf\u56de\u5408 +1 \u53e4\u6728"
+	)
+	b.tech_tier = 2
+	b.unique_effect_id = "elf.wind_speaking_tree"
+	b.lord_requirement = "lord.elf.wind_seer"
+	b.civilization_tag = "elf"
+	b.preferred_worker_tag = "elf"
+	b.tags = ["lord_building", "elf", "vision", "ancient_wood"]
+	return b
+
+
+static func lord_rootweb_shrine() -> BuildingData:
+	var b := BuildingData.new(
+		"\u6839\u7f51\u5723\u575b", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 40, 10, 0, 0,
+		7, {},
+		[TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF],
+		2, "\u7cbe\u7075\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u68ee\u6797\u673a\u52a8\u4e0e\u6839\u7f51\u901a\u9053\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 2
+	b.unique_effect_id = "elf.rootweb_shrine"
+	b.lord_requirement = "lord.elf.root_keeper"
+	b.civilization_tag = "elf"
+	b.tags = ["lord_building", "elf", "mobility", "forest"]
+	return b
+
+
+static func lord_moonshadow_watchtower() -> BuildingData:
+	var b := BuildingData.new(
+		"\u6708\u5f71\u54e8\u5854", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 25, 15, 0, 0,
+		5, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
+		 TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		2, "\u7cbe\u7075\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u5f3a\u5316\u4fa6\u5bdf\u548c\u8fdc\u7a0b\u5148\u624b\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 1
+	b.unique_effect_id = "elf.moonshadow_watchtower"
+	b.lord_requirement = "lord.elf.moon_hunter"
+	b.civilization_tag = "elf"
+	b.tags = ["lord_building", "elf", "scout", "vision"]
+	return b
+
+
+static func lord_deep_forge_workshop() -> BuildingData:
+	var b := BuildingData.new(
+		"\u6df1\u7089\u5de5\u574a", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 25, 35, 5, 0,
+		8, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
+		 TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		1, "\u77ee\u4eba\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u94c1\u77ff\u5230\u91d1\u5e01\u7684\u8f6c\u6362\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 2
+	b.unique_effect_id = "dwarf.deep_forge_workshop"
+	b.lord_requirement = "lord.dwarf.forge_master"
+	b.civilization_tag = "dwarf"
+	b.preferred_worker_tag = "dwarf"
+	b.tags = ["lord_building", "dwarf", "industry", "conversion"]
+	return b
+
+
+static func lord_iron_oath_fortress() -> BuildingData:
+	var b := BuildingData.new(
+		"\u94c1\u8a93\u5821\u5792", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 20, 50, 10, 0,
+		14, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
+		 TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		1, "\u77ee\u4eba\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u9632\u5b88\u3001\u9886\u571f\u538b\u5236\u548c\u51cf\u4f24\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 2
+	b.unique_effect_id = "dwarf.iron_oath_fortress"
+	b.lord_requirement = "lord.dwarf.stone_warden"
+	b.civilization_tag = "dwarf"
+	b.tags = ["lord_building", "dwarf", "defense", "territory"]
+	return b
+
+
+static func lord_vein_lift() -> BuildingData:
+	var b := BuildingData.new(
+		"\u5ca9\u8109\u5347\u964d\u673a", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 20, 25, 0, 0,
+		7, {},
+		[TerrainData.Terrain.MOUNTAIN_DWARF],
+		2, "\u77ee\u4eba\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u5c71\u5730\u673a\u52a8\u548c\u76f8\u90bb\u77ff\u4e95\u589e\u4ea7\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 1
+	b.unique_effect_id = "dwarf.vein_lift"
+	b.lord_requirement = "lord.dwarf.mountain_engineer"
+	b.civilization_tag = "dwarf"
+	b.tags = ["lord_building", "dwarf", "mountain", "mobility"]
+	return b
+
+
+static func lord_war_drum_camp() -> BuildingData:
+	var b := BuildingData.new(
+		"\u6218\u9f13\u8425\u5730", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 30, 15, 0, 5,
+		7, {},
+		[TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.PLAIN_DWARF],
+		2, "\u517d\u4eba\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u8fd1\u6218\u653b\u51fb\u548c\u62db\u52df\u52a0\u901f\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 1
+	b.unique_effect_id = "orc.war_drum_camp"
+	b.lord_requirement = "lord.orc.blood_chief"
+	b.civilization_tag = "orc"
+	b.preferred_worker_tag = "orc"
+	b.tags = ["lord_building", "orc", "war", "recruit_speed"]
+	return b
+
+
+static func lord_plunder_banner() -> BuildingData:
+	var b := BuildingData.new(
+		"\u63a0\u593a\u65d7\u67f1", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 25, 20, 0, 10,
+		6, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
+		 TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		2, "\u517d\u4eba\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u8fb9\u5883\u9a9a\u6270\u3001\u654c\u65b9\u4ea7\u51fa\u524a\u5f31\u548c\u51fb\u6740\u6536\u76ca\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 2
+	b.unique_effect_id = "orc.plunder_banner"
+	b.lord_requirement = "lord.orc.raider"
+	b.civilization_tag = "orc"
+	b.tags = ["lord_building", "orc", "raid", "border"]
+	return b
+
+
+static func lord_flesh_pen() -> BuildingData:
+	var b := BuildingData.new(
+		"\u8840\u8089\u56f4\u680f", BuildingCategory.LORD_SPECIAL, Vector2i(1, 1),
+		0, 30, 10, 0, 15,
+		7, {},
+		[TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.PLAIN_DWARF],
+		2, "\u517d\u4eba\u9886\u4e3b\u7279\u8272\u5efa\u7b51\uff1a\u98df\u7269\u8f6c\u519b\u529b\u3001\u961f\u5217\u52a0\u901f\u548c\u6b7b\u4ea1\u8fd4\u8fd8\u6548\u679c\u6302\u70b9"
+	)
+	b.tech_tier = 2
+	b.unique_effect_id = "orc.flesh_pen"
+	b.lord_requirement = "lord.orc.flesh_binder"
+	b.civilization_tag = "orc"
+	b.tags = ["lord_building", "orc", "food", "recruit_speed"]
+	return b
+
 static func get_templates() -> Dictionary:
 	## 返回按分类分组的全部建筑模板
 	return {
@@ -243,6 +408,7 @@ static func get_templates() -> Dictionary:
 		BuildingCategory.INDUSTRY: [t1_mine()],
 		BuildingCategory.GOLD_CHAIN: [gold_mine_shaft(), mint()],
 		BuildingCategory.RARE: [t1_extraction_tower(), t1_ancient_wood_harvest()],
+		BuildingCategory.LORD_SPECIAL: [lord_wind_speaking_tree(), lord_rootweb_shrine(), lord_moonshadow_watchtower(), lord_deep_forge_workshop(), lord_iron_oath_fortress(), lord_vein_lift(), lord_war_drum_camp(), lord_plunder_banner(), lord_flesh_pen()],
 	}
 
 

@@ -6,6 +6,7 @@ signal building_selected(data: BuildingData)
 var _turn_manager: Node = null
 var _building_manager: Node = null
 var _resource_tracker: Node = null
+var _civilization_rules: Node = null
 var _current_player := 0
 var _selected_cat: BuildingData.BuildingCategory = BuildingData.BuildingCategory.ECONOMY
 
@@ -28,6 +29,7 @@ const CATEGORY_NAMES := {
 	BuildingData.BuildingCategory.INDUSTRY: "\u5de5\u4e1a",
 	BuildingData.BuildingCategory.GOLD_CHAIN: "\u91d1\u5e01",
 	BuildingData.BuildingCategory.RARE: "\u7a00\u6709",
+	BuildingData.BuildingCategory.LORD_SPECIAL: "\u9886\u4e3b",
 }
 
 const CATEGORY_ORDER := [
@@ -40,6 +42,7 @@ const CATEGORY_ORDER := [
 	BuildingData.BuildingCategory.INDUSTRY,
 	BuildingData.BuildingCategory.GOLD_CHAIN,
 	BuildingData.BuildingCategory.RARE,
+	BuildingData.BuildingCategory.LORD_SPECIAL,
 ]
 
 
@@ -59,6 +62,12 @@ func set_building_manager(bm: Node) -> void:
 
 func set_resource_tracker(rt: Node) -> void:
 	_resource_tracker = rt
+
+
+func set_civilization_rules(rules: Node) -> void:
+	_civilization_rules = rules
+	if _civilization_rules != null and _civilization_rules.has_signal("route_changed"):
+		_civilization_rules.route_changed.connect(_on_civilization_route_changed)
 
 
 func refresh(player: int) -> void:
@@ -227,6 +236,8 @@ func _rebuild_cards(cat: BuildingData.BuildingCategory) -> void:
 
 	for t in templates:
 		var d: BuildingData = t
+		if not _can_show_building(d):
+			continue
 		var card := Panel.new()
 		card.name = "Card_%s" % d.name
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -304,6 +315,21 @@ func _rebuild_cards(cat: BuildingData.BuildingCategory) -> void:
 			prod_label.add_theme_font_size_override("font_size", 11)
 			prod_label.add_theme_color_override("font_color", Color(0.5, 0.9, 0.5))
 			card_vbox.add_child(prod_label)
+
+
+func _can_show_building(data: BuildingData) -> bool:
+	if data == null:
+		return false
+	if data.lord_requirement.is_empty():
+		return true
+	if _civilization_rules == null or not _civilization_rules.has_method("has_lord"):
+		return false
+	return bool(_civilization_rules.call("has_lord", _current_player, data.lord_requirement))
+
+
+func _on_civilization_route_changed(player: int) -> void:
+	if player == _current_player:
+		_select_category(_selected_cat)
 
 
 # ========== 详情面板 ==========
