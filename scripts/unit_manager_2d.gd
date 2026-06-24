@@ -5,6 +5,7 @@ const ORC_BLOOD_AXE_WALK_TEXTURE: Texture2D = preload("res://assets/texture/char
 const ORC_BLOOD_AXE_HURT_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Hurt.png")
 const ORC_BLOOD_AXE_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Attack01.png")
 const ORC_BLOOD_AXE_DEATH_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Death.png")
+const ORC_HUNTING_BEAST_TEXTURE: Texture2D = preload("res://assets/units/orc/Hunting-Toothed Beast/Hunting-Beast.png")
 ## 单位管理器 — 放置、绘制、选择、移动、战斗
 ##
 ## 单位绘制在迷雾之下（原型简化），阵营色圆圈 + 中文名 + HP
@@ -50,6 +51,9 @@ var _pending_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
 var _throw_beast_source_id: int = -1
 var _last_action_preview_key := ""
 var _current_action_preview: Dictionary = {}
+var _next_warband_id: int = 1
+var _warband_selection_leader_id: int = -1
+var _warband_selection_ids: Array[int] = []
 
 # 战斗视觉效果
 var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
@@ -59,6 +63,10 @@ const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
 const ATTACK_RANGE_COLOR := Color(1.0, 0.18, 0.12, 0.24)
 const THROW_RANGE_COLOR := Color(0.1, 0.82, 1.0, 0.25)
+const WARBAND_RING_COLOR := Color(1.0, 0.16, 0.08, 0.55)
+const WARBAND_AREA_COLOR := Color(1.0, 0.12, 0.06, 0.10)
+const WARBAND_COMMAND_COLOR := Color(0.1, 0.55, 1.0, 0.95)
+const WARBAND_SELECTION_COLOR := Color(0.1, 0.55, 1.0, 0.55)
 const ATTACK_APPROACH_OK_COLOR := Color(0.2, 1.0, 0.35, 0.38)
 const ATTACK_APPROACH_BLOCKED_COLOR := Color(1.0, 0.35, 0.18, 0.42)
 const UNIT_RADIUS := 8.0
@@ -69,6 +77,10 @@ const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
 const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
 const SLINGER_THROW_RANGE := 5
 const SLINGER_THROW_AP_COST := 1
+const WARBAND_RADIUS := 3
+const WARBAND_MIN_MEMBERS := 3
+const WARBAND_MAX_MEMBERS := 8
+const WARBAND_AP_COST := 1
 const ORC_BLOOD_AXE_IDLE_FRAMES := 6
 const ORC_BLOOD_AXE_WALK_FRAMES := 8
 const ORC_BLOOD_AXE_HURT_FRAMES := 4
@@ -80,6 +92,10 @@ const ORC_BLOOD_AXE_IDLE_FRAME_SECONDS := 0.18
 const ORC_BLOOD_AXE_HURT_DURATION := 0.28
 const ORC_BLOOD_AXE_ATTACK_DURATION := 0.36
 const ORC_BLOOD_AXE_DEATH_DURATION := 0.48
+const ORC_HUNTING_BEAST_FRAMES := 10
+const ORC_HUNTING_BEAST_FRAME_SIZE := Vector2(183, 176)
+const ORC_HUNTING_BEAST_DRAW_SIZE := Vector2(18.4, 17.6)
+const ORC_HUNTING_BEAST_FRAME_SECONDS := 0.12
 
 
 func _ready() -> void:
@@ -227,6 +243,7 @@ func _draw() -> void:
 		draw_circle(pos_throw, UNIT_RADIUS * 1.7, THROW_RANGE_COLOR)
 
 	_draw_action_preview_highlight()
+	_draw_warband_highlights()
 
 	for u in _units:
 		if not _is_unit_visible_to_current_player(u):
@@ -238,13 +255,15 @@ func _draw() -> void:
 		var uid: int = u["id"]
 		var is_selected := uid == _selected_id
 		var draw_pos: Vector2 = world_pos + _shake_offsets.get(uid, Vector2.ZERO)
-		var uses_orc_sprite: bool = _is_orc_blood_axe(u)
+		var uses_orc_sprite: bool = _uses_orc_sprite(u)
 
 		if is_selected:
 			draw_circle(draw_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
 
-		if uses_orc_sprite:
+		if _is_orc_blood_axe(u):
 			_draw_orc_blood_axe(u, draw_pos)
+		elif _is_orc_beast(u):
+			_draw_orc_hunting_beast(u, draw_pos)
 		else:
 			var color: Color = GameCatalog.faction_color(faction)
 			if _hit_flash.has(uid):
@@ -294,7 +313,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	var cursor := get_global_mouse_position()
 	var gpos := _world_to_grid(cursor)
 	if not _in_bounds(gpos.x, gpos.y):
-		_clear_selection()
+		if not _is_warband_selection_active():
+			_clear_selection()
+		return
+
+	if _is_warband_selection_active():
+		_handle_warband_selection_click(gpos)
 		return
 
 	if _selected_id >= 0 and _throw_beast_source_id >= 0:
@@ -418,6 +442,124 @@ func _clear_selection() -> void:
 # ========== 移动 ==========
 
 
+func request_form_warband(unit_id: int = -1) -> bool:
+	var leader_id: int = unit_id if unit_id >= 0 else _selected_id
+	var leader: Dictionary = _get_unit_by_id(leader_id)
+	if leader.is_empty():
+		return false
+	if not _can_unit_join_warband(leader, true):
+		return false
+	if _turn_manager:
+		if int(leader.get("faction", -1)) != int(_turn_manager.current_player):
+			return false
+	_start_warband_selection(leader_id)
+	return true
+
+
+func confirm_warband_selection() -> bool:
+	if not _is_warband_selection_active():
+		return false
+	if _warband_selection_ids.size() < WARBAND_MIN_MEMBERS:
+		print("[Warband] Need at least %d members." % WARBAND_MIN_MEMBERS)
+		return false
+	if _turn_manager:
+		var leader: Dictionary = _get_unit_by_id(_warband_selection_leader_id)
+		if leader.is_empty() or int(leader.get("faction", -1)) != int(_turn_manager.current_player):
+			cancel_warband_selection()
+			return false
+		if not _turn_manager.spend_ap(_turn_manager.current_player, WARBAND_AP_COST):
+			print("[Warband] Not enough AP.")
+			return false
+	var warband_id: int = _next_warband_id
+	var formed_count: int = _warband_selection_ids.size()
+	_next_warband_id += 1
+	for member_id in _warband_selection_ids:
+		var member: Dictionary = _get_unit_by_id(member_id)
+		if member.is_empty():
+			continue
+		member["warband_id"] = warband_id
+		member["warband_leader_id"] = _warband_selection_leader_id
+		member["warband_turn"] = _turn_manager.round_number if _turn_manager else 0
+	var leader_view: Dictionary = _get_unit_by_id(_warband_selection_leader_id)
+	_warband_selection_leader_id = -1
+	_warband_selection_ids.clear()
+	if not leader_view.is_empty():
+		unit_selected.emit(_make_unit_view(leader_view))
+	queue_redraw()
+	print("[Warband] Formed orc warband %d with %d members." % [warband_id, formed_count])
+	return true
+
+
+func cancel_warband_selection() -> void:
+	if not _is_warband_selection_active():
+		return
+	var leader: Dictionary = _get_unit_by_id(_warband_selection_leader_id)
+	_warband_selection_leader_id = -1
+	_warband_selection_ids.clear()
+	if not leader.is_empty():
+		unit_selected.emit(_make_unit_view(leader))
+	queue_redraw()
+
+
+func disband_warband(unit_id: int = -1) -> bool:
+	var selected_unit_id: int = unit_id if unit_id >= 0 else _selected_id
+	var unit: Dictionary = _get_unit_by_id(selected_unit_id)
+	if unit.is_empty():
+		return false
+	var warband_id: int = int(unit.get("warband_id", -1))
+	if warband_id < 0:
+		return false
+	if _turn_manager and int(unit.get("faction", -1)) != int(_turn_manager.current_player):
+		return false
+	for member in _units:
+		if int(member.get("warband_id", -1)) != warband_id:
+			continue
+		member.erase("warband_id")
+		member.erase("warband_leader_id")
+		member.erase("warband_turn")
+	_reachable_tiles = _calc_reachable(unit)
+	unit_selected.emit(_make_unit_view(unit))
+	queue_redraw()
+	return true
+
+
+func _start_warband_selection(leader_id: int) -> void:
+	_warband_selection_leader_id = leader_id
+	_warband_selection_ids.clear()
+	_warband_selection_ids.append(leader_id)
+	_selected_id = leader_id
+	var leader: Dictionary = _get_unit_by_id(leader_id)
+	if not leader.is_empty():
+		_reachable_tiles = []
+		_attack_range_tiles = []
+		_throw_range_tiles = []
+		unit_selected.emit(_make_unit_view(leader))
+	queue_redraw()
+
+
+func _is_warband_selection_active() -> bool:
+	return _warband_selection_leader_id >= 0
+
+
+func _handle_warband_selection_click(gpos: Vector2i) -> void:
+	var target: Dictionary = get_visible_unit_at(gpos)
+	if target.is_empty():
+		return
+	if not _can_unit_join_warband(target, false):
+		return
+	var target_id: int = int(target.get("id", -1))
+	if target_id == _warband_selection_leader_id:
+		return
+	if target_id in _warband_selection_ids:
+		_warband_selection_ids.erase(target_id)
+	elif _warband_selection_ids.size() < WARBAND_MAX_MEMBERS:
+		_warband_selection_ids.append(target_id)
+	var leader: Dictionary = _get_unit_by_id(_warband_selection_leader_id)
+	if not leader.is_empty():
+		unit_selected.emit(_make_unit_view(leader))
+	queue_redraw()
+
+
 func _update_action_preview() -> void:
 	if _selected_id < 0 or _in_combat or not _move_visuals.is_empty():
 		_emit_action_preview({})
@@ -498,6 +640,50 @@ func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, width: float, d
 		var segment_end: float = minf(cursor + dash_length, length)
 		draw_line(from + direction * cursor, from + direction * segment_end, color, width, true)
 		cursor += dash_length + gap_length
+
+
+func _draw_warband_highlights() -> void:
+	if _is_warband_selection_active():
+		_draw_warband_selection_highlights()
+	var selected: Dictionary = _get_unit_by_id(_selected_id)
+	if not selected.is_empty() and _is_active_warband_member(selected):
+		var leader: Dictionary = _get_warband_leader(int(selected.get("warband_id", -1)))
+		var center_pos: Vector2i = leader.get("grid_pos", selected.get("grid_pos", Vector2i.ZERO))
+		for tile in _get_tiles_in_manhattan_radius(center_pos, WARBAND_RADIUS):
+			var p: Vector2 = _grid_to_world(tile.x, tile.y)
+			var rect := Rect2(p - Vector2(tile_size, tile_size) * 0.5, Vector2(tile_size, tile_size))
+			draw_rect(rect.grow(-3.0), WARBAND_AREA_COLOR, true)
+	for unit in _units:
+		if not _is_unit_visible_to_current_player(unit):
+			continue
+		if not _is_active_warband_member(unit):
+			continue
+		var p2: Vector2 = _get_unit_draw_world_pos(unit)
+		draw_circle(p2, UNIT_RADIUS + 7.0, Color(WARBAND_RING_COLOR.r, WARBAND_RING_COLOR.g, WARBAND_RING_COLOR.b, 0.16))
+		draw_circle(p2, UNIT_RADIUS + 7.0, WARBAND_RING_COLOR, false, 2.0)
+		if int(unit.get("id", -1)) == int(unit.get("warband_leader_id", -2)):
+			draw_circle(p2 + Vector2(0, -30), 5.0, WARBAND_COMMAND_COLOR)
+			draw_circle(p2 + Vector2(0, -30), 8.0, Color(WARBAND_COMMAND_COLOR.r, WARBAND_COMMAND_COLOR.g, WARBAND_COMMAND_COLOR.b, 0.25))
+
+
+func _draw_warband_selection_highlights() -> void:
+	var leader: Dictionary = _get_unit_by_id(_warband_selection_leader_id)
+	if leader.is_empty():
+		return
+	var leader_pos: Vector2 = _get_unit_draw_world_pos(leader)
+	draw_circle(leader_pos + Vector2(0, -30), 5.0, WARBAND_COMMAND_COLOR)
+	draw_circle(leader_pos + Vector2(0, -30), 8.0, Color(WARBAND_COMMAND_COLOR.r, WARBAND_COMMAND_COLOR.g, WARBAND_COMMAND_COLOR.b, 0.25))
+	for unit in _units:
+		if not _is_unit_visible_to_current_player(unit):
+			continue
+		if not _can_unit_join_warband(unit, false):
+			continue
+		var pos: Vector2 = _get_unit_draw_world_pos(unit)
+		if int(unit.get("id", -1)) in _warband_selection_ids:
+			draw_circle(pos, UNIT_RADIUS + 9.0, Color(WARBAND_SELECTION_COLOR.r, WARBAND_SELECTION_COLOR.g, WARBAND_SELECTION_COLOR.b, 0.18))
+			draw_circle(pos, UNIT_RADIUS + 9.0, WARBAND_SELECTION_COLOR, false, 2.5)
+		else:
+			draw_circle(pos, UNIT_RADIUS + 6.0, Color(WARBAND_SELECTION_COLOR.r, WARBAND_SELECTION_COLOR.g, WARBAND_SELECTION_COLOR.b, 0.14), false, 1.5)
 
 
 func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionary:
@@ -707,6 +893,9 @@ func _move_selected_to(target: Vector2i) -> void:
 
 	for u in _units:
 		if u["id"] == _selected_id:
+			if _is_active_warband_member(u):
+				_move_warband_to(u, target)
+				return
 			var from: Vector2i = u["grid_pos"]
 			var steps := _calc_path_length(from, target)
 			var ap_cost: int = _get_movement_ap_cost(u, steps)
@@ -850,6 +1039,9 @@ func _set_move_visual_t(t: float, unit_id: int) -> void:
 
 
 func _finish_move_visual(unit_id: int) -> void:
+	if _move_visuals.has(unit_id):
+		var visual: Dictionary = _move_visuals[unit_id]
+		_unit_facing_flip[unit_id] = bool(visual.get("flip_x", false))
 	_move_visuals.erase(unit_id)
 	if _pending_attack_after_move.has(unit_id):
 		var defender_id: int = int(_pending_attack_after_move.get(unit_id, -1))
@@ -877,9 +1069,13 @@ func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
 
 func _has_orc_blood_axe_units() -> bool:
 	for unit in _units:
-		if _is_orc_blood_axe(unit):
+		if _is_orc_blood_axe(unit) or _is_orc_beast(unit):
 			return true
 	return false
+
+
+func _uses_orc_sprite(unit: Dictionary) -> bool:
+	return _is_orc_blood_axe(unit) or _is_orc_beast(unit)
 
 
 func _is_orc_blood_axe(unit: Dictionary) -> bool:
@@ -892,6 +1088,25 @@ func _is_orc_slinger(unit: Dictionary) -> bool:
 
 func _is_orc_beast(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == ORC_BEAST_TEMPLATE_ID
+
+
+func _draw_orc_hunting_beast(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var frame: int = 0
+	if is_moving:
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(ORC_HUNTING_BEAST_FRAMES))), 0, ORC_HUNTING_BEAST_FRAMES - 1)
+	var src := Rect2(Vector2(ORC_HUNTING_BEAST_FRAME_SIZE.x * frame, 0.0), ORC_HUNTING_BEAST_FRAME_SIZE)
+	var dst := Rect2(-ORC_HUNTING_BEAST_DRAW_SIZE * 0.5, ORC_HUNTING_BEAST_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(ORC_HUNTING_BEAST_TEXTURE, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_orc_blood_axe(unit: Dictionary, draw_pos: Vector2) -> void:
@@ -971,7 +1186,158 @@ func _trigger_hidden_trader_if_adjacent(target: Vector2i, faction: int) -> void:
 				hidden_trader_discovered.emit(faction)
 				return
 
+func _get_warband_candidates(leader: Dictionary) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not _can_unit_join_warband(leader, true):
+		return result
+	var leader_pos: Vector2i = leader.get("grid_pos", Vector2i.ZERO)
+	for unit in _units:
+		if not _can_unit_join_warband(unit, false):
+			continue
+		if int(unit.get("warband_id", -1)) >= 0:
+			continue
+		var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+		if _grid_distance(leader_pos, pos) <= WARBAND_RADIUS:
+			result.append(unit)
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var apos: Vector2i = a.get("grid_pos", Vector2i.ZERO)
+		var bpos: Vector2i = b.get("grid_pos", Vector2i.ZERO)
+		return _grid_distance(leader_pos, apos) < _grid_distance(leader_pos, bpos)
+	)
+	if result.size() > WARBAND_MAX_MEMBERS:
+		result.resize(WARBAND_MAX_MEMBERS)
+	return result
+
+
+func _is_orc_warband_unit(unit: Dictionary) -> bool:
+	return _can_unit_join_warband(unit, false)
+
+
+func _can_unit_join_warband(unit: Dictionary, allow_existing_member: bool) -> bool:
+	if int(unit.get("faction", -1)) != 2:
+		return false
+	if _turn_manager and int(unit.get("faction", -1)) != int(_turn_manager.current_player):
+		return false
+	if not allow_existing_member and int(unit.get("warband_id", -1)) >= 0:
+		return false
+	return true
+
+
+func _is_active_warband_member(unit: Dictionary) -> bool:
+	var warband_id: int = int(unit.get("warband_id", -1))
+	if warband_id < 0:
+		return false
+	return _get_warband_member_count(warband_id) >= WARBAND_MIN_MEMBERS
+
+
+func _get_warband_member_count(warband_id: int) -> int:
+	var count := 0
+	for unit in _units:
+		if int(unit.get("warband_id", -1)) == warband_id:
+			count += 1
+	return count
+
+
+func _get_warband_members(warband_id: int) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for unit in _units:
+		if int(unit.get("warband_id", -1)) == warband_id:
+			result.append(unit)
+	return result
+
+
+func _get_warband_member_ids(warband_id: int) -> Array[int]:
+	var result: Array[int] = []
+	for unit in _units:
+		if int(unit.get("warband_id", -1)) == warband_id:
+			result.append(int(unit.get("id", -1)))
+	return result
+
+
+func _get_warband_leader(warband_id: int) -> Dictionary:
+	var members: Array[Dictionary] = _get_warband_members(warband_id)
+	if members.is_empty():
+		return {}
+	var leader_id: int = int(members[0].get("warband_leader_id", -1))
+	for member in members:
+		if int(member.get("id", -1)) == leader_id:
+			return member
+	return members[0]
+
+
+func _get_warband_move_limit(warband_id: int) -> int:
+	var limit: int = 999
+	for member in _get_warband_members(warband_id):
+		var data: UnitData = _get_unit_data(member)
+		limit = mini(limit, data.move_max)
+	return 0 if limit == 999 else limit
+
+
+func _get_warband_size_ap(member_count: int) -> int:
+	if member_count <= 4:
+		return 1
+	if member_count <= 6:
+		return 2
+	return 3
+
+
+func _get_warband_move_ap(distance: int, member_count: int) -> int:
+	if distance <= 0:
+		return 0
+	return distance + _get_warband_size_ap(member_count)
+
+
+func _get_warband_ap_text(member_count: int) -> String:
+	if member_count < WARBAND_MIN_MEMBERS:
+		return ""
+	var command_ap: int = _get_warband_size_ap(member_count)
+	return "\u519b\u56e2%d\u4eba\uff1a\u6bcf\u683c1 AP\uff0c\u6307\u6325\u9644\u52a0%d AP\u30021\u683c%d AP / 2\u683c%d AP / 3\u683c%d AP" % [
+		member_count,
+		command_ap,
+		_get_warband_move_ap(1, member_count),
+		_get_warband_move_ap(2, member_count),
+		_get_warband_move_ap(3, member_count),
+	]
+
+
+func _has_adjacent_warband_ally(unit: Dictionary) -> bool:
+	if not _is_active_warband_member(unit):
+		return false
+	var warband_id: int = int(unit.get("warband_id", -1))
+	var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	for other in _units:
+		if int(other.get("id", -1)) == int(unit.get("id", -2)):
+			continue
+		if int(other.get("warband_id", -1)) != warband_id:
+			continue
+		if _is_adjacent(pos, other.get("grid_pos", Vector2i.ZERO)):
+			return true
+	return false
+
+
+func _clear_player_warbands(player: int) -> void:
+	return
+	for unit in _units:
+		if int(unit.get("faction", -1)) == player:
+			unit.erase("warband_id")
+			unit.erase("warband_turn")
+
+
+func _get_tiles_in_manhattan_radius(center: Vector2i, radius: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			if not _in_bounds(x, y):
+				continue
+			var pos := Vector2i(x, y)
+			if _grid_distance(center, pos) <= radius:
+				result.append(pos)
+	return result
+
+
 func _calc_reachable(unit: Dictionary) -> Array:
+	if _is_active_warband_member(unit):
+		return _calc_warband_reachable(unit)
 	## BFS 从单位位置出发，max_depth = move_max
 	var from: Vector2i = unit["grid_pos"]
 	var data: UnitData = _get_unit_data(unit)
@@ -1022,6 +1388,86 @@ func _calc_reachable(unit: Dictionary) -> Array:
 			queue.append(nkey)
 
 	return result
+
+
+func _calc_warband_reachable(unit: Dictionary) -> Array:
+	var warband_id: int = int(unit.get("warband_id", -1))
+	var leader: Dictionary = _get_warband_leader(warband_id)
+	if leader.is_empty():
+		return []
+	var from: Vector2i = leader.get("grid_pos", Vector2i.ZERO)
+	var max_steps: int = _get_warband_move_limit(warband_id)
+	var result: Array = []
+	var visited := {}
+	var depth := {}
+	var queue: Array = [from]
+	var member_ids: Array[int] = _get_warband_member_ids(warband_id)
+	var dirs := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	visited[from] = true
+	depth[from] = 0
+	while queue.size() > 0:
+		var pos: Vector2i = queue.pop_front()
+		var d: int = depth[pos]
+		if d >= max_steps:
+			continue
+		for dir in dirs:
+			var nkey := Vector2i(pos.x + dir.x, pos.y + dir.y)
+			if visited.has(nkey):
+				continue
+			if not _is_warband_formation_valid(warband_id, from, nkey, member_ids):
+				continue
+			visited[nkey] = true
+			depth[nkey] = d + 1
+			result.append(nkey)
+			queue.append(nkey)
+	return result
+
+
+func _calc_warband_path_length(warband_id: int, from: Vector2i, to: Vector2i) -> int:
+	if from == to:
+		return 0
+	var max_steps: int = _get_warband_move_limit(warband_id)
+	var visited := {}
+	var dist := { from: 0 }
+	var queue: Array = [from]
+	var member_ids: Array[int] = _get_warband_member_ids(warband_id)
+	var dirs := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	visited[from] = true
+	while queue.size() > 0:
+		var pos: Vector2i = queue.pop_front()
+		var d: int = dist[pos]
+		if d >= max_steps:
+			continue
+		for dir in dirs:
+			var nkey := Vector2i(pos.x + dir.x, pos.y + dir.y)
+			if visited.has(nkey):
+				continue
+			if not _is_warband_formation_valid(warband_id, from, nkey, member_ids):
+				continue
+			if nkey == to:
+				return d + 1
+			visited[nkey] = true
+			dist[nkey] = d + 1
+			queue.append(nkey)
+	return -1
+
+
+func _is_warband_formation_valid(warband_id: int, leader_from: Vector2i, leader_to: Vector2i, member_ids: Array[int]) -> bool:
+	var delta: Vector2i = leader_to - leader_from
+	var occupied_targets := {}
+	for member in _get_warband_members(warband_id):
+		var old_pos: Vector2i = member.get("grid_pos", Vector2i.ZERO)
+		var target: Vector2i = old_pos + delta
+		if not _in_bounds(target.x, target.y):
+			return false
+		if not _is_tile_passable(target.x, target.y):
+			return false
+		if occupied_targets.has(target):
+			return false
+		if not _is_tile_empty_ignoring_units(target.x, target.y, member_ids):
+			return false
+		occupied_targets[target] = true
+	return true
 
 
 func _calc_attack_range_tiles(unit: Dictionary) -> Array[Vector2i]:
@@ -1099,6 +1545,7 @@ func _calc_path_length(from: Vector2i, to: Vector2i) -> int:
 
 func _on_player_turn_started(player: int) -> void:
 	# 重置该玩家单位的移动/攻击状态
+	_clear_player_warbands(player)
 	for u in _units:
 		if u["faction"] == player:
 			u["has_moved"] = false
@@ -1143,6 +1590,40 @@ func _garrison_unit_to(building_id: int, target: Vector2i) -> void:
 			_clear_selection()
 			queue_redraw()
 			return
+
+
+func _move_warband_to(selected_unit: Dictionary, target: Vector2i) -> void:
+	var warband_id: int = int(selected_unit.get("warband_id", -1))
+	if warband_id < 0:
+		return
+	var leader: Dictionary = _get_warband_leader(warband_id)
+	if leader.is_empty():
+		return
+	var from: Vector2i = leader.get("grid_pos", Vector2i.ZERO)
+	var steps: int = _calc_warband_path_length(warband_id, from, target)
+	if steps <= 0:
+		return
+	var members: Array[Dictionary] = _get_warband_members(warband_id)
+	var ap_cost: int = _get_warband_move_ap(steps, members.size())
+	if _turn_manager:
+		var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, ap_cost)
+		if not ok:
+			return
+	var delta: Vector2i = target - from
+	for member in members:
+		var member_from: Vector2i = member.get("grid_pos", Vector2i.ZERO)
+		var member_to: Vector2i = member_from + delta
+		member["grid_pos"] = member_to
+		member["has_moved"] = true
+		_start_move_visual(int(member.get("id", -1)), member_from, member_to)
+		if _fog_manager and _turn_manager:
+			_fog_manager.reveal_area(_turn_manager.current_player, member_to.x, member_to.y, _get_unit_vision_value(member))
+	var numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+	if numgr:
+		numgr.queue_redraw()
+	_reachable_tiles = _calc_warband_reachable(leader)
+	unit_selected.emit(_make_unit_view(leader))
+	queue_redraw()
 
 
 # ========== 战斗系统 ==========
@@ -1588,6 +2069,8 @@ func _get_unit_attack_value(unit: Dictionary) -> int:
 		bonus += _get_technology_modifier_for_unit(unit, "light_unit_attack_bonus")
 	if int(unit.get("faction", -1)) == 2:
 		bonus += _get_technology_modifier_for_unit(unit, "orc_lord_military_bonus")
+	if _is_active_warband_member(unit):
+		bonus += 1
 	var penalty: int = 0
 	var statuses: Dictionary = unit.get("statuses", {})
 	if int(statuses.get("poison_weakened_turns", 0)) > 0:
@@ -1600,6 +2083,8 @@ func _get_unit_damage_reduction(unit: Dictionary) -> int:
 	var bonus: int = data.damage_reduction
 	bonus += _get_building_effect_modifier(unit, BuildingEffectService.MOD_DAMAGE_REDUCTION)
 	bonus += _get_technology_modifier_for_unit(unit, "damage_reduction_bonus")
+	if _has_adjacent_warband_ally(unit):
+		bonus += 1
 	return maxi(0, bonus)
 
 
@@ -1747,6 +2232,16 @@ func _can_unit_gather(data: UnitData, gather_info: Array) -> bool:
 func _make_unit_view(unit: Dictionary) -> Dictionary:
 	var view: Dictionary = unit.duplicate(true)
 	view["data"] = _get_unit_data(unit)
+	var warband_id: int = int(unit.get("warband_id", -1))
+	var candidate_count: int = _get_warband_candidates(unit).size()
+	var selecting: bool = _is_warband_selection_active() and int(unit.get("id", -1)) == _warband_selection_leader_id
+	var member_count: int = _warband_selection_ids.size() if selecting else (_get_warband_member_count(warband_id) if warband_id >= 0 else candidate_count)
+	view["can_form_warband"] = _can_unit_join_warband(unit, true) and warband_id < 0
+	view["warband_id"] = warband_id
+	view["warband_member_count"] = member_count
+	view["warband_ap_text"] = _get_warband_ap_text(member_count)
+	view["warband_selecting"] = selecting
+	view["warband_selected_count"] = _warband_selection_ids.size() if selecting else 0
 	return view
 
 
@@ -1761,6 +2256,23 @@ func _is_tile_empty(gx: int, gy: int) -> bool:
 	if bmgr and bmgr.is_tile_occupied(gx, gy):
 		return false
 	# 中立单位占用检查
+	var numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+	if numgr and numgr.has_method("get_neutral_unit_at"):
+		if not numgr.get_neutral_unit_at(pos).is_empty():
+			return false
+	return true
+
+
+func _is_tile_empty_ignoring_units(gx: int, gy: int, ignored_unit_ids: Array[int]) -> bool:
+	var pos := Vector2i(gx, gy)
+	for u in _units:
+		if int(u.get("id", -1)) in ignored_unit_ids:
+			continue
+		if u["grid_pos"] == pos:
+			return false
+	var bmgr = get_parent().get_node("BuildingManager2D")
+	if bmgr and bmgr.is_tile_occupied(gx, gy):
+		return false
 	var numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
 	if numgr and numgr.has_method("get_neutral_unit_at"):
 		if not numgr.get_neutral_unit_at(pos).is_empty():

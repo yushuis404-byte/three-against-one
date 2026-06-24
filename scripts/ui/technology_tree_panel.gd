@@ -62,6 +62,15 @@ var _effect_names: Dictionary = {
 	"scout_poison_weaken_turns": "\u65a5\u5019\u8150\u8680\u865a\u5f31",
 	"lord_building_radius": "\u9886\u4e3b\u5efa\u7b51\u8303\u56f4",
 	"hybrid_tech_discount": "\u878d\u5408\u79d1\u6280\u6298\u6263",
+	"dragon_material_handling": "\u9f99\u65cf\u6750\u6599\u5904\u7406",
+	"fire_wyvern_equipment": "\u706b\u7130\u4e9a\u9f99\u88c5\u5907",
+	"frost_wyvern_equipment": "\u51b0\u971c\u4e9a\u9f99\u88c5\u5907",
+	"toxic_wyvern_equipment": "\u6bd2\u6db2\u4e9a\u9f99\u88c5\u5907",
+	"orc_dragon_war_path": "\u517d\u4eba\u9f99\u6218\u8def\u7ebf",
+	"unlock_unit_orc_dragon_slayer": "\u89e3\u9501\u5c60\u9f99\u6218\u58eb",
+	"unlock_unit_orc_dragonbone_shield": "\u89e3\u9501\u9f99\u9aa8\u5de8\u76fe\u5175",
+	"unlock_unit_orc_dragon_blood_berserker": "\u89e3\u9501\u9f99\u8840\u72c2\u6218\u58eb",
+	"unlock_orc_dragon_rider_path": "\u5f00\u542f\u5de8\u9f99\u9a91\u58eb\u8def\u7ebf",
 }
 
 
@@ -230,6 +239,17 @@ func _draw_connections(player: int) -> void:
 			elif _service.is_researched(player, parent_id):
 				color = LINE_OPEN
 			_draw_curve(from_pos, to_pos, color, 2.2)
+		for any_variant in definition.get("required_any_techs", []):
+			var any_id: String = str(any_variant)
+			if not _node_world_positions.has(any_id):
+				continue
+			var any_from: Vector2 = _world_to_screen(_node_world_positions[any_id])
+			var any_color := LINE_LOCKED
+			if _service.is_researched(player, id):
+				any_color = LINE_DONE
+			elif _service.is_researched(player, any_id):
+				any_color = LINE_OPEN
+			_draw_curve(any_from, to_pos, Color(any_color.r, any_color.g, any_color.b, 0.55), 1.4)
 
 
 func _draw_nodes(player: int) -> void:
@@ -293,10 +313,11 @@ func _draw_detail(player: int) -> void:
 	_draw_text(Vector2(x + 18.0, HEADER_H + 58.0), _status_text(researched, available, info), 12, Color(0.74, 0.86, 1.0))
 	_draw_text(Vector2(x + 18.0, HEADER_H + 88.0), "\u6d88\u8017\uff1a%d \u79d1\u6280\u70b9" % _service.get_effective_cost(player, _selected_id), 12, Color(0.86, 0.90, 0.96))
 	_draw_text(Vector2(x + 18.0, HEADER_H + 116.0), "\u524d\u7f6e\uff1a" + _join_tech_titles(definition.get("parent_techs", [])), 11, Color(0.68, 0.74, 0.84))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 143.0), "\u6210\u5c31\uff1a" + _join_achievement_titles(definition.get("required_achievements", [])), 11, Color(0.68, 0.74, 0.84))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 170.0), "\u9886\u4e3b\uff1a" + _join_lord_titles(definition.get("required_lords", [])), 11, Color(0.68, 0.74, 0.84))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 208.0), "\u6548\u679c", 13, Color(0.94, 0.97, 1.0))
-	_draw_wrapped_lines(Vector2(x + 18.0, HEADER_H + 232.0), _effect_text(definition.get("effects", {})), 12, Color(0.78, 0.86, 0.94), 310.0)
+	_draw_text(Vector2(x + 18.0, HEADER_H + 143.0), "\u4efb\u610f\u524d\u7f6e\uff1a" + _join_tech_titles(definition.get("required_any_techs", [])), 11, Color(0.68, 0.74, 0.84))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 170.0), "\u6210\u5c31\uff1a" + _join_achievement_titles(definition.get("required_achievements", [])), 11, Color(0.68, 0.74, 0.84))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 197.0), "\u9886\u4e3b\uff1a" + _join_lord_titles(definition.get("required_lords", [])), 11, Color(0.68, 0.74, 0.84))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 232.0), "\u6548\u679c", 13, Color(0.94, 0.97, 1.0))
+	_draw_wrapped_lines(Vector2(x + 18.0, HEADER_H + 256.0), _effect_text(definition.get("effects", {})), 12, Color(0.78, 0.86, 0.94), 310.0)
 	_research_rect = Rect2(x + 18.0, size.y - 58.0, 126.0, 34.0)
 	var button_color := Color(0.20, 0.36, 0.58, 0.96) if available else Color(0.12, 0.13, 0.15, 0.96)
 	if researched:
@@ -316,6 +337,8 @@ func _status_text(researched: bool, available: bool, info: Dictionary) -> String
 	match reason:
 		"missing_parent":
 			return "\u72b6\u6001\uff1a\u9700\u8981\u524d\u7f6e\u79d1\u6280"
+		"missing_any_tech":
+			return "\u72b6\u6001\uff1a\u9700\u8981\u4efb\u610f\u4e00\u4e2a\u6307\u5b9a\u79d1\u6280"
 		"missing_achievement":
 			return "\u72b6\u6001\uff1a\u9700\u8981\u5bf9\u5e94\u6210\u5c31"
 		"missing_lord":
@@ -345,8 +368,13 @@ func _build_static_layout() -> void:
 		"tech.common.building_upgrade": Vector2(680, 520),
 		"tech.common.gold_mining": Vector2(700, -60),
 		"tech.common.coin_machinery": Vector2(940, 40),
-		"tech.dragon.toxic_blood": Vector2(940, -110),
-		"tech.dragon.corrosive_weapons": Vector2(1190, -80),
+		"tech.dragon.nest_survey": Vector2(940, -110),
+		"tech.dragon.wyvern_fire_research": Vector2(1190, -230),
+		"tech.dragon.wyvern_frost_research": Vector2(1190, -110),
+		"tech.dragon.wyvern_toxic_research": Vector2(1190, 10),
+		"tech.dragon.fire_blade": Vector2(1460, -260),
+		"tech.dragon.frost_scale": Vector2(1460, -110),
+		"tech.dragon.corrosive_weapons": Vector2(1460, 40),
 		"tech.lord.elf.wind_sight": Vector2(940, -330),
 		"tech.lord.elf.forest_sense": Vector2(1190, -410),
 		"tech.lord.elf.hidden_march": Vector2(1190, -250),
@@ -356,6 +384,11 @@ func _build_static_layout() -> void:
 		"tech.lord.orc.blood_drum": Vector2(940, 410),
 		"tech.lord.orc.raid_ration": Vector2(1190, 390),
 		"tech.lord.orc.berserker_training": Vector2(1190, 540),
+		"tech.lord.orc.dragon_war_lore": Vector2(1460, 650),
+		"tech.lord.orc.dragon_slayer": Vector2(1740, 560),
+		"tech.lord.orc.dragonbone_shield": Vector2(1740, 660),
+		"tech.lord.orc.dragon_blood_berserker": Vector2(1740, 760),
+		"tech.lord.orc.dragon_rider_path": Vector2(2020, 660),
 		"tech.hybrid.ancient_iron_branch": Vector2(1460, -160),
 		"tech.hybrid.forge_war_drum": Vector2(1460, 230),
 		"tech.hybrid.forest_raid": Vector2(1460, 460),

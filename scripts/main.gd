@@ -657,6 +657,14 @@ func _init_unit_info_panel() -> void:
 
 	unit_manager.unit_selected.connect(panel.show_unit)
 	unit_manager.selection_cleared.connect(panel.hide_panel)
+	if panel.has_signal("form_warband_requested"):
+		panel.form_warband_requested.connect(unit_manager.request_form_warband)
+	if panel.has_signal("confirm_warband_requested"):
+		panel.confirm_warband_requested.connect(unit_manager.confirm_warband_selection)
+	if panel.has_signal("cancel_warband_requested"):
+		panel.cancel_warband_requested.connect(unit_manager.cancel_warband_selection)
+	if panel.has_signal("disband_warband_requested"):
+		panel.disband_warband_requested.connect(unit_manager.disband_warband)
 
 	# 中立单位选择信号
 	neutral_unit_manager.neutral_selected.connect(panel.show_unit)

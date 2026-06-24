@@ -34,6 +34,7 @@ const BUILDING_RULES := [
 ]
 const UNIT_RULES := [
 	["\u5de5\u4eba", "4"],
+	["\u5ec9\u4ef7\u4eba\u6d77\u5355\u4f4d", "5"],
 	["\u65a5\u5019", "8"],
 	["\u5b88\u536b / \u57fa\u7840\u6218\u6597\u5355\u4f4d", "10"],
 	["\u57fa\u7840\u8089\u76fe", "12"],

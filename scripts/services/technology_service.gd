@@ -65,6 +65,20 @@ func get_research_info(player: int, technology_id: String) -> Dictionary:
 				"missing": str(parent_id),
 			}
 
+	var any_techs: Array = definition.get("required_any_techs", [])
+	if not any_techs.is_empty():
+		var has_any_required := false
+		for any_id in any_techs:
+			if is_researched(player, str(any_id)):
+				has_any_required = true
+				break
+		if not has_any_required:
+			return {
+				"available": false,
+				"reason": "missing_any_tech",
+				"missing": any_techs.duplicate(),
+			}
+
 	for achievement_id in definition.get("required_achievements", []):
 		if _achievement_service == null or not _achievement_service.has_method("is_completed"):
 			return {"available": false, "reason": "achievement_service_missing"}

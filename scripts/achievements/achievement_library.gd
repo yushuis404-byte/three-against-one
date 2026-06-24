@@ -25,6 +25,8 @@ static func get_definitions() -> Array:
 		_def("military.force.three", "\u6218\u6597\u5c0f\u961f", "military", ["military.recruit.first"], _cond("unit_count", {"combat": true, "count": 3}), _reward(1, {})),
 		_def("military.force.six", "\u6218\u56e2\u96cf\u5f62", "military", ["military.force.three"], _cond("unit_count", {"combat": true, "count": 6}), _reward(1, {"food": 10})),
 		_def("military.kill.neutral", "\u7b2c\u4e00\u6b21\u72e9\u730e", "military", ["military.recruit.first"], _cond("kill", {"target": "neutral", "count": 1}), _reward(1, {"food": 8})),
+		_def("military.dragon_blood.fire", "\u706b\u7130\u9f99\u8840", "military", ["military.kill.neutral"], _cond("resource_stock", {"key": "fire_dragon_blood", "amount": 1}), _reward(1, {})),
+		_def("military.dragon_blood.frost", "\u51b0\u971c\u9f99\u8840", "military", ["military.kill.neutral"], _cond("resource_stock", {"key": "frost_dragon_blood", "amount": 1}), _reward(1, {})),
 		_def("military.dragon_blood.toxic", "\u6bd2\u6db2\u9f99\u8840", "military", ["military.kill.neutral"], _cond("resource_stock", {"key": "toxic_dragon_blood", "amount": 1}), _reward(1, {})),
 		_def("military.kill.player", "\u7b2c\u4e00\u6b21\u4ea4\u950b", "military", ["military.kill.neutral"], _cond("kill", {"target": "player", "count": 1}), _reward(1, {"gold": 2})),
 

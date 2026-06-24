@@ -1,4 +1,9 @@
 extends Control
+
+signal form_warband_requested(unit_id: int)
+signal confirm_warband_requested()
+signal cancel_warband_requested()
+signal disband_warband_requested(unit_id: int)
 ## 底部单位信息面板 — 选中单位时显示属性
 
 var _panel: Panel
@@ -13,6 +18,12 @@ var _mov_label: Label
 var _vis_label: Label
 var _food_label: Label
 var _hint_label: Label
+var _warband_button: Button
+var _warband_confirm_button: Button
+var _warband_cancel_button: Button
+var _warband_disband_button: Button
+var _warband_cost_label: Label
+var _current_unit_id: int = -1
 
 const CATEGORY_NAMES := {
 	UnitData.UnitCategory.WORKER: "工人",
@@ -127,6 +138,46 @@ func _build_ui() -> void:
 	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_panel.add_child(_hint_label)
 
+	_warband_button = Button.new()
+	_warband_button.position = Vector2(1150, row2_y + 46)
+	_warband_button.size = Vector2(170, 34)
+	_warband_button.text = "\u7ec4\u5efa\u519b\u56e2"
+	_warband_button.focus_mode = Control.FOCUS_NONE
+	_warband_button.pressed.connect(_on_warband_button_pressed)
+	_panel.add_child(_warband_button)
+
+	_warband_confirm_button = Button.new()
+	_warband_confirm_button.position = Vector2(1150, row2_y + 84)
+	_warband_confirm_button.size = Vector2(82, 30)
+	_warband_confirm_button.text = "\u786e\u8ba4"
+	_warband_confirm_button.focus_mode = Control.FOCUS_NONE
+	_warband_confirm_button.pressed.connect(_on_warband_confirm_pressed)
+	_panel.add_child(_warband_confirm_button)
+
+	_warband_cancel_button = Button.new()
+	_warband_cancel_button.position = Vector2(1238, row2_y + 84)
+	_warband_cancel_button.size = Vector2(82, 30)
+	_warband_cancel_button.text = "\u53d6\u6d88"
+	_warband_cancel_button.focus_mode = Control.FOCUS_NONE
+	_warband_cancel_button.pressed.connect(_on_warband_cancel_pressed)
+	_panel.add_child(_warband_cancel_button)
+
+	_warband_disband_button = Button.new()
+	_warband_disband_button.position = Vector2(1150, row2_y + 84)
+	_warband_disband_button.size = Vector2(170, 30)
+	_warband_disband_button.text = "\u89e3\u6563\u519b\u56e2"
+	_warband_disband_button.focus_mode = Control.FOCUS_NONE
+	_warband_disband_button.pressed.connect(_on_warband_disband_pressed)
+	_panel.add_child(_warband_disband_button)
+
+	_warband_cost_label = Label.new()
+	_warband_cost_label.position = Vector2(760, row2_y + 84)
+	_warband_cost_label.size = Vector2(380, 46)
+	_warband_cost_label.add_theme_font_size_override("font_size", 14)
+	_warband_cost_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.58))
+	_warband_cost_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_panel.add_child(_warband_cost_label)
+
 
 func _make_stat_label(x: float, y: float, title: String) -> Label:
 	var title_lbl := Label.new()
@@ -152,6 +203,7 @@ func show_unit(unit: Dictionary) -> void:
 
 	var data: UnitData = unit["data"]
 	var faction: int = unit["faction"]
+	_current_unit_id = int(unit.get("id", -1))
 	var color: Color = GameCatalog.faction_color(faction)
 
 	# 阵营色条
@@ -183,6 +235,9 @@ func show_unit(unit: Dictionary) -> void:
 	if weaken_turns > 0:
 		_status_label.text = "\u865a\u5f31 %d \u56de\u5408" % weaken_turns
 		_status_label.add_theme_color_override("font_color", Color(0.55, 1.0, 0.55))
+	elif int(unit.get("warband_id", -1)) >= 0:
+		_status_label.text = "\u519b\u56e2"
+		_status_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.28))
 
 	# HP 条
 	var hp: int = unit.get("hp", data.hp_max)
@@ -209,13 +264,61 @@ func show_unit(unit: Dictionary) -> void:
 		_vis_label.text = str(effective_vision)
 	_food_label.text = str(data.food_cost)
 	_hint_label.text = _make_unit_hint(data)
+	_update_warband_button(unit)
 
 	show()
 	queue_redraw()
 
 
 func hide_panel() -> void:
+	_current_unit_id = -1
 	hide()
+
+
+func _update_warband_button(unit: Dictionary) -> void:
+	if _warband_button == null:
+		return
+	var can_form: bool = bool(unit.get("can_form_warband", false))
+	var is_member: bool = int(unit.get("warband_id", -1)) >= 0
+	var is_selecting: bool = bool(unit.get("warband_selecting", false))
+	var selected_count: int = int(unit.get("warband_selected_count", 0))
+	_warband_button.visible = int(unit.get("faction", -1)) == 2
+	_warband_button.disabled = is_selecting or not can_form or is_member
+	_warband_confirm_button.visible = is_selecting
+	_warband_confirm_button.disabled = selected_count < 3
+	_warband_cancel_button.visible = is_selecting
+	_warband_disband_button.visible = is_member and not is_selecting
+	_warband_cost_label.visible = int(unit.get("faction", -1)) == 2 and (can_form or is_member or is_selecting)
+	_warband_cost_label.text = str(unit.get("warband_ap_text", ""))
+	if is_member:
+		_warband_button.text = "\u519b\u56e2\u6307\u6325\u4e2d"
+	elif is_selecting:
+		_warband_button.text = "\u9009\u62e9\u519b\u56e2\u4e2d"
+	elif can_form:
+		_warband_button.text = "\u519b\u56e2\u6307\u6325"
+	else:
+		_warband_button.text = "\u519b\u56e2\u6761\u4ef6\u4e0d\u8db3"
+
+
+func _on_warband_button_pressed() -> void:
+	if _current_unit_id < 0:
+		return
+	form_warband_requested.emit(_current_unit_id)
+
+
+func _on_warband_confirm_pressed() -> void:
+	confirm_warband_requested.emit()
+
+
+func _on_warband_cancel_pressed() -> void:
+	cancel_warband_requested.emit()
+
+
+func _on_warband_disband_pressed() -> void:
+	if _current_unit_id < 0:
+		return
+	disband_warband_requested.emit(_current_unit_id)
+
 
 func _make_unit_hint(data: UnitData) -> String:
 	var defense_text: String = ""

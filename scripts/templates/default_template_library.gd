@@ -174,6 +174,18 @@ func make_unit_templates() -> Dictionary:
 	)
 	_config_recruit(orc_guard, [_amount("food", 3)], 3, 3, 3, true)
 
+	var orc_mob = _unit_basic(
+		"unit.orc.mob",
+		"\u517d\u4eba\u6742\u5175",
+		UnitTemplateScript.UnitRole.GUARD,
+		1,
+		1,
+		3,
+		1,
+		["orc", "guard", "military", "melee", "swarm", "cheap", "expendable"]
+	)
+	_config_recruit(orc_mob, [_amount("food", 1)], 1, 1, 1, true)
+
 	var orc_bone_shield = _unit_basic(
 		"unit.orc.bone_shield",
 		"\u788e\u9aa8\u76fe\u5974",
@@ -293,6 +305,7 @@ func make_unit_templates() -> Dictionary:
 		orc_worker.id: orc_worker,
 		orc_scout.id: orc_scout,
 		orc_guard.id: orc_guard,
+		orc_mob.id: orc_mob,
 		orc_bone_shield.id: orc_bone_shield,
 		orc_hide_tower.id: orc_hide_tower,
 		orc_slinger.id: orc_slinger,

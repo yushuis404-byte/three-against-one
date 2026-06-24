@@ -26,8 +26,13 @@ static func get_definitions() -> Array:
 		_def("tech.common.gold_mining", "\u91d1\u77ff\u5f00\u91c7", "common", 2, ["tech.common.resource_marking", "tech.common.iron_mining"], ["industry.gold.shaft"], [], _effects({"gold_ore_production_bonus": 1})),
 		_def("tech.common.coin_machinery", "\u94f8\u5e01\u673a\u68b0", "common", 2, ["tech.common.gold_mining", "tech.common.metal_parts"], ["industry.mint.first"], [], _effects({"mint_conversion_bonus": 1})),
 
-		_def("tech.dragon.toxic_blood", "\u6bd2\u6db2\u9f99\u8840\u8fa8\u8bc6", "dragon", 1, ["tech.common.resource_marking"], ["military.dragon_blood.toxic"], [], _effects({})),
-		_def("tech.dragon.corrosive_weapons", "\u8150\u8680\u6b66\u5668", "dragon", 2, ["tech.dragon.toxic_blood", "tech.common.recruitment_rules"], [], [], _effects({"scout_poison_weaken_turns": 3})),
+		_def("tech.dragon.nest_survey", "\u9f99\u5de2\u52d8\u6d4b", "dragon", 1, ["tech.common.resource_marking"], ["military.kill.neutral"], [], _effects({"dragon_material_handling": 1})),
+		_def("tech.dragon.wyvern_fire_research", "\u706b\u7130\u4e9a\u9f99\u7814\u7a76", "dragon", 1, ["tech.dragon.nest_survey"], ["military.dragon_blood.fire"], [], _effects({"fire_wyvern_equipment": 1})),
+		_def("tech.dragon.wyvern_frost_research", "\u51b0\u971c\u4e9a\u9f99\u7814\u7a76", "dragon", 1, ["tech.dragon.nest_survey"], ["military.dragon_blood.frost"], [], _effects({"frost_wyvern_equipment": 1})),
+		_def("tech.dragon.wyvern_toxic_research", "\u6bd2\u6db2\u4e9a\u9f99\u7814\u7a76", "dragon", 1, ["tech.dragon.nest_survey"], ["military.dragon_blood.toxic"], [], _effects({"toxic_wyvern_equipment": 1})),
+		_def("tech.dragon.fire_blade", "\u706b\u7130\u6d82\u5203", "dragon", 2, ["tech.dragon.wyvern_fire_research", "tech.common.recruitment_rules"], [], [], _effects({"melee_attack_bonus": 1})),
+		_def("tech.dragon.frost_scale", "\u51b0\u9cde\u62a4\u5177", "dragon", 2, ["tech.dragon.wyvern_frost_research", "tech.common.metal_parts"], [], [], _effects({"damage_reduction_bonus": 1})),
+		_def("tech.dragon.corrosive_weapons", "\u8150\u8680\u6b66\u5668", "dragon", 2, ["tech.dragon.wyvern_toxic_research", "tech.common.recruitment_rules"], [], [], _effects({"scout_poison_weaken_turns": 3})),
 
 		_def("tech.lord.elf.wind_sight", "\u98ce\u8bed\u89c6\u754c", "lord", 2, ["tech.common.border_survey"], ["lord.elf.first"], ["lord.elf.wind_seer"], _effects({"elf_lord_building_radius": 1})),
 		_def("tech.lord.elf.forest_sense", "\u68ee\u6797\u901a\u611f", "lord", 2, ["tech.lord.elf.wind_sight", "tech.common.resource_marking"], ["industry.rare.first"], ["lord.elf.wind_seer"], _effects({"ancient_wood_production_bonus": 1})),
@@ -40,6 +45,11 @@ static func get_definitions() -> Array:
 		_def("tech.lord.orc.blood_drum", "\u8840\u9f13\u53f7\u4ee4", "lord", 2, ["tech.common.war_drum_mobilization"], ["lord.orc.first"], ["lord.orc.blood_chief"], _effects({"orc_lord_military_bonus": 1})),
 		_def("tech.lord.orc.raid_ration", "\u63a0\u98df\u519b\u7cae", "lord", 2, ["tech.lord.orc.blood_drum", "tech.common.grain_ration"], ["military.kill.neutral"], ["lord.orc.blood_chief"], _effects({"kill_food_reward": 1})),
 		_def("tech.lord.orc.berserker_training", "\u72c2\u6218\u8bad\u7ec3", "lord", 3, ["tech.lord.orc.blood_drum", "tech.common.recruitment_rules"], [], ["lord.orc.blood_chief"], _effects({"melee_attack_bonus": 1})),
+		_def_any("tech.lord.orc.dragon_war_lore", "\u9f99\u8840\u6218\u4e89\u8ba4\u77e5", "lord", 2, ["tech.lord.orc.blood_drum"], ["tech.dragon.wyvern_fire_research", "tech.dragon.wyvern_frost_research", "tech.dragon.wyvern_toxic_research"], [], ["lord.orc.blood_chief"], _effects({"orc_dragon_war_path": 1})),
+		_def("tech.lord.orc.dragon_slayer", "\u5c60\u9f99\u6218\u58eb", "lord", 3, ["tech.lord.orc.dragon_war_lore", "tech.lord.orc.berserker_training"], ["military.kill.neutral"], ["lord.orc.blood_chief"], _effects({"unlock_unit_orc_dragon_slayer": 1})),
+		_def("tech.lord.orc.dragonbone_shield", "\u9f99\u9aa8\u5de8\u76fe\u5175", "lord", 3, ["tech.lord.orc.dragon_war_lore", "tech.common.metal_parts"], [], ["lord.orc.blood_chief"], _effects({"unlock_unit_orc_dragonbone_shield": 1})),
+		_def("tech.lord.orc.dragon_blood_berserker", "\u9f99\u8840\u72c2\u6218\u58eb", "lord", 4, ["tech.lord.orc.dragon_war_lore", "tech.lord.orc.berserker_training"], [], ["lord.orc.blood_chief"], _effects({"unlock_unit_orc_dragon_blood_berserker": 1})),
+		_def("tech.lord.orc.dragon_rider_path", "\u5de8\u9f99\u9a91\u58eb\u524d\u7f6e", "lord", 4, ["tech.lord.orc.dragon_war_lore"], [], ["lord.orc.blood_chief"], _effects({"unlock_orc_dragon_rider_path": 1})),
 
 		_def("tech.hybrid.ancient_iron_branch", "\u8fdc\u53e4\u94c1\u679d", "hybrid", 3, ["tech.lord.elf.forest_sense", "tech.lord.dwarf.vein_echo"], [], ["lord.elf.wind_seer", "lord.dwarf.stone_warden"], _effects({"ancient_wood_production_bonus": 1, "iron_production_bonus": 1})),
 		_def("tech.hybrid.forge_war_drum", "\u7194\u7089\u6218\u9f13", "hybrid", 3, ["tech.lord.dwarf.vein_echo", "tech.lord.orc.blood_drum"], [], ["lord.dwarf.stone_warden", "lord.orc.blood_chief"], _effects({"iron_production_bonus": 1, "recruit_turn_discount": 1})),
@@ -65,8 +75,24 @@ static func _def(
 		"parent_techs": parent_techs,
 		"required_achievements": required_achievements,
 		"required_lords": required_lords,
+		"required_any_techs": [],
 		"effects": effects,
 	}
+
+
+static func _def_any(
+		id: String,
+		title: String,
+		family: String,
+		cost: int,
+		parent_techs: Array,
+		required_any_techs: Array,
+		required_achievements: Array,
+		required_lords: Array,
+		effects: Dictionary) -> Dictionary:
+	var result: Dictionary = _def(id, title, family, cost, parent_techs, required_achievements, required_lords, effects)
+	result["required_any_techs"] = required_any_techs
+	return result
 
 
 static func _effects(values: Dictionary) -> Dictionary:
