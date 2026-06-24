@@ -237,6 +237,10 @@ func _get_unit_score(unit: Dictionary) -> int:
 		base = 32
 	elif "dragonkin" in data.tags:
 		base = 28
+	elif "tank" in data.tags and "heavy" in data.tags:
+		base = 18
+	elif "tank" in data.tags:
+		base = 12
 	else:
 		match data.category:
 			UnitData.UnitCategory.WORKER:

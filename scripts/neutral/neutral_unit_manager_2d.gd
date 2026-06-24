@@ -188,6 +188,18 @@ func get_ai_data_for(unit_id: int) -> Dictionary:
 
 # ========== 哥布林好感度 ==========
 
+func apply_ranged_damage(neutral_unit_id: int, killer_player: int, damage: int) -> void:
+	var neutral_unit: Dictionary = get_neutral_unit_by_id(neutral_unit_id)
+	if neutral_unit.is_empty():
+		return
+	var final_damage: int = maxi(0, damage)
+	neutral_unit["hp"] = int(neutral_unit.get("hp", 0)) - final_damage
+	_play_hit_effect(neutral_unit_id, neutral_unit.get("grid_pos", Vector2i.ZERO), final_damage)
+	if int(neutral_unit.get("hp", 0)) <= 0:
+		_on_neutral_defeated(neutral_unit_id, killer_player)
+	queue_redraw()
+
+
 func get_goblin_relation(player: int) -> int:
 	return _goblin_relations.get(player, 50)
 

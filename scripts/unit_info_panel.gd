@@ -12,6 +12,7 @@ var _atk_label: Label
 var _mov_label: Label
 var _vis_label: Label
 var _food_label: Label
+var _hint_label: Label
 
 const CATEGORY_NAMES := {
 	UnitData.UnitCategory.WORKER: "工人",
@@ -118,6 +119,14 @@ func _build_ui() -> void:
 	_vis_label = _make_stat_label(stat_x + stat_gap * 2, row2_y, "视野")
 	_food_label = _make_stat_label(stat_x + stat_gap * 3, row2_y, "食物")
 
+	_hint_label = Label.new()
+	_hint_label.position = Vector2(margin, row2_y + 66)
+	_hint_label.size = Vector2(1320, 40)
+	_hint_label.add_theme_font_size_override("font_size", 15)
+	_hint_label.add_theme_color_override("font_color", Color(0.78, 0.9, 1.0))
+	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_panel.add_child(_hint_label)
+
 
 func _make_stat_label(x: float, y: float, title: String) -> Label:
 	var title_lbl := Label.new()
@@ -193,6 +202,7 @@ func show_unit(unit: Dictionary) -> void:
 	_mov_label.text = "%d" % data.move_max
 	_vis_label.text = str(data.vision)
 	_food_label.text = str(data.food_cost)
+	_hint_label.text = _make_unit_hint(data)
 
 	show()
 	queue_redraw()
@@ -200,3 +210,13 @@ func show_unit(unit: Dictionary) -> void:
 
 func hide_panel() -> void:
 	hide()
+
+func _make_unit_hint(data: UnitData) -> String:
+	var defense_text: String = ""
+	if data.damage_reduction > 0:
+		defense_text = "\u57fa\u7840\u51cf\u4f24 %d\u3002" % data.damage_reduction
+	if data.template_id == "unit.orc.slinger":
+		return defense_text + "\u767d\u8272\u5706\u70b9=\u79fb\u52a8\uff1b\u7ea2\u8272\u65b9\u683c=\u653b\u51fb\u5c04\u7a0b\uff0c\u70b9\u654c\u4eba\u8fdc\u7a0b\u653b\u51fb\u3002\u70b9\u76f8\u90bb\u730e\u9f7f\u517d\u540e\uff0c\u9752\u8272\u5706\u70b9=\u6295\u63b7\u843d\u70b9\u3002"
+	if data.attack_range > 1:
+		return defense_text + "\u767d\u8272\u5706\u70b9=\u79fb\u52a8\uff1b\u7ea2\u8272\u65b9\u683c=\u653b\u51fb\u5c04\u7a0b\uff0c\u70b9\u654c\u4eba\u8fdc\u7a0b\u653b\u51fb\u3002"
+	return defense_text + "\u767d\u8272\u5706\u70b9=\u53ef\u79fb\u52a8\u8303\u56f4\u3002"

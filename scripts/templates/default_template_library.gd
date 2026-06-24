@@ -174,6 +174,32 @@ func make_unit_templates() -> Dictionary:
 	)
 	_config_recruit(orc_guard, [_amount("food", 3)], 3, 3, 3, true)
 
+	var orc_bone_shield = _unit_basic(
+		"unit.orc.bone_shield",
+		"\u788e\u9aa8\u76fe\u5974",
+		UnitTemplateScript.UnitRole.GUARD,
+		1,
+		1,
+		9,
+		1,
+		["orc", "guard", "military", "melee", "tank", "shield", "damage_soak"]
+	)
+	orc_bone_shield.damage_reduction = 1
+	_config_recruit(orc_bone_shield, [_amount("food", 3), _amount("wood", 2)], 2, 2, 3, true)
+
+	var orc_hide_tower = _unit_basic(
+		"unit.orc.hide_tower",
+		"\u517d\u76ae\u5de8\u76fe\u5175",
+		UnitTemplateScript.UnitRole.GUARD,
+		1,
+		2,
+		14,
+		1,
+		["orc", "guard", "military", "melee", "tank", "shield", "heavy", "damage_soak"]
+	)
+	orc_hide_tower.damage_reduction = 2
+	_config_recruit(orc_hide_tower, [_amount("food", 5), _amount("wood", 4), _amount("stone", 2)], 3, 3, 5, true)
+
 	var orc_slinger = _unit_basic(
 		"unit.orc.slinger",
 		"\u517d\u4eba\u6295\u77f3\u5175",
@@ -267,6 +293,8 @@ func make_unit_templates() -> Dictionary:
 		orc_worker.id: orc_worker,
 		orc_scout.id: orc_scout,
 		orc_guard.id: orc_guard,
+		orc_bone_shield.id: orc_bone_shield,
+		orc_hide_tower.id: orc_hide_tower,
 		orc_slinger.id: orc_slinger,
 		wyvern_fire.id: wyvern_fire,
 		wyvern_frost.id: wyvern_frost,

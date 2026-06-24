@@ -41,7 +41,7 @@ static func get_faction_recruit_template_ids(data: BuildingData, faction: int) -
 		return ["%s.worker" % prefix]
 	if "barracks" in data.tags:
 		if faction == 2:
-			return ["%s.guard" % prefix, "%s.scout" % prefix, "%s.slinger" % prefix]
+			return ["%s.guard" % prefix, "%s.bone_shield" % prefix, "%s.hide_tower" % prefix, "%s.scout" % prefix, "%s.slinger" % prefix]
 		return ["%s.guard" % prefix, "%s.scout" % prefix]
 	return []
 

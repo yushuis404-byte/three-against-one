@@ -26,6 +26,8 @@ var _units: Array = []       # Array[Dictionary]
 var _next_id := 1
 var _selected_id := -1
 var _reachable_tiles: Array = []  # 当前选中单位的可达格列表
+var _attack_range_tiles: Array[Vector2i] = []
+var _throw_range_tiles: Array[Vector2i] = []
 
 var _turn_manager: Node = null
 var _grid_manager: Node = null
@@ -55,6 +57,8 @@ var _shake_offsets: Dictionary = {}  # unit_id -> Vector2（受击偏移）
 
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
+const ATTACK_RANGE_COLOR := Color(1.0, 0.18, 0.12, 0.24)
+const THROW_RANGE_COLOR := Color(0.1, 0.82, 1.0, 0.25)
 const ATTACK_APPROACH_OK_COLOR := Color(0.2, 1.0, 0.35, 0.38)
 const ATTACK_APPROACH_BLOCKED_COLOR := Color(1.0, 0.35, 0.18, 0.42)
 const UNIT_RADIUS := 8.0
@@ -152,6 +156,7 @@ func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:
 		"hp": data.hp_max,
 		"has_moved": false,
 		"has_attacked": false,
+		"has_thrown_beast": false,
 	})
 	if spawn_pos != grid_pos:
 		print("[Unit] Adjusted spawn %s -> %s for %s." % [str(grid_pos), str(spawn_pos), data.unit_name])
@@ -213,6 +218,13 @@ func _draw() -> void:
 	for t in _reachable_tiles:
 		var pos2 := _grid_to_world(t.x, t.y)
 		draw_circle(pos2, UNIT_RADIUS * 1.5, REACHABLE_COLOR)
+	for t in _attack_range_tiles:
+		var pos_attack := _grid_to_world(t.x, t.y)
+		var attack_rect := Rect2(pos_attack - Vector2(tile_size, tile_size) * 0.5, Vector2(tile_size, tile_size))
+		draw_rect(attack_rect.grow(-4.0), ATTACK_RANGE_COLOR, true)
+	for t in _throw_range_tiles:
+		var pos_throw := _grid_to_world(t.x, t.y)
+		draw_circle(pos_throw, UNIT_RADIUS * 1.7, THROW_RANGE_COLOR)
 
 	_draw_action_preview_highlight()
 
@@ -289,6 +301,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		_try_throw_beast_to(gpos)
 		return
 
+	if _selected_id >= 0:
+		var selected_for_special: Dictionary = _get_unit_by_id(_selected_id)
+		if not selected_for_special.is_empty():
+			var special_target: Dictionary = get_visible_unit_at(gpos)
+			if not special_target.is_empty() and special_target["faction"] == selected_for_special["faction"]:
+				if _try_arm_beast_throw(selected_for_special, special_target):
+					return
+
 	# 检查是否点击了可达格（移动）
 	if _selected_id >= 0 and gpos in _reachable_tiles:
 		# 检查是否可驻兵建筑
@@ -309,13 +329,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		var src := _get_unit_by_id(_selected_id)
 		if not src.is_empty():
 			var target := get_visible_unit_at(gpos)
-			if not target.is_empty() and target["faction"] == src["faction"]:
-				if _try_arm_beast_throw(src, target):
-					return
 			if not target.is_empty() and target["faction"] != src["faction"]:
 				# 中立单位（faction == -1）→ 调用 NeutralUnitManager2D 战斗
 				if _can_ranged_attack(src, target):
-					_perform_ranged_attack(src, target)
+					_initiate_ranged_combat(int(src.get("id", -1)), int(target.get("id", -1)))
 					return
 				if _is_adjacent(src["grid_pos"], target["grid_pos"]):
 					if target["faction"] == -1:
@@ -333,6 +350,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if target.is_empty():
 				if numgr and numgr.has_method("get_neutral_unit_at"):
 					var ntarget: Dictionary = numgr.get_neutral_unit_at(gpos)
+					if not ntarget.is_empty() and _can_ranged_attack(src, ntarget):
+						_initiate_ranged_neutral_combat(int(src.get("id", -1)), int(ntarget.get("id", -1)), numgr)
+						return
 					if not ntarget.is_empty() and _is_adjacent(src["grid_pos"], ntarget.get("grid_pos", Vector2i(-1, -1))):
 						var behavior: String = ""
 						if numgr.has_method("get_ai_data_for"):
@@ -377,6 +397,8 @@ func _select_unit(uid: int) -> void:
 	for u in _units:
 		if u["id"] == uid:
 			_reachable_tiles = _calc_reachable(u)
+			_attack_range_tiles = _calc_attack_range_tiles(u)
+			_throw_range_tiles = []
 			unit_selected.emit(_make_unit_view(u))
 			break
 	queue_redraw()
@@ -385,6 +407,8 @@ func _select_unit(uid: int) -> void:
 func _clear_selection() -> void:
 	_selected_id = -1
 	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
 	_throw_beast_source_id = -1
 	_emit_action_preview({})
 	selection_cleared.emit()
@@ -408,6 +432,13 @@ func _update_action_preview() -> void:
 		_emit_action_preview({})
 		return
 	var target: Dictionary = get_visible_unit_at(gpos)
+	if target.is_empty():
+		var neutral_mgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+		if neutral_mgr and neutral_mgr.has_method("get_neutral_unit_at"):
+			var neutral_target: Dictionary = neutral_mgr.get_neutral_unit_at(gpos)
+			if not neutral_target.is_empty():
+				_emit_action_preview(_make_neutral_attack_preview(attacker, neutral_target))
+				return
 	if target.is_empty() or target["faction"] == attacker["faction"] or target["faction"] == -1:
 		_emit_action_preview({})
 		return
@@ -429,6 +460,8 @@ func _emit_action_preview(preview: Dictionary) -> void:
 func _draw_action_preview_highlight() -> void:
 	if _current_action_preview.is_empty():
 		return
+	if bool(_current_action_preview.get("is_ranged", false)):
+		_draw_ranged_attack_preview_line()
 	var approach_pos: Vector2i = _current_action_preview.get("approach_pos", Vector2i(-1, -1))
 	if approach_pos.x < 0:
 		return
@@ -438,6 +471,33 @@ func _draw_action_preview_highlight() -> void:
 	var color: Color = ATTACK_APPROACH_OK_COLOR if can_attack else ATTACK_APPROACH_BLOCKED_COLOR
 	draw_rect(rect.grow(-2.0), color, true)
 	draw_rect(rect.grow(-2.0), Color(color.r, color.g, color.b, 0.92), false, 2.0)
+
+
+func _draw_ranged_attack_preview_line() -> void:
+	var attacker_pos: Vector2i = _current_action_preview.get("attacker_pos", Vector2i(-1, -1))
+	var target_pos: Vector2i = _current_action_preview.get("target_pos", Vector2i(-1, -1))
+	if attacker_pos.x < 0 or target_pos.x < 0:
+		return
+	var from: Vector2 = _grid_to_world(attacker_pos.x, attacker_pos.y)
+	var to: Vector2 = _grid_to_world(target_pos.x, target_pos.y)
+	var can_attack: bool = bool(_current_action_preview.get("can_attack", false))
+	var color: Color = Color(1.0, 0.34, 0.22, 0.92) if can_attack else Color(0.75, 0.75, 0.75, 0.65)
+	_draw_dashed_line(from, to, color, 3.0, 12.0, 8.0)
+	draw_circle(to, UNIT_RADIUS * 2.0, Color(color.r, color.g, color.b, 0.18))
+	draw_circle(to, UNIT_RADIUS * 2.0, color, false, 2.0)
+
+
+func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, width: float, dash_length: float, gap_length: float) -> void:
+	var delta: Vector2 = to - from
+	var length: float = delta.length()
+	if length <= 0.01:
+		return
+	var direction: Vector2 = delta / length
+	var cursor: float = 0.0
+	while cursor < length:
+		var segment_end: float = minf(cursor + dash_length, length)
+		draw_line(from + direction * cursor, from + direction * segment_end, color, width, true)
+		cursor += dash_length + gap_length
 
 
 func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionary:
@@ -450,16 +510,19 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 		"action": "attack",
 		"attacker_name": attacker_data.unit_name,
 		"target_name": target_data.unit_name,
+		"attacker_pos": from,
 		"target_pos": target_pos,
 		"approach_pos": Vector2i(-1, -1),
 		"ap_cost": 0,
 		"can_attack": false,
+		"is_ranged": false,
 		"reason": "",
 	}
 
 	if attacker_data.attack_range > 1 and _grid_distance(from, target_pos) <= attacker_data.attack_range:
 		preview["approach_pos"] = from
 		preview["can_attack"] = true
+		preview["is_ranged"] = true
 		preview["reason"] = "\u5c04\u7a0b\u5185\uff0c\u53ef\u4ee5\u8fdc\u7a0b\u653b\u51fb"
 		return preview
 
@@ -494,6 +557,39 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 	return preview
 
 
+func _make_neutral_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionary:
+	var attacker_data: UnitData = _get_unit_data(attacker)
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	var preview := {
+		"visible": true,
+		"action": "attack",
+		"attacker_name": attacker_data.unit_name,
+		"target_name": str(target.get("display_name", "中立单位")),
+		"attacker_pos": from,
+		"target_pos": target_pos,
+		"approach_pos": Vector2i(-1, -1),
+		"ap_cost": 0,
+		"can_attack": false,
+		"is_ranged": false,
+		"reason": "",
+	}
+	var dist: int = _grid_distance(from, target_pos)
+	if attacker_data.attack_range > 1 and dist > 1 and dist <= attacker_data.attack_range:
+		preview["approach_pos"] = from
+		preview["can_attack"] = true
+		preview["is_ranged"] = true
+		preview["reason"] = "\u5c04\u7a0b\u5185\uff0c\u53ef\u4ee5\u8fdc\u7a0b\u653b\u51fb"
+		return preview
+	if dist == 1:
+		preview["approach_pos"] = from
+		preview["can_attack"] = true
+		preview["reason"] = "\u5df2\u8d34\u8eab\uff0c\u8fdb\u5165\u8fd1\u6218\u51b3\u6597"
+		return preview
+	preview["reason"] = "\u76ee\u6807\u4e0d\u5728\u5c04\u7a0b\u5185"
+	return preview
+
+
 func _can_ranged_attack(attacker: Dictionary, target: Dictionary) -> bool:
 	if attacker.is_empty() or target.is_empty():
 		return false
@@ -504,26 +600,8 @@ func _can_ranged_attack(attacker: Dictionary, target: Dictionary) -> bool:
 		return false
 	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
 	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
-	return _grid_distance(from, target_pos) <= data.attack_range
-
-
-func _perform_ranged_attack(attacker: Dictionary, target: Dictionary) -> void:
-	var attacker_id: int = int(attacker.get("id", -1))
-	var target_id: int = int(target.get("id", -1))
-	var dmg: int = maxi(0, _get_unit_attack_value(attacker) - _get_unit_damage_reduction(target))
-	target["hp"] = int(target.get("hp", 0)) - dmg
-	attacker["has_attacked"] = true
-	_play_attack_effect(attacker, target)
-	_play_hit_effect(target_id, target.get("grid_pos", Vector2i.ZERO), dmg)
-	if dmg > 0:
-		_try_apply_scout_poison_weaken(attacker, target)
-	if int(target.get("hp", 0)) <= 0:
-		_remove_unit_after_attack(target_id, attacker)
-	var selected: Dictionary = _get_unit_by_id(attacker_id)
-	if not selected.is_empty():
-		unit_selected.emit(_make_unit_view(selected))
-	_clear_selection()
-	queue_redraw()
+	var dist: int = _grid_distance(from, target_pos)
+	return dist > 1 and dist <= data.attack_range
 
 
 func _remove_unit_after_attack(target_id: int, attacker: Dictionary) -> void:
@@ -550,12 +628,14 @@ func _try_arm_beast_throw(slinger: Dictionary, beast: Dictionary) -> bool:
 		return false
 	if int(slinger.get("faction", -1)) != int(beast.get("faction", -2)):
 		return false
-	if bool(slinger.get("has_attacked", false)):
+	if bool(slinger.get("has_thrown_beast", false)):
 		return false
 	if not _is_adjacent(slinger.get("grid_pos", Vector2i.ZERO), beast.get("grid_pos", Vector2i.ZERO)):
 		return false
 	_throw_beast_source_id = int(beast.get("id", -1))
 	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = _calc_throw_range_tiles(slinger)
 	_emit_action_preview({
 		"visible": true,
 		"action": "throw_beast",
@@ -591,11 +671,12 @@ func _try_throw_beast_to(target: Vector2i) -> bool:
 	var from: Vector2i = beast.get("grid_pos", Vector2i.ZERO)
 	beast["grid_pos"] = landing
 	beast["has_moved"] = true
-	slinger["has_attacked"] = true
+	slinger["has_thrown_beast"] = true
 	_start_move_visual(int(beast.get("id", -1)), from, landing)
 	if _fog_manager and _turn_manager:
 		_fog_manager.reveal_area(_turn_manager.current_player, landing.x, landing.y, _get_unit_vision_value(beast))
 	_throw_beast_source_id = -1
+	_throw_range_tiles = []
 	_clear_selection()
 	queue_redraw()
 	return true
@@ -943,6 +1024,39 @@ func _calc_reachable(unit: Dictionary) -> Array:
 	return result
 
 
+func _calc_attack_range_tiles(unit: Dictionary) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var data: UnitData = _get_unit_data(unit)
+	if data.attack_range <= 1:
+		return result
+	var from: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	for y in range(from.y - data.attack_range, from.y + data.attack_range + 1):
+		for x in range(from.x - data.attack_range, from.x + data.attack_range + 1):
+			var pos := Vector2i(x, y)
+			if not _in_bounds(x, y):
+				continue
+			if pos == from:
+				continue
+			if _grid_distance(from, pos) <= data.attack_range:
+				result.append(pos)
+	return result
+
+
+func _calc_throw_range_tiles(slinger: Dictionary) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var from: Vector2i = slinger.get("grid_pos", Vector2i.ZERO)
+	for y in range(from.y - SLINGER_THROW_RANGE, from.y + SLINGER_THROW_RANGE + 1):
+		for x in range(from.x - SLINGER_THROW_RANGE, from.x + SLINGER_THROW_RANGE + 1):
+			var pos := Vector2i(x, y)
+			if not _in_bounds(x, y):
+				continue
+			if pos == from:
+				continue
+			if _grid_distance(from, pos) <= SLINGER_THROW_RANGE:
+				result.append(pos)
+	return result
+
+
 func _calc_path_length(from: Vector2i, to: Vector2i) -> int:
 	## 简化的 BFS 寻路，返回最短步数，不可达返回 -1
 	if from == to:
@@ -989,6 +1103,7 @@ func _on_player_turn_started(player: int) -> void:
 		if u["faction"] == player:
 			u["has_moved"] = false
 			u["has_attacked"] = false
+			u["has_thrown_beast"] = false
 			_tick_unit_statuses(u)
 
 	_clear_selection()
@@ -1051,6 +1166,101 @@ func _initiate_combat(attacker_id: int, defender_id: int) -> void:
 
 	# 先手立即出拳（不等待 1 秒）
 	_combat_tick()
+
+
+func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
+	if attacker_id < 0 or defender_id < 0:
+		return
+	_in_combat = true
+	_combat_data = {
+		"mode": "ranged_unit",
+		"attacker_id": attacker_id,
+		"defender_id": defender_id,
+	}
+	for u in _units:
+		if int(u.get("id", -1)) == attacker_id:
+			u["has_attacked"] = true
+			break
+	combat_started.emit()
+	_combat_timer = Timer.new()
+	_combat_timer.wait_time = 1.0
+	_combat_timer.timeout.connect(_ranged_combat_tick)
+	add_child(_combat_timer)
+	_combat_timer.start()
+	_ranged_combat_tick()
+
+
+func _initiate_ranged_neutral_combat(attacker_id: int, neutral_id: int, neutral_mgr: Node) -> void:
+	if attacker_id < 0 or neutral_id < 0 or neutral_mgr == null:
+		return
+	_in_combat = true
+	_combat_data = {
+		"mode": "ranged_neutral",
+		"attacker_id": attacker_id,
+		"neutral_id": neutral_id,
+		"neutral_mgr": neutral_mgr,
+	}
+	for u in _units:
+		if int(u.get("id", -1)) == attacker_id:
+			u["has_attacked"] = true
+			break
+	combat_started.emit()
+	_combat_timer = Timer.new()
+	_combat_timer.wait_time = 1.0
+	_combat_timer.timeout.connect(_ranged_neutral_combat_tick)
+	add_child(_combat_timer)
+	_combat_timer.start()
+	_ranged_neutral_combat_tick()
+
+
+func _ranged_combat_tick() -> void:
+	var attacker: Dictionary = _get_unit_by_id(int(_combat_data.get("attacker_id", -1)))
+	var defender: Dictionary = _get_unit_by_id(int(_combat_data.get("defender_id", -1)))
+	if attacker.is_empty() or defender.is_empty():
+		_finish_ranged_combat()
+		return
+	var raw_dmg: int = _get_unit_attack_value(attacker)
+	var reduction: int = _get_unit_damage_reduction(defender)
+	var dmg: int = maxi(1, raw_dmg - reduction) if raw_dmg > 0 else 0
+	_play_attack_effect(attacker, defender)
+	defender["hp"] = int(defender.get("hp", 0)) - dmg
+	if dmg > 0:
+		_try_apply_scout_poison_weaken(attacker, defender)
+	_play_hit_effect(int(defender.get("id", -1)), defender.get("grid_pos", Vector2i.ZERO), dmg)
+	if int(defender.get("hp", 0)) <= 0:
+		_remove_unit_after_attack(int(defender.get("id", -1)), attacker)
+		_finish_ranged_combat()
+		return
+	queue_redraw()
+
+
+func _ranged_neutral_combat_tick() -> void:
+	var attacker: Dictionary = _get_unit_by_id(int(_combat_data.get("attacker_id", -1)))
+	var neutral_mgr: Node = _combat_data.get("neutral_mgr", null)
+	if attacker.is_empty() or neutral_mgr == null or not neutral_mgr.has_method("get_neutral_unit_by_id"):
+		_finish_ranged_combat()
+		return
+	var neutral_id: int = int(_combat_data.get("neutral_id", -1))
+	var target: Dictionary = neutral_mgr.call("get_neutral_unit_by_id", neutral_id)
+	if target.is_empty():
+		_finish_ranged_combat()
+		return
+	var dmg: int = _get_unit_attack_value(attacker)
+	if neutral_mgr.has_method("apply_ranged_damage"):
+		neutral_mgr.call("apply_ranged_damage", neutral_id, int(attacker.get("faction", -1)), dmg)
+	target = neutral_mgr.call("get_neutral_unit_by_id", neutral_id)
+	if target.is_empty():
+		_finish_ranged_combat()
+		return
+	queue_redraw()
+
+
+func _finish_ranged_combat() -> void:
+	if _combat_timer:
+		_combat_timer.stop()
+		_combat_timer.queue_free()
+		_combat_timer = null
+	_finish_combat_state()
 
 
 func _combat_tick() -> void:
@@ -1386,7 +1596,9 @@ func _get_unit_attack_value(unit: Dictionary) -> int:
 
 
 func _get_unit_damage_reduction(unit: Dictionary) -> int:
-	var bonus: int = _get_building_effect_modifier(unit, BuildingEffectService.MOD_DAMAGE_REDUCTION)
+	var data: UnitData = _get_unit_data(unit)
+	var bonus: int = data.damage_reduction
+	bonus += _get_building_effect_modifier(unit, BuildingEffectService.MOD_DAMAGE_REDUCTION)
 	bonus += _get_technology_modifier_for_unit(unit, "damage_reduction_bonus")
 	return maxi(0, bonus)
 
@@ -1470,6 +1682,7 @@ func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) ->
 		"hp": hp if hp >= 0 else data.hp_max,
 		"has_moved": false,
 		"has_attacked": false,
+		"has_thrown_beast": false,
 		"statuses": {},
 	})
 	if spawn_pos != grid_pos:
