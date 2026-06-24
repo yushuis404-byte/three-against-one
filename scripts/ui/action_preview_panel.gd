@@ -82,8 +82,9 @@ func show_preview(preview: Dictionary) -> void:
 
 	var target_pos: Vector2i = preview.get("target_pos", Vector2i(-1, -1))
 	var approach_pos: Vector2i = preview.get("approach_pos", Vector2i(-1, -1))
-	var can_attack: bool = bool(preview.get("can_attack", false))
+	var can_attack: bool = bool(preview.get("can_execute", preview.get("can_attack", false)))
 	var ap_cost: int = int(preview.get("ap_cost", 0))
+	_title_label.text = str(preview.get("title", "\u884c\u52a8\u9884\u89c8"))
 
 	_target_label.text = "目标：%s  (%d, %d)" % [
 		str(preview.get("target_name", "")),

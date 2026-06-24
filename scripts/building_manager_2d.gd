@@ -7,6 +7,7 @@ extends Node2D
 const GarrisonServiceScript := preload("res://scripts/services/garrison_service.gd")
 const RecruitmentServiceScript := preload("res://scripts/services/recruitment_service.gd")
 const BuildingUpgradeServiceScript := preload("res://scripts/services/building_upgrade_service.gd")
+const BuildingNetworkServiceScript := preload("res://scripts/services/building_network_service.gd")
 const ELF_CAPITAL_TEXTURE: Texture2D = preload("res://assets/texture/Elven Capital.png")
 
 var grid_cols := 100
@@ -27,9 +28,11 @@ var _fog_mgr: Node = null
 var _resource_mgr: Node = null
 var _template_registry: Node = null
 var _technology_service: Node = null
+var _civilization_rules: Node = null
 var _garrison_service = GarrisonServiceScript.new()
 var _recruitment_service = RecruitmentServiceScript.new()
 var _upgrade_service = BuildingUpgradeServiceScript.new()
+var _building_network_service = BuildingNetworkServiceScript.new()
 
 var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
 
@@ -55,7 +58,13 @@ const BUILDING_ALPHA := 0.85
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.6)
 const EFFECT_RANGE_COLOR := Color(0.35, 0.75, 1.0, 0.18)
 const EFFECT_RANGE_BORDER_COLOR := Color(0.6, 0.9, 1.0, 0.35)
+const NETWORK_RANGE_COLOR := Color(0.95, 0.72, 0.28, 0.14)
+const NETWORK_RANGE_BORDER_COLOR := Color(1.0, 0.85, 0.42, 0.35)
+const NETWORK_LINK_COLOR := Color(1.0, 0.82, 0.28, 0.75)
 const ELF_CAPITAL_TEXTURE_SCALE := 1.45
+const REPAIR_AP_COST := 1
+const REPAIR_STONE_COST := 1
+const BASE_REPAIR_AMOUNT := 2
 
 
 func _ready() -> void:
@@ -123,8 +132,22 @@ func set_technology_service(service: Node) -> void:
 	_configure_services()
 
 
+func set_civilization_rules(rules: Node) -> void:
+	_civilization_rules = rules
+	if _civilization_rules != null and _civilization_rules.has_signal("route_changed"):
+		var callback := Callable(self, "_on_civilization_route_changed")
+		if not _civilization_rules.route_changed.is_connected(callback):
+			_civilization_rules.route_changed.connect(_on_civilization_route_changed)
+	queue_redraw()
+
+
+func _on_civilization_route_changed(_player: int) -> void:
+	queue_redraw()
+
+
 func _on_player_turn_started(player: int) -> void:
 	_reveal_town_hall_vision(player)
+	_reveal_watch_tower_vision(player)
 	_process_recruit_queues(player)
 	queue_redraw()
 
@@ -154,6 +177,18 @@ func _reveal_town_hall_vision(player: int) -> void:
 				_fog_mgr.reveal_area(player, cx, cy, 4)
 
 
+func _reveal_watch_tower_vision(player: int) -> void:
+	if not _fog_mgr or not _fog_mgr.has_method("reveal_area"):
+		return
+	for b in _buildings:
+		if int(b.get("faction", -1)) != player:
+			continue
+		var data: BuildingData = b["data"]
+		if BuildingRules.is_watch_tower(data):
+			var center: Vector2i = _get_building_center(b)
+			_fog_mgr.reveal_area(player, center.x, center.y, 5)
+
+
 # ========== Building 数据 API ==========
 
 func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
@@ -168,12 +203,15 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 	for t in tiles:
 		building_grid[t.y][t.x] = bid
 
+	var hp_max: int = _get_effective_building_hp_max(data, faction)
 	_buildings.append({
 		"id": bid,
 		"data": data,
 		"faction": faction,
 		"origin": origin,
-		"hp": data.hp_max,
+		"hp": hp_max,
+		"hp_max": hp_max,
+		"base_hp_max": data.hp_max,
 		"level": maxi(1, data.storage_level),
 		"garrison": [],
 		"recruit_queue": [],
@@ -189,7 +227,8 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		var fp: Vector2i = data.footprint
 		var center_x: int = origin.x + fp.x / 2
 		var center_y: int = origin.y + fp.y / 2
-		_fog_mgr.reveal_area_immediate(faction, center_x, center_y, 3)
+		var reveal_radius: int = 5 if BuildingRules.is_watch_tower(data) else 3
+		_fog_mgr.reveal_area_immediate(faction, center_x, center_y, reveal_radius)
 
 	if BuildingRules.is_outpost(data) and _territory_mgr and _territory_mgr.has_method("recalc_territory"):
 		_territory_mgr.recalc_territory(faction)
@@ -299,6 +338,79 @@ func get_all_buildings() -> Array:
 	return _buildings.duplicate()
 
 
+func get_building_network_info(building_id: int) -> Dictionary:
+	var building: Dictionary = _get_building_by_id(building_id)
+	if _building_network_service == null or building.is_empty():
+		return {}
+	return _building_network_service.get_network_info(_buildings, building, _civilization_rules)
+
+
+func get_building_network_production_bonus(building_id: int, resource_key: String) -> int:
+	var building: Dictionary = _get_building_by_id(building_id)
+	if _building_network_service == null or building.is_empty():
+		return 0
+	return _building_network_service.get_production_bonus(_buildings, building, resource_key, _civilization_rules)
+
+
+func get_building_hp_max(building_id: int) -> int:
+	var building: Dictionary = _get_building_by_id(building_id)
+	return _get_building_hp_max_from_instance(building)
+
+
+func damage_building(building_id: int, amount: int, attacker_faction: int = -1) -> Dictionary:
+	var index: int = _get_building_index_by_id(building_id)
+	if index < 0 or amount <= 0:
+		return {"ok": false, "destroyed": false, "damage": 0}
+	var building: Dictionary = _buildings[index]
+	var before_hp: int = int(building.get("hp", 0))
+	var damage: int = mini(amount, before_hp)
+	building["hp"] = before_hp - damage
+	_buildings[index] = building
+	_show_building_damage_text(building, damage)
+	var destroyed: bool = int(building.get("hp", 0)) <= 0
+	if destroyed:
+		_destroy_building_at_index(index, attacker_faction)
+	else:
+		queue_redraw()
+	return {"ok": true, "destroyed": destroyed, "damage": damage}
+
+
+func repair_building(building_id: int) -> bool:
+	var index: int = _get_building_index_by_id(building_id)
+	if index < 0:
+		return false
+	var building: Dictionary = _buildings[index]
+	var faction: int = int(building.get("faction", -1))
+	if _turn_manager == null or faction != _turn_manager.current_player:
+		return false
+	var hp_max: int = _get_building_hp_max_from_instance(building)
+	var current_hp: int = int(building.get("hp", hp_max))
+	if current_hp >= hp_max:
+		return false
+	if _resource_tracker == null or _resource_tracker.get_resource(faction, "stone") < REPAIR_STONE_COST:
+		return false
+	if _turn_manager.get_ap(faction) < REPAIR_AP_COST:
+		return false
+	_resource_tracker.spend_resource(faction, "stone", REPAIR_STONE_COST)
+	_turn_manager.spend_ap(faction, REPAIR_AP_COST)
+	var repair_amount: int = BASE_REPAIR_AMOUNT + _get_route_modifier_int(faction, "repair_efficiency_bonus")
+	repair_amount += _get_technology_modifier_int(faction, "repair_efficiency_bonus")
+	building["hp"] = mini(hp_max, current_hp + maxi(1, repair_amount))
+	_buildings[index] = building
+	_show_building_heal_text(building, int(building["hp"]) - current_hp)
+	if _resource_tracker.has_method("update_display"):
+		_resource_tracker.update_display(faction)
+	queue_redraw()
+	return true
+
+
+func show_building_resource_text(building_id: int, resources: Dictionary) -> void:
+	var building: Dictionary = _get_building_by_id(building_id)
+	if building.is_empty() or resources.is_empty():
+		return
+	_show_resource_text(building, resources, Color(0.7, 0.95, 1.0))
+
+
 func get_upgrade_info(building_id: int) -> Dictionary:
 	return _upgrade_service.get_upgrade_info(building_id)
 
@@ -365,6 +477,7 @@ func _find_ungarrison_pos(building: Dictionary) -> Vector2i:
 func _draw() -> void:
 	if not _buildings.is_empty():
 		_draw_effect_ranges()
+		_draw_network_ranges()
 		_draw_buildings()
 
 	# 放置模式幽灵预览
@@ -452,7 +565,7 @@ func _draw_buildings() -> void:
 			draw_string(font, star_pos, star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.9, 0.3))
 
 		# HP 标签（右下角小字）
-		var hp_label := "HP:%d" % b["hp"]
+		var hp_label := "HP:%d/%d" % [b["hp"], _get_building_hp_max_from_instance(b)]
 		var hp_size := font.get_string_size(hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9)
 		var hp_pos := Vector2(
 			top_left.x + w - hp_size.x - 2,
@@ -520,10 +633,91 @@ func _draw_effect_range_for_building(building: Dictionary) -> void:
 			draw_rect(rect, EFFECT_RANGE_BORDER_COLOR, false, 1.0)
 
 
+func _draw_network_ranges() -> void:
+	var range_buildings: Array[Dictionary] = []
+	if _hovered_id >= 0:
+		var hovered: Dictionary = _get_building_by_id(_hovered_id)
+		if _should_draw_network_range(hovered):
+			range_buildings.append(hovered)
+	if _selected_id >= 0 and _selected_id != _hovered_id:
+		var selected: Dictionary = _get_building_by_id(_selected_id)
+		if _should_draw_network_range(selected):
+			range_buildings.append(selected)
+
+	for building in range_buildings:
+		_draw_network_range_for_building(building)
+
+
+func _should_draw_network_range(building: Dictionary) -> bool:
+	if building.is_empty() or _building_network_service == null:
+		return false
+	var faction: int = int(building.get("faction", -1))
+	return _building_network_service.can_use_network_bonus(faction, _civilization_rules)
+
+
+func _draw_network_range_for_building(building: Dictionary) -> void:
+	var center: Vector2i = _get_building_center(building)
+	var radius: int = _building_network_service.get_link_range()
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			if not _in_bounds(x, y):
+				continue
+			var dist: int = absi(center.x - x) + absi(center.y - y)
+			if dist > radius:
+				continue
+			var world_pos: Vector2 = _grid_to_world(x, y)
+			var top_left := Vector2(world_pos.x - tile_size * 0.5, world_pos.y - tile_size * 0.5)
+			var rect := Rect2(top_left, Vector2(tile_size, tile_size))
+			draw_rect(rect, NETWORK_RANGE_COLOR, true)
+			draw_rect(rect, NETWORK_RANGE_BORDER_COLOR, false, 1.0)
+
+	var info: Dictionary = get_building_network_info(int(building.get("id", -1)))
+	var linked_ids: Array = info.get("linked_building_ids", [])
+	var source_pos: Vector2 = _grid_to_world(center.x, center.y)
+	for linked_id in linked_ids:
+		var linked_building: Dictionary = _get_building_by_id(int(linked_id))
+		if linked_building.is_empty():
+			continue
+		var linked_center: Vector2i = _get_building_center(linked_building)
+		var linked_pos: Vector2 = _grid_to_world(linked_center.x, linked_center.y)
+		draw_line(source_pos, linked_pos, NETWORK_LINK_COLOR, 2.0)
+
+
 func _get_building_center(building: Dictionary) -> Vector2i:
 	var data: BuildingData = building["data"]
 	var origin: Vector2i = building.get("origin", Vector2i.ZERO)
 	return Vector2i(origin.x + data.footprint.x / 2, origin.y + data.footprint.y / 2)
+
+
+func _get_effective_building_hp_max(data: BuildingData, faction: int) -> int:
+	var bonus: int = _get_route_modifier_int(faction, "building_hp_bonus")
+	bonus += _get_technology_modifier_int(faction, "building_hp_bonus")
+	return maxi(1, data.hp_max + bonus)
+
+
+func _get_building_hp_max_from_instance(building: Dictionary) -> int:
+	if building.is_empty() or not building.has("data"):
+		return 0
+	var data: BuildingData = building["data"]
+	return int(building.get("hp_max", data.hp_max))
+
+
+func _get_route_modifier_int(player: int, key: String) -> int:
+	if _civilization_rules == null or player < 0:
+		return 0
+	if _civilization_rules.has_method("get_modifier_int"):
+		return int(_civilization_rules.call("get_modifier_int", player, key, 0))
+	if _civilization_rules.has_method("get_modifier"):
+		return int(_civilization_rules.call("get_modifier", player, key, 0))
+	return 0
+
+
+func _get_technology_modifier_int(player: int, key: String) -> int:
+	if _technology_service == null and is_inside_tree():
+		_technology_service = get_parent().get_node_or_null("TechnologyService")
+	if _technology_service != null and _technology_service.has_method("get_modifier"):
+		return int(_technology_service.call("get_modifier", player, key, 0))
+	return 0
 
 
 func _should_draw_elven_capital_texture(data: BuildingData, faction: int) -> bool:
@@ -595,21 +789,40 @@ func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int, 
 	## 在建筑上方创建飘浮产量文字，如 "木材 +1" "石料 +2"
 	if prod.is_empty():
 		return
-	var data: BuildingData = building["data"]
-	var origin: Vector2i = building["origin"]
-	var fp: Vector2i = data.footprint
-	var cx: int = origin.x + fp.x / 2
-	var cy: int = origin.y + fp.y / 2
-	var world_pos := _grid_to_world(cx, cy)
-
 	var lines: PackedStringArray = []
 	var bonus: Dictionary = get_garrison_bonus(building["id"])
 	for key in prod:
-		var total: int = int(prod[key]) + int(bonus.get(key, 0))
+		var network_bonus: int = get_building_network_production_bonus(int(building["id"]), str(key))
+		var total: int = int(prod[key]) + int(bonus.get(key, 0)) + network_bonus
 		var rname: String = GameCatalog.resource_name(key)
 		lines.append("%s +%d" % [rname, total])
-	var text := "\n".join(lines)
+	_show_floating_text(building, "\n".join(lines), custom_color)
 
+
+func _show_resource_text(building: Dictionary, resources: Dictionary, custom_color: Color) -> void:
+	var lines: PackedStringArray = []
+	for key in resources:
+		var rname: String = GameCatalog.resource_name(str(key))
+		lines.append("%s +%d" % [rname, int(resources[key])])
+	_show_floating_text(building, "\n".join(lines), custom_color)
+
+
+func _show_building_damage_text(building: Dictionary, amount: int) -> void:
+	if amount <= 0:
+		return
+	_show_floating_text(building, "-%d HP" % amount, Color(1.0, 0.25, 0.18))
+
+
+func _show_building_heal_text(building: Dictionary, amount: int) -> void:
+	if amount <= 0:
+		return
+	_show_floating_text(building, "+%d HP" % amount, Color(0.45, 1.0, 0.45))
+
+
+func _show_floating_text(building: Dictionary, text: String, custom_color: Color) -> void:
+	if building.is_empty() or text.is_empty():
+		return
+	var world_pos: Vector2 = _get_building_world_center(building)
 	var label := Label.new()
 	label.text = text
 	label.add_theme_color_override("font_color", custom_color)
@@ -625,6 +838,11 @@ func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int, 
 	tween.tween_callback(label.queue_free)
 
 
+func _get_building_world_center(building: Dictionary) -> Vector2:
+	var center: Vector2i = _get_building_center(building)
+	return _grid_to_world(center.x, center.y)
+
+
 # ========== 交互 ==========
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -638,6 +856,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			var building: Dictionary = _get_building_by_id(_selected_id)
 			if not building.is_empty() and _turn_manager and int(building.get("faction", -1)) == _turn_manager.current_player:
 				upgrade_building(_selected_id)
+			return
+		if event.keycode == KEY_H and _selected_id >= 0:
+			repair_building(_selected_id)
 			return
 
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -683,12 +904,31 @@ func _unhandled_input(event: InputEvent) -> void:
 			var building_name: String = data.name
 			if int(building.get("level", 1)) > 1 and data.max_level > 1:
 				building_name = "%s Lv%d" % [data.name, int(building.get("level", 1))]
-			var hover_text := "%s - %s (HP:%d/%d)" % [fname, building_name, building["hp"], data.hp_max]
+			var hover_text := "%s - %s (HP:%d/%d)" % [fname, building_name, building["hp"], _get_building_hp_max_from_instance(building)]
+			if BuildingRules.is_defense_building(data):
+				hover_text += " - \u9632\u5fa1\u5efa\u7b51"
+			if BuildingRules.is_forge(data):
+				hover_text += " - \u914d\u65b9:2\u94c1+1\u77f3=>1\u7cbe\u94a2; 2\u94c1+1\u9b54\u5c18=>1\u79d8\u94f6"
 			if data.effect_radius > 0:
 				hover_text += " - Range:%d" % data.effect_radius
+			var network_info: Dictionary = get_building_network_info(int(building["id"]))
+			if _should_draw_network_range(building):
+				var linked_count: int = int(network_info.get("linked_count", 0))
+				var network_bonus: int = int(network_info.get("production_bonus", 0))
+				if linked_count > 0:
+					hover_text += " - \u5efa\u7b51\u7f51\u7edc:%d" % linked_count
+					if network_bonus > 0:
+						hover_text += " \u4ea7\u51fa+%d" % network_bonus
+				else:
+					hover_text += " - \u5efa\u7b51\u7f51\u7edc:\u672a\u8fde\u63a5"
 			var garr: Array = building.get("garrison", [])
 			if not garr.is_empty():
 				hover_text += " - Garrison:%d" % garr.size()
+			if _turn_manager != null:
+				if int(building.get("faction", -1)) == _turn_manager.current_player and int(building.get("hp", 0)) < _get_building_hp_max_from_instance(building):
+					hover_text += " - H\u4fee\u590d:%d\u77f3\u6599+%dAP" % [REPAIR_STONE_COST, REPAIR_AP_COST]
+				elif int(building.get("faction", -1)) != _turn_manager.current_player:
+					hover_text += " - \u53ef\u653b\u51fb"
 			building_hovered.emit(hover_text)
 		else:
 			_set_hovered_building(-1)
@@ -927,3 +1167,39 @@ func _get_building_by_id(building_id: int) -> Dictionary:
 		if building["id"] == building_id:
 			return building
 	return {}
+
+
+func _get_building_index_by_id(building_id: int) -> int:
+	for i in range(_buildings.size()):
+		var building: Dictionary = _buildings[i]
+		if int(building.get("id", -1)) == building_id:
+			return i
+	return -1
+
+
+func _destroy_building_at_index(index: int, attacker_faction: int = -1) -> void:
+	if index < 0 or index >= _buildings.size():
+		return
+	var building: Dictionary = _buildings[index]
+	var data: BuildingData = building["data"]
+	var origin: Vector2i = building["origin"]
+	var tiles: Array = _get_footprint_tiles(origin, data.footprint)
+	for tile in tiles:
+		var pos: Vector2i = tile
+		if _in_bounds(pos.x, pos.y) and int(building_grid[pos.y][pos.x]) == int(building["id"]):
+			building_grid[pos.y][pos.x] = -1
+	if int(building.get("id", -1)) == _selected_id:
+		_selected_id = -1
+	if int(building.get("id", -1)) == _hovered_id:
+		_hovered_id = -1
+	var faction: int = int(building.get("faction", -1))
+	if BuildingRules.is_outpost(data) and _territory_mgr and _territory_mgr.has_method("remove_town_hall"):
+		var source := Vector2i(origin.x + data.footprint.x / 2, origin.y + data.footprint.y / 2)
+		_territory_mgr.remove_town_hall(faction, source)
+	_buildings.remove_at(index)
+	if BuildingRules.is_outpost(data) and _territory_mgr and _territory_mgr.has_method("recalc_territory"):
+		_territory_mgr.recalc_territory(faction)
+	if _resource_tracker != null and _resource_tracker.has_method("update_display"):
+		var display_faction: int = attacker_faction if attacker_faction >= 0 else faction
+		_resource_tracker.update_display(display_faction)
+	queue_redraw()

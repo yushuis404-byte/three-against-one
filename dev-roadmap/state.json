@@ -2,57 +2,108 @@
   "modules": {
     "F0": {
       "status": "done",
-      "notes": "当前 v0.3 原型作为行为参考版本，不继续在旧结构里硬堆大型系统。"
+      "notes": "\u5f53\u524d v0.3 \u539f\u578b\u4f5c\u4e3a\u884c\u4e3a\u53c2\u8003\u7248\u672c\u3002"
     },
     "F1": {
       "status": "done",
-      "notes": "已完成模板工具包底座：TemplateRegistry、UnitTemplate、BuildingTemplate、ResourceNodeTemplate、ProductionRecipe。"
+      "notes": "\u6a21\u677f\u5de5\u5177\u5305\u5e95\u5ea7\u5df2\u5b8c\u6210\u3002"
     },
     "F2": {
       "status": "done",
-      "notes": "已完成初始单位、招募队列、中立单位的模板化接入。"
+      "notes": "\u521d\u59cb\u5355\u4f4d\u3001\u62db\u52df\u961f\u5217\u3001\u4e2d\u7acb\u5355\u4f4d\u6a21\u677f\u5316\u5df2\u63a5\u5165\u3002"
     },
     "F3": {
       "status": "done",
-      "notes": "已完成编辑器地图可视化、地形/水岸画笔、预览、保存加载、5步撤回等工具。"
+      "notes": "\u5730\u56fe\u7f16\u8f91\u5668\u3001\u5730\u5f62\u548c\u6c34\u5cb8\u753b\u7b14\u3001\u9884\u89c8\u3001\u4fdd\u5b58\u52a0\u8f7d\u3001\u64a4\u9500\u91cd\u505a\u5df2\u5b8c\u6210\u3002"
     },
     "L1": {
       "status": "done",
-      "notes": "新策划焦点已确定：精灵=信息，矮人=空间，兽人=战争。"
+      "notes": "\u65b0\u7b56\u5212\u7126\u70b9\u5df2\u786e\u5b9a\uff1a\u7cbe\u7075\u4fe1\u606f\uff0c\u77ee\u4eba\u7a7a\u95f4\uff0c\u517d\u4eba\u6218\u4e89\u3002"
     },
     "L2": {
       "status": "done",
-      "notes": "已新增 LordTemplate、TemplateRegistry 领主加载/查询、默认三文明领主样例与文档说明。"
+      "notes": "\u9886\u4e3b\u6a21\u677f\u3001\u52a0\u8f7d\u67e5\u8be2\u548c\u4e09\u65b9\u9ed8\u8ba4\u6837\u4f8b\u5df2\u5b8c\u6210\u3002"
     },
     "L3": {
       "status": "done",
-      "notes": "已新增三个路线状态节点：ElfCivilizationState、DwarfCivilizationState、OrcCivilizationState。每个节点会从默认领主汇总三轴值、解锁列表和被动修正。"
+      "notes": "\u4e09\u4e2a\u6587\u660e\u8def\u7ebf\u72b6\u6001\u8282\u70b9\u5df2\u5b8c\u6210\u3002"
     },
     "L4": {
       "status": "done",
-      "notes": "已新增 CivilizationRuleService，统一查询三方文明路线状态、解锁项、三轴值和被动修正。"
+      "notes": "CivilizationRuleService \u5df2\u63a5\u5165\u8def\u7ebf\u72b6\u6001\u3001\u89e3\u9501\u9879\u3001\u4e09\u8f74\u503c\u548c\u88ab\u52a8\u4fee\u6b63\u3002"
     },
     "L5": {
-      "status": "current",
-      "notes": "已新增临时 CivilizationDebugPanel 显示三方路线摘要。下一步可以做正式路线面板或接入第一个真实效果。"
+      "status": "done",
+      "notes": "\u6b63\u5f0f\u6587\u660e\u8def\u7ebf\u9762\u677f\u5df2\u63a5\u5165\u3002"
     },
-    "E1": { "status": "pending", "notes": "" },
-    "E2": { "status": "pending", "notes": "" },
-    "E3": { "status": "pending", "notes": "" },
-    "E4": { "status": "pending", "notes": "" },
-    "D1": { "status": "pending", "notes": "" },
-    "D2": { "status": "pending", "notes": "" },
-    "D3": { "status": "pending", "notes": "" },
-    "D4": { "status": "pending", "notes": "" },
-    "O1": { "status": "pending", "notes": "" },
-    "O2": { "status": "pending", "notes": "" },
-    "O3": { "status": "pending", "notes": "" },
-    "O4": { "status": "pending", "notes": "" },
-    "X1": { "status": "pending", "notes": "" },
-    "X2": { "status": "pending", "notes": "" },
-    "X3": { "status": "pending", "notes": "" },
-    "X4": { "status": "pending", "notes": "" },
-    "X5": { "status": "pending", "notes": "" }
+    "E1": {
+      "status": "done",
+      "notes": "\u7cbe\u7075\u89c6\u91ce\u4fee\u6b63\u5df2\u63a5\u5165\u5355\u4f4d\u5b9e\u9645\u89c6\u91ce\u548c\u63ed\u96fe\u8ba1\u7b97\u3002"
+    },
+    "E2": {
+      "status": "done",
+      "notes": "\u8ff7\u96fe\u63ed\u793a\u5df2\u5b9e\u73b0\uff1aF \u952e\u8fdb\u5165\u6a21\u5f0f\uff0c\u6d88\u8017 1 AP\uff0c\u5c04\u7a0b 6\uff0c\u63ed\u793a\u534a\u5f84 2\u3002"
+    },
+    "E3": {
+      "status": "done",
+      "notes": "\u98ce\u8bed\u53e4\u6811\u5df2\u63a5\u5165\u9886\u4e3b\u5efa\u7b51\u3001\u53e4\u6728\u4ea7\u51fa\u548c\u8303\u56f4\u89c6\u91ce\u52a0\u6210\u3002"
+    },
+    "E4": {
+      "status": "done",
+      "notes": "\u7cbe\u7075\u4fe1\u606f\u8def\u7ebf\u5df2\u9a8c\u6536\u5b8c\u6210\u3002"
+    },
+    "D1": {
+      "status": "done",
+      "notes": "\u77ee\u4eba\u5efa\u7b51\u7f51\u7edc\u5df2\u5b8c\u6210\uff1a\u8def\u7ebf HP \u52a0\u6210\u3001\u8fd1\u8ddd\u79bb\u5efa\u7b51\u8fde\u63a5\u3001\u57fa\u7840\u4ea7\u51fa +1 \u548c\u60ac\u505c/\u8303\u56f4\u53ef\u89c6\u5316\u5df2\u63a5\u5165\u3002"
+    },
+    "D2": {
+      "status": "done",
+      "notes": "\u57ce\u5899\u4e0e\u963b\u6321\u89c4\u5219\u5df2\u5b8c\u6210\uff1a\u77f3\u5899\u3001\u77ad\u671b\u5854\u3001\u5efa\u7b51\u963b\u6321\u8def\u5f84\u3001\u5efa\u7b51\u53ef\u653b\u51fb/\u53ef\u4fee\u590d\u5df2\u63a5\u5165\u3002"
+    },
+    "D3": {
+      "status": "done",
+      "notes": "\u7194\u7089\u4e0e\u5de5\u4e1a\u8d44\u6e90\u5df2\u5b8c\u6210\uff1a\u65b0\u589e\u79d8\u94f6/\u7cbe\u94a2\u8d44\u6e90\uff0c\u7194\u7089\u6bcf\u56de\u5408\u8f6c\u6362\u7cbe\u94a2\uff0c\u77f3\u5b88\u536b\u8def\u7ebf\u89e3\u9501\u79d8\u94f6\u914d\u65b9\u3002"
+    },
+    "D4": {
+      "status": "done",
+      "notes": "\u77ee\u4eba\u8def\u7ebf\u9a8c\u6536\u5df2\u5b8c\u6210\uff1a\u5efa\u7b51\u7f51\u7edc\u3001\u9632\u7ebf\u963b\u6321\u3001\u5efa\u7b51\u653b\u4fee\u3001\u7194\u7089\u5de5\u4e1a\u95ed\u73af\u5df2\u4e32\u8d77\u3002"
+    },
+    "O1": {
+      "status": "current",
+      "notes": ""
+    },
+    "O2": {
+      "status": "pending",
+      "notes": ""
+    },
+    "O3": {
+      "status": "pending",
+      "notes": ""
+    },
+    "O4": {
+      "status": "pending",
+      "notes": ""
+    },
+    "X1": {
+      "status": "pending",
+      "notes": ""
+    },
+    "X2": {
+      "status": "pending",
+      "notes": ""
+    },
+    "X3": {
+      "status": "pending",
+      "notes": ""
+    },
+    "X4": {
+      "status": "pending",
+      "notes": ""
+    },
+    "X5": {
+      "status": "pending",
+      "notes": ""
+    }
   },
-  "currentId": "L5"
+  "currentId": "O1"
 }

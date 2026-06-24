@@ -341,6 +341,57 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	lumber_camp.max_per_faction = 7
 	lumber_camp.tags = ["infra", "production", "wood"]
 
+	var stone_wall = BuildingTemplateScript.new()
+	stone_wall.id = "building.stone_wall"
+	stone_wall.display_name = "\u77f3\u5899"
+	stone_wall.description = "\u77ee\u4eba\u9632\u7ebf\u5efa\u7b51\uff1a\u5360\u683c\u963b\u6321\u79fb\u52a8\uff0c\u53ef\u88ab\u653b\u51fb\u548c\u4fee\u590d\u3002"
+	stone_wall.role = BuildingTemplateScript.BuildingRole.SPECIAL
+	stone_wall.hp_max = 12
+	stone_wall.build_cost = [_amount("stone", 8)]
+	stone_wall.max_per_faction = 99
+	stone_wall.tags = ["defense", "wall", "stone_wall", "blocks_movement", "dwarf"]
+
+	var watch_tower = BuildingTemplateScript.new()
+	watch_tower.id = "building.watch_tower"
+	watch_tower.display_name = "\u77ad\u671b\u5854"
+	watch_tower.description = "\u77ee\u4eba\u9632\u7ebf\u5efa\u7b51\uff1a\u5360\u683c\u963b\u6321\u79fb\u52a8\uff0c\u63d0\u4f9b\u66f4\u5927\u9632\u7ebf\u89c6\u91ce\u3002"
+	watch_tower.role = BuildingTemplateScript.BuildingRole.SCOUT
+	watch_tower.hp_max = 10
+	watch_tower.build_cost = [_amount("wood", 15), _amount("stone", 20), _amount("iron", 5)]
+	watch_tower.max_per_faction = 6
+	watch_tower.tags = ["defense", "watch_tower", "vision", "blocks_movement", "dwarf"]
+
+	var forge = BuildingTemplateScript.new()
+	forge.id = "building.forge"
+	forge.display_name = "\u7194\u7089"
+	forge.description = "\u77ee\u4eba\u5de5\u4e1a\u5efa\u7b51\uff1a\u5c06\u94c1\u77ff\u8f6c\u5316\u4e3a\u7cbe\u94a2\uff0c\u89e3\u9501\u79d8\u94f6\u5de5\u827a\u540e\u53ef\u8f6c\u5316\u79d8\u94f6\u3002"
+	forge.role = BuildingTemplateScript.BuildingRole.SPECIAL
+	forge.hp_max = 8
+	forge.build_cost = [_amount("wood", 20), _amount("stone", 25), _amount("iron", 5)]
+	forge.production = [
+		_recipe_outputs("recipe.steel.basic", [_amount("steel", 1)])
+	]
+	forge.max_per_faction = 2
+	forge.tags = ["industry", "forge", "conversion", "dwarf"]
+
+	var wind_ancient_tree = BuildingTemplateScript.new()
+	wind_ancient_tree.id = "building.wind_ancient_tree"
+	wind_ancient_tree.display_name = "\u98ce\u8bed\u53e4\u6811"
+	wind_ancient_tree.description = "\u7cbe\u7075\u98ce\u8bed\u8005\u7279\u8272\u5efa\u7b51\uff1a\u6bcf\u56de\u5408 +1 \u53e4\u6728\uff0c\u9644\u8fd1\u5df1\u65b9\u5355\u4f4d\u89c6\u91ce +1\u3002"
+	wind_ancient_tree.role = BuildingTemplateScript.BuildingRole.SPECIAL
+	wind_ancient_tree.hp_max = 8
+	wind_ancient_tree.build_cost = [_amount("wood", 30), _amount("stone", 20)]
+	wind_ancient_tree.production = [
+		_recipe_outputs("recipe.ancient_wood.wind_tree", [_amount("ancient_wood", 1)])
+	]
+	var wind_tree_terrain: Array[int] = [
+		TerrainData.Terrain.FOREST_ELF,
+		TerrainData.Terrain.GLADE_ELF,
+	]
+	wind_ancient_tree.terrain_compatibility = wind_tree_terrain
+	wind_ancient_tree.max_per_faction = 1
+	wind_ancient_tree.tags = ["lord_building", "elf", "vision", "ancient_wood"]
+
 	var gold_mine = BuildingTemplateScript.new()
 	gold_mine.id = "building.gold_mine_shaft"
 	gold_mine.display_name = "Gold Mine Shaft"
@@ -370,6 +421,10 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 		recruit_camp.id: recruit_camp,
 		barracks.id: barracks,
 		lumber_camp.id: lumber_camp,
+		stone_wall.id: stone_wall,
+		watch_tower.id: watch_tower,
+		forge.id: forge,
+		wind_ancient_tree.id: wind_ancient_tree,
 		gold_mine.id: gold_mine,
 	}
 
@@ -377,45 +432,45 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 func make_lord_templates() -> Dictionary:
 	var elf_lord: Resource = _lord_basic(
 		"lord.elf.wind_seer",
-		"Wind Seer",
+		"\u98ce\u8bed\u8005",
 		LordTemplateScript.Civilization.ELF,
 		LordTemplateScript.Axis.INFORMATION,
 		{"information": 3, "space": 0, "war": 0},
 		["lord", "elf", "information", "starter"]
 	)
-	elf_lord.description = "Elf route seed lord. Focuses on vision, scouting, and fog interaction."
+	elf_lord.description = "\u7cbe\u7075\u8def\u7ebf\u521d\u59cb\u9886\u4e3b\uff1a\u5f3a\u5316\u89c6\u91ce\u3001\u4fa6\u5bdf\u548c\u8ff7\u96fe\u4e92\u52a8\u3002"
 	elf_lord.unlock_building_ids = ["building.wind_ancient_tree"]
 	elf_lord.unlock_action_ids = ["action.fog.reveal"]
 	elf_lord.passive_modifiers = {
-		"unit_vision_bonus": 1,
 		"scout_move_bonus": 1,
 	}
 
 	var dwarf_lord: Resource = _lord_basic(
 		"lord.dwarf.stone_warden",
-		"Stone Warden",
+		"\u77f3\u5b88\u536b",
 		LordTemplateScript.Civilization.DWARF,
 		LordTemplateScript.Axis.SPACE,
 		{"information": 0, "space": 3, "war": 0},
 		["lord", "dwarf", "space", "starter"]
 	)
-	dwarf_lord.description = "Dwarf route seed lord. Focuses on buildings, walls, and controlled space."
-	dwarf_lord.unlock_building_ids = ["building.stone_wall", "building.watch_tower"]
+	dwarf_lord.description = "\u77ee\u4eba\u8def\u7ebf\u521d\u59cb\u9886\u4e3b\uff1a\u5f3a\u5316\u5efa\u7b51\u3001\u9632\u7ebf\u548c\u7a7a\u95f4\u63a7\u5236\u3002"
+	dwarf_lord.unlock_building_ids = ["building.stone_wall", "building.watch_tower", "building.forge"]
 	dwarf_lord.unlock_recipe_ids = ["recipe.mithril.basic"]
 	dwarf_lord.passive_modifiers = {
 		"building_hp_bonus": 2,
+		"building_network_production_bonus": 1,
 		"repair_efficiency_bonus": 1,
 	}
 
 	var orc_lord: Resource = _lord_basic(
 		"lord.orc.blood_chief",
-		"Blood Chief",
+		"\u8840\u65a7\u914b\u957f",
 		LordTemplateScript.Civilization.ORC,
 		LordTemplateScript.Axis.WAR,
 		{"information": 0, "space": 0, "war": 3},
 		["lord", "orc", "war", "starter"]
 	)
-	orc_lord.description = "Orc route seed lord. Focuses on combat tempo, plunder, and war economy."
+	orc_lord.description = "\u517d\u4eba\u8def\u7ebf\u521d\u59cb\u9886\u4e3b\uff1a\u5f3a\u5316\u6218\u6597\u8282\u594f\u3001\u63a0\u593a\u548c\u6218\u4e89\u7ecf\u6d4e\u3002"
 	orc_lord.unlock_building_ids = ["building.blood_fang_den"]
 	orc_lord.unlock_action_ids = ["action.warband.form"]
 	orc_lord.passive_modifiers = {

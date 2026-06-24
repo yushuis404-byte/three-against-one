@@ -393,6 +393,8 @@ func _format_production(d: BuildingData) -> String:
 	if d.storage_level > 0:
 		var bonus: int = int(d.storage_bonus.get("wood", 0))
 		return "储存上限 +%d" % bonus
+	if "forge" in d.tags:
+		return "\u8f6c\u6362: \u94c1\u77ff\u2192\u7cbe\u94a2 / \u79d8\u94f6"
 	if d.production.is_empty():
 		return ""
 	var parts: PackedStringArray = []

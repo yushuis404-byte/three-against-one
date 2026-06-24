@@ -20,9 +20,11 @@ var turn_phase: TurnPhase = TurnPhase.ROUND_START
 var player_ap := [6, 6, 6]
 var player_finished := [false, false, false]
 var game_stopped := false
+var creative_mode_enabled := false
 
 const AP_PER_ROUND := 12
 const AP_MAX := 12
+const CREATIVE_AP_VALUE := 999
 
 
 func start_game() -> void:
@@ -104,6 +106,9 @@ func _start_neutral_turn() -> void:
 
 
 func spend_ap(player: int, amount: int) -> bool:
+	if creative_mode_enabled:
+		ap_changed.emit(player, get_ap(player))
+		return true
 	if player_ap[player] >= amount:
 		player_ap[player] -= amount
 		ap_changed.emit(player, player_ap[player])
@@ -112,4 +117,18 @@ func spend_ap(player: int, amount: int) -> bool:
 
 
 func get_ap(player: int) -> int:
+	if creative_mode_enabled:
+		return CREATIVE_AP_VALUE
 	return player_ap[player]
+
+
+func set_creative_mode_enabled(enabled: bool) -> void:
+	if creative_mode_enabled == enabled:
+		return
+	creative_mode_enabled = enabled
+	for p in range(player_ap.size()):
+		ap_changed.emit(p, get_ap(p))
+
+
+func is_creative_mode_enabled() -> bool:
+	return creative_mode_enabled

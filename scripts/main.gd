@@ -7,6 +7,7 @@ const TechnologyServiceScript = preload("res://scripts/services/technology_servi
 const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_panel.gd")
 const VictoryServiceScript = preload("res://scripts/services/victory_service.gd")
 const ScoreRulePanelScript = preload("res://scripts/ui/score_rule_panel.gd")
+const CivilizationRoutePanelScript = preload("res://scripts/ui/civilization_route_panel.gd")
 ## 主场景控制器 — 2.5D 三人竞技棋
 
 @onready var camera: Camera2D = $GameCamera
@@ -42,6 +43,10 @@ var victory_service: Node = null
 var game_over_label: Label = null
 var score_rule_panel: Control = null
 var score_rule_button: Button = null
+var civilization_route_panel: Control = null
+var civilization_route_button: Button = null
+var creative_mode_button: Button = null
+var _creative_mode_enabled := false
 
 
 func _ready() -> void:
@@ -51,6 +56,7 @@ func _ready() -> void:
 
 func _setup_game() -> void:
 	$UI.visible = true
+	_hide_civilization_debug_panel()
 	current_state = GameState.PLAYING
 	_init_stage_label()
 	_init_game_over_label()
@@ -83,6 +89,8 @@ func _setup_game() -> void:
 	building_manager.set_turn_manager(turn_manager)
 	building_manager.building_hovered.connect(_on_resource_hovered)
 	building_manager.set_resource_tracker(resource_tracker)
+	if building_manager.has_method("set_civilization_rules"):
+		building_manager.set_civilization_rules(civilization_rules)
 	building_manager.recruit_panel_requested.connect(_on_recruit_panel_requested)
 	building_manager.recruit_panel_closed.connect(_on_recruit_panel_closed)
 	building_manager.recruit_queue_changed.connect(_on_recruit_queue_changed)
@@ -99,6 +107,8 @@ func _setup_game() -> void:
 
 	# 单位系统初始化
 	unit_manager.set_turn_manager(turn_manager)
+	if unit_manager.has_method("set_civilization_rules"):
+		unit_manager.set_civilization_rules(civilization_rules)
 	unit_manager.place_initial_units()
 
 	# 中立生物系统初始化
@@ -109,8 +119,11 @@ func _setup_game() -> void:
 	# 资源追踪系统初始化
 	resource_tracker.set_turn_manager(turn_manager)
 	resource_tracker.set_building_manager(building_manager)
+	if resource_tracker.has_method("set_civilization_rules"):
+		resource_tracker.set_civilization_rules(civilization_rules)
 	resource_tracker.resources_updated.connect(_on_resources_updated)
 	_init_resource_labels()
+	_init_creative_mode_button()
 	_init_achievement_service()
 	_init_technology_service()
 	_init_victory_service()
@@ -141,9 +154,17 @@ func _setup_game() -> void:
 	_init_technology_tree_button()
 	_init_score_rule_panel()
 	_init_score_rule_button()
+	_init_civilization_route_panel()
+	_init_civilization_route_button()
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
+
+
+func _hide_civilization_debug_panel() -> void:
+	var panel: CanvasItem = $UI.get_node_or_null("CivilizationDebugPanel") as CanvasItem
+	if panel != null:
+		panel.visible = false
 
 
 func _on_building_selected(data: BuildingData) -> void:
@@ -232,7 +253,7 @@ func _on_round_started(round: int) -> void:
 func _on_player_turn_started(player: int) -> void:
 	turn_label.text = "第 %d 回合 · %s" % [turn_manager.round_number, GameCatalog.faction_name(player)]
 	turn_label.label_settings = _make_label_settings(GameCatalog.faction_color(player))
-	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
+	debug_label.text = _format_ap_debug_text(player)
 	_update_ap_status_label(player)
 	resource_tracker.update_display(player)
 	# 海克斯商队触发检查
@@ -249,7 +270,7 @@ func _on_round_ended(round: int) -> void:
 
 
 func _on_ap_changed(player: int, ap: int) -> void:
-	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
+	debug_label.text = _format_ap_debug_text(player)
 	_update_ap_status_label(player)
 	resource_tracker.update_display(player)
 	building_ui.refresh(player)
@@ -260,17 +281,63 @@ func _init_resource_labels() -> void:
 	var panel: Panel = resource_panel
 	if not panel:
 		return
-	var key_map := {"Gold": "gold", "Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore"}
+	var hbox: HBoxContainer = panel.get_node("HBox") as HBoxContainer
+	var key_map := {"Gold": "gold", "Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore", "Mithril": "mithril", "Steel": "steel"}
 	for node_name in key_map:
-		var label: Label = panel.get_node("HBox/Label" + node_name)
-		if label:
-			resource_tracker.set_resource_label(key_map[node_name], label)
-	resource_tracker.set_faction_label(panel.get_node("HBox/FactionLabel"))
+		var label: Label = hbox.get_node_or_null("Label" + node_name) as Label
+		if label == null:
+			label = Label.new()
+			label.name = "Label" + node_name
+			label.add_theme_font_size_override("font_size", 13)
+			hbox.add_child(label)
+		resource_tracker.set_resource_label(str(key_map[node_name]), label)
+	resource_tracker.set_faction_label(panel.get_node("HBox/FactionLabel") as Label)
 
 
 func _on_resources_updated(_player: int) -> void:
 	var cp: int = turn_manager.current_player
 	resource_tracker.update_display(cp)
+
+
+func _init_creative_mode_button() -> void:
+	creative_mode_button = Button.new()
+	creative_mode_button.name = "CreativeModeButton"
+	creative_mode_button.toggle_mode = true
+	creative_mode_button.position = Vector2(16.0, 54.0)
+	creative_mode_button.size = Vector2(132.0, 30.0)
+	creative_mode_button.focus_mode = Control.FOCUS_NONE
+	creative_mode_button.z_index = 95
+	creative_mode_button.tooltip_text = "开启后资源与 AP 不会被消耗"
+	creative_mode_button.toggled.connect(_on_creative_mode_toggled)
+	$UI.add_child(creative_mode_button)
+	_update_creative_mode_button()
+
+
+func _on_creative_mode_toggled(enabled: bool) -> void:
+	_creative_mode_enabled = enabled
+	if turn_manager != null and turn_manager.has_method("set_creative_mode_enabled"):
+		turn_manager.call("set_creative_mode_enabled", enabled)
+	if resource_tracker != null and resource_tracker.has_method("set_creative_mode_enabled"):
+		resource_tracker.call("set_creative_mode_enabled", enabled)
+	_update_creative_mode_button()
+	var cp: int = turn_manager.current_player
+	_update_ap_status_label(cp)
+	resource_tracker.update_display(cp)
+	building_ui.refresh(cp)
+	debug_label.text = "创造模式已开启：资源与 AP 不消耗" if enabled else _format_ap_debug_text(cp)
+
+
+func _update_creative_mode_button() -> void:
+	if creative_mode_button == null:
+		return
+	creative_mode_button.text = "创造模式: 开" if _creative_mode_enabled else "创造模式: 关"
+	creative_mode_button.modulate = Color(0.72, 1.0, 0.72, 1.0) if _creative_mode_enabled else Color.WHITE
+
+
+func _format_ap_debug_text(player: int) -> String:
+	if _creative_mode_enabled:
+		return "%s (AP: ∞)" % GameCatalog.faction_name(player)
+	return "%s (AP: %d)" % [GameCatalog.faction_name(player), turn_manager.get_ap(player)]
 
 
 func _init_achievement_service() -> void:
@@ -357,6 +424,8 @@ func _on_achievement_tree_button_pressed() -> void:
 		technology_tree_panel.visible = false
 	if score_rule_panel != null:
 		score_rule_panel.visible = false
+	if civilization_route_panel != null:
+		civilization_route_panel.visible = false
 	achievement_tree_panel.visible = true
 	achievement_tree_panel.queue_redraw()
 
@@ -391,6 +460,8 @@ func _on_technology_tree_button_pressed() -> void:
 		achievement_tree_panel.visible = false
 	if score_rule_panel != null:
 		score_rule_panel.visible = false
+	if civilization_route_panel != null:
+		civilization_route_panel.visible = false
 	technology_tree_panel.visible = true
 	technology_tree_panel.queue_redraw()
 
@@ -424,8 +495,46 @@ func _on_score_rule_button_pressed() -> void:
 		achievement_tree_panel.visible = false
 	if technology_tree_panel != null:
 		technology_tree_panel.visible = false
+	if civilization_route_panel != null:
+		civilization_route_panel.visible = false
 	score_rule_panel.visible = true
 	score_rule_panel.queue_redraw()
+
+
+func _init_civilization_route_panel() -> void:
+	civilization_route_panel = CivilizationRoutePanelScript.new()
+	civilization_route_panel.name = "CivilizationRoutePanel"
+	civilization_route_panel.position = Vector2(320.0, 110.0)
+	civilization_route_panel.size = Vector2(1040.0, 760.0)
+	civilization_route_panel.visible = false
+	civilization_route_panel.z_index = 103
+	$UI.add_child(civilization_route_panel)
+	civilization_route_panel.setup(civilization_rules, turn_manager)
+
+
+func _init_civilization_route_button() -> void:
+	civilization_route_button = Button.new()
+	civilization_route_button.name = "CivilizationRouteButton"
+	civilization_route_button.text = "\u8def\u7ebf"
+	civilization_route_button.position = Vector2(302.0, 176.0)
+	civilization_route_button.size = Vector2(76.0, 30.0)
+	civilization_route_button.focus_mode = Control.FOCUS_NONE
+	civilization_route_button.z_index = 90
+	civilization_route_button.pressed.connect(_on_civilization_route_button_pressed)
+	$UI.add_child(civilization_route_button)
+
+
+func _on_civilization_route_button_pressed() -> void:
+	if civilization_route_panel == null:
+		return
+	if achievement_tree_panel != null:
+		achievement_tree_panel.visible = false
+	if technology_tree_panel != null:
+		technology_tree_panel.visible = false
+	if score_rule_panel != null:
+		score_rule_panel.visible = false
+	civilization_route_panel.visible = true
+	civilization_route_panel.queue_redraw()
 
 
 func _init_stage_event_service() -> void:
@@ -521,6 +630,9 @@ func _update_ap_status_label(player: int) -> void:
 		return
 	var color: Color = GameCatalog.faction_color(player)
 	ap_status_label.add_theme_color_override("font_color", color)
+	if _creative_mode_enabled:
+		ap_status_label.text = "%s AP: ∞" % GameCatalog.faction_name(player)
+		return
 	ap_status_label.text = "%s AP: %d / %d" % [
 		GameCatalog.faction_name(player),
 		turn_manager.get_ap(player),
@@ -589,4 +701,4 @@ func _on_neutral_combat_started() -> void:
 
 func _on_neutral_combat_ended() -> void:
 	var cp: int = turn_manager.current_player
-	debug_label.text = "%s (AP: %d)" % [GameCatalog.faction_name(cp), turn_manager.get_ap(cp)]
+	debug_label.text = _format_ap_debug_text(cp)

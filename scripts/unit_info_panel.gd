@@ -200,7 +200,13 @@ func show_unit(unit: Dictionary) -> void:
 	# 属性
 	_atk_label.text = "%d/%d" % [data.atk, data.attack_range]
 	_mov_label.text = "%d" % data.move_max
-	_vis_label.text = str(data.vision)
+	var effective_vision: int = int(unit.get("effective_vision", data.vision))
+	var vision_bonus: int = int(unit.get("vision_bonus", effective_vision - data.vision))
+	if vision_bonus != 0:
+		var bonus_prefix: String = "+" if vision_bonus > 0 else ""
+		_vis_label.text = "%d (%s%d)" % [effective_vision, bonus_prefix, vision_bonus]
+	else:
+		_vis_label.text = str(effective_vision)
 	_food_label.text = str(data.food_cost)
 	_hint_label.text = _make_unit_hint(data)
 

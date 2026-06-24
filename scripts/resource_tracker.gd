@@ -8,8 +8,11 @@ var _resources: Array = [{}, {}, {}]  # Array[Dictionary]
 var _building_mgr: Node = null
 var _turn_mgr: Node = null
 var _technology_service: Node = null
+var _civilization_rules: Node = null
+var creative_mode_enabled := false
 
-const CAPPED_RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore"]
+const CAPPED_RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore", "mithril", "steel"]
+const CREATIVE_RESOURCE_VALUE := 999
 const BASE_RESOURCE_CAPS := {
 	"wood": 50,
 	"stone": 50,
@@ -18,6 +21,8 @@ const BASE_RESOURCE_CAPS := {
 	"magic_dust": 30,
 	"ancient_wood": 30,
 	"gold_ore": 40,
+	"mithril": 20,
+	"steel": 30,
 }
 
 # UI Label 引用：_label_refs["wood"] = Label 等
@@ -54,6 +59,10 @@ func set_technology_service(service: Node) -> void:
 	_technology_service = service
 
 
+func set_civilization_rules(rules: Node) -> void:
+	_civilization_rules = rules
+
+
 func set_faction_label(label: Label) -> void:
 	_faction_label = label
 
@@ -65,6 +74,8 @@ func set_resource_label(key: String, label: Label) -> void:
 func add_resource(player: int, key: String, amount: int) -> void:
 	if not _resources[player].has(key):
 		return
+	if creative_mode_enabled:
+		return
 	var current: int = int(_resources[player][key])
 	var next_value: int = current + amount
 	var cap: int = get_resource_cap(player, key)
@@ -75,6 +86,8 @@ func add_resource(player: int, key: String, amount: int) -> void:
 
 
 func get_resource(player: int, key: String) -> int:
+	if creative_mode_enabled and _resources[player].has(key):
+		return CREATIVE_RESOURCE_VALUE
 	return _resources[player].get(key, 0)
 
 
@@ -82,6 +95,8 @@ func spend_resource(player: int, key: String, amount: int) -> bool:
 	## 扣减资源，返回是否成功（余额不足返回 false）
 	if not _resources[player].has(key):
 		return false
+	if creative_mode_enabled:
+		return true
 	if _resources[player][key] < amount:
 		return false
 	_resources[player][key] -= amount
@@ -90,10 +105,17 @@ func spend_resource(player: int, key: String, amount: int) -> bool:
 
 
 func get_all(player: int) -> Dictionary:
+	if creative_mode_enabled:
+		var result: Dictionary = {}
+		for key in GameCatalog.RESOURCE_KEYS:
+			result[key] = CREATIVE_RESOURCE_VALUE
+		return result
 	return _resources[player].duplicate()
 
 
 func get_resource_cap(player: int, key: String) -> int:
+	if creative_mode_enabled:
+		return -1
 	if not (key in CAPPED_RESOURCE_KEYS):
 		return -1
 	var cap: int = int(BASE_RESOURCE_CAPS.get(key, 0))
@@ -134,7 +156,10 @@ func _on_round_ended(_round: int) -> void:
 		# 基础产出
 		if not prod.is_empty():
 			for key in prod:
-				add_resource(faction, key, int(prod[key]) + _get_production_bonus(faction, str(key)))
+				var total: int = int(prod[key]) + _get_production_bonus(faction, str(key))
+				if _building_mgr.has_method("get_building_network_production_bonus"):
+					total += int(_building_mgr.call("get_building_network_production_bonus", int(b["id"]), str(key)))
+				add_resource(faction, key, total)
 
 		# 驻兵加成（独立判断，即使无基础产出也可能有加成）
 		if _building_mgr.has_method("get_garrison_bonus"):
@@ -143,6 +168,10 @@ func _on_round_ended(_round: int) -> void:
 				for key in bonus:
 					add_resource(faction, key, int(bonus[key]) + _get_garrison_production_bonus(faction))
 
+
+	for b in buildings:
+		if BuildingRules.is_forge(b["data"]):
+			_process_forge_conversion(b)
 
 	# 金币铸造厂：消耗金矿石 → 产出金币
 	for b in buildings:
@@ -164,18 +193,32 @@ func update_display(player: int) -> void:
 
 	# 阵营标题
 	if _faction_label:
-		_faction_label.text = "[%s] 资源" % GameCatalog.faction_name(player)
+		if creative_mode_enabled:
+			_faction_label.text = "[%s] 资源 · 创造" % GameCatalog.faction_name(player)
+		else:
+			_faction_label.text = "[%s] 资源" % GameCatalog.faction_name(player)
 
 	# 资源数值
 	for key in GameCatalog.RESOURCE_KEYS:
 		if _label_refs.has(key):
 			var label: Label = _label_refs[key]
 			var name: String = GameCatalog.resource_name(key)
+			if creative_mode_enabled:
+				label.text = "%s: ∞" % name
+				continue
 			var cap: int = get_resource_cap(player, key)
 			if cap >= 0:
 				label.text = "%s: %d/%d" % [name, res.get(key, 0), cap]
 			else:
 				label.text = "%s: %d" % [name, res.get(key, 0)]
+
+
+func set_creative_mode_enabled(enabled: bool) -> void:
+	creative_mode_enabled = enabled
+
+
+func is_creative_mode_enabled() -> bool:
+	return creative_mode_enabled
 
 
 func _get_production_bonus(player: int, key: String) -> int:
@@ -191,6 +234,69 @@ func _get_production_bonus(player: int, key: String) -> int:
 
 func _get_garrison_production_bonus(player: int) -> int:
 	return _get_technology_modifier(player, "garrison_production_bonus") + _get_technology_modifier(player, "worker_garrison_bonus")
+
+
+func _process_forge_conversion(building: Dictionary) -> void:
+	var faction: int = int(building.get("faction", -1))
+	if faction < 0:
+		return
+	if _unlocks_recipe(faction, "recipe.mithril.basic"):
+		if _try_run_conversion(
+			building,
+			{"iron": 2, "magic_dust": 1},
+			{"mithril": 1},
+			"\u79d8\u94f6"
+		):
+			return
+	_try_run_conversion(
+		building,
+		{"iron": 2, "stone": 1},
+		{"steel": 1},
+		"\u7cbe\u94a2"
+	)
+
+
+func _try_run_conversion(building: Dictionary, inputs: Dictionary, outputs: Dictionary, label: String) -> bool:
+	var faction: int = int(building.get("faction", -1))
+	if faction < 0:
+		return false
+	if not _can_afford_resource_dict(faction, inputs):
+		return false
+	if not _can_store_output_dict(faction, outputs):
+		return false
+	for key in inputs:
+		spend_resource(faction, str(key), int(inputs[key]))
+	for key in outputs:
+		add_resource(faction, str(key), int(outputs[key]))
+	var building_name: String = building["data"].name
+	print("[资源] %s: %s 转换完成" % [building_name, label])
+	if _building_mgr != null and _building_mgr.has_method("show_building_resource_text"):
+		_building_mgr.call("show_building_resource_text", int(building.get("id", -1)), outputs)
+	return true
+
+
+func _can_afford_resource_dict(player: int, costs: Dictionary) -> bool:
+	for key in costs:
+		if get_resource(player, str(key)) < int(costs[key]):
+			return false
+	return true
+
+
+func _can_store_output_dict(player: int, outputs: Dictionary) -> bool:
+	for key in outputs:
+		var resource_key: String = str(key)
+		var cap: int = get_resource_cap(player, resource_key)
+		if cap >= 0 and get_resource(player, resource_key) >= cap:
+			return false
+	return true
+
+
+func _unlocks_recipe(player: int, recipe_id: String) -> bool:
+	if _civilization_rules == null and is_inside_tree():
+		_civilization_rules = get_parent().get_node_or_null("CivilizationRuleService")
+	if _civilization_rules != null and _civilization_rules.has_method("unlocks_recipe"):
+		return bool(_civilization_rules.call("unlocks_recipe", player, recipe_id))
+	return false
 
 
 func _get_technology_modifier(player: int, key: String) -> int:

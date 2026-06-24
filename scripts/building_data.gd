@@ -159,6 +159,23 @@ static func t1_mine() -> BuildingData:
 	b.preferred_worker_tag = "dwarf"
 	b.tech_tier = 1
 	return b
+
+static func forge() -> BuildingData:
+	var b := BuildingData.new(
+		"\u7194\u7089", BuildingCategory.INDUSTRY, Vector2i(1, 1),
+		0, 20, 25, 5, 0,
+		8, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.RUINS],
+		2, "\u77ee\u4eba\u5de5\u4e1a\u5efa\u7b51\uff1a\u6bcf\u56de\u5408\u5c06\u94c1\u77ff\u8f6c\u5316\u4e3a\u7cbe\u94a2\uff0c\u89e3\u9501\u79d8\u94f6\u5de5\u827a\u540e\u53ef\u8f6c\u5316\u79d8\u94f6"
+	)
+	b.tech_tier = 2
+	b.lord_requirement = "lord.dwarf.stone_warden"
+	b.civilization_tag = "dwarf"
+	b.tags = ["industry", "forge", "conversion", "dwarf"]
+	return b
+
 static func t1_extraction_tower() -> BuildingData:
 	var b := BuildingData.new(
 		"\u8403\u53d6\u5854", BuildingCategory.RARE, Vector2i(1, 1),
@@ -208,6 +225,24 @@ static func scout_post() -> BuildingData:
 	b.tags = ["scout", "vision"]
 	return b
 
+static func watch_tower() -> BuildingData:
+	var b := BuildingData.new(
+		"\u77ad\u671b\u5854", BuildingCategory.SCOUT, Vector2i(1, 1),
+		0, 15, 20, 5, 0,
+		10, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		6, "\u77ee\u4eba\u9632\u7ebf\u5efa\u7b51\uff1a\u5360\u683c\u963b\u6321\u79fb\u52a8\uff0c\u63d0\u4f9b\u66f4\u5927\u9632\u7ebf\u89c6\u91ce"
+	)
+	b.tech_tier = 1
+	b.effect_radius = 4
+	b.lord_requirement = "lord.dwarf.stone_warden"
+	b.civilization_tag = "dwarf"
+	b.tags = ["defense", "watch_tower", "vision", "blocks_movement", "dwarf"]
+	return b
+
 static func outpost() -> BuildingData:
 	var b := BuildingData.new(
 		"\u524d\u54e8\u7ad9", BuildingCategory.EXPANSION, Vector2i(1, 1),
@@ -220,6 +255,23 @@ static func outpost() -> BuildingData:
 	)
 	b.tech_tier = 1
 	b.tags = ["expansion", "territory"]
+	return b
+
+static func stone_wall() -> BuildingData:
+	var b := BuildingData.new(
+		"\u77f3\u5899", BuildingCategory.EXPANSION, Vector2i(1, 1),
+		0, 0, 8, 0, 0,
+		12, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		99, "\u77ee\u4eba\u9632\u7ebf\u5efa\u7b51\uff1a\u5360\u683c\u963b\u6321\u79fb\u52a8\uff0c\u53ef\u88ab\u653b\u51fb\u548c\u4fee\u590d"
+	)
+	b.tech_tier = 1
+	b.lord_requirement = "lord.dwarf.stone_warden"
+	b.civilization_tag = "dwarf"
+	b.tags = ["defense", "wall", "stone_wall", "blocks_movement", "dwarf"]
 	return b
 
 static func recruit_camp() -> BuildingData:
@@ -412,10 +464,10 @@ static func get_templates() -> Dictionary:
 		BuildingCategory.CORE: [town_hall()],
 		BuildingCategory.ECONOMY: [infra_lumber_camp(), infra_quarry(), infra_farm()],
 		BuildingCategory.STORAGE: [infra_warehouse()],
-		BuildingCategory.EXPANSION: [outpost()],
-		BuildingCategory.SCOUT: [scout_post()],
+		BuildingCategory.EXPANSION: [outpost(), stone_wall()],
+		BuildingCategory.SCOUT: [scout_post(), watch_tower()],
 		BuildingCategory.RECRUITMENT: [recruit_camp(), barracks_lv1()],
-		BuildingCategory.INDUSTRY: [t1_mine()],
+		BuildingCategory.INDUSTRY: [t1_mine(), forge()],
 		BuildingCategory.GOLD_CHAIN: [gold_mine_shaft(), mint()],
 		BuildingCategory.RARE: [t1_extraction_tower(), t1_ancient_wood_harvest()],
 		BuildingCategory.LORD_SPECIAL: [lord_wind_speaking_tree(), lord_rootweb_shrine(), lord_moonshadow_watchtower(), lord_deep_forge_workshop(), lord_iron_oath_fortress(), lord_vein_lift(), lord_war_drum_camp(), lord_plunder_banner(), lord_flesh_pen()],
@@ -431,6 +483,8 @@ static func _storage_bonus_for(amount: int) -> Dictionary:
 		"magic_dust": amount,
 		"ancient_wood": amount,
 		"gold_ore": amount,
+		"mithril": amount,
+		"steel": amount,
 	}
 
 

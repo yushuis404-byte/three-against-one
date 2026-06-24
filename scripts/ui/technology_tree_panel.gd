@@ -42,6 +42,7 @@ var _effect_names: Dictionary = {
 	"worker_garrison_bonus": "\u5de5\u4eba\u5165\u9a7b",
 	"iron_production_bonus": "\u94c1\u77ff\u4ea7\u51fa",
 	"building_hp_bonus": "\u5efa\u7b51\u8010\u4e45",
+	"building_network_production_bonus": "\u5efa\u7b51\u7f51\u7edc\u4ea7\u51fa",
 	"recruit_food_discount": "\u62db\u52df\u98df\u7269\u6298\u6263",
 	"recruit_turn_discount": "\u62db\u52df\u56de\u5408\u6298\u6263",
 	"first_recruit_ap_discount": "\u9996\u6b21\u62db\u52dfAP\u6298\u6263",

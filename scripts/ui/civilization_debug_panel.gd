@@ -109,7 +109,9 @@ func _building_name(building_id: String) -> String:
 		"building.stone_wall":
 			return "石墙"
 		"building.watch_tower":
-			return "哨塔"
+			return "瞭望塔"
+		"building.forge":
+			return "熔炉"
 		"building.blood_fang_den":
 			return "血牙巢穴"
 	return building_id
