@@ -5,6 +5,8 @@ const AchievementServiceScript = preload("res://scripts/services/achievement_ser
 const AchievementTreePanelScript = preload("res://scripts/ui/achievement_tree_panel.gd")
 const TechnologyServiceScript = preload("res://scripts/services/technology_service.gd")
 const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_panel.gd")
+const VictoryServiceScript = preload("res://scripts/services/victory_service.gd")
+const ScoreRulePanelScript = preload("res://scripts/ui/score_rule_panel.gd")
 ## 主场景控制器 — 2.5D 三人竞技棋
 
 @onready var camera: Camera2D = $GameCamera
@@ -36,6 +38,10 @@ var achievement_tree_button: Button = null
 var technology_service: Node = null
 var technology_tree_panel: Control = null
 var technology_tree_button: Button = null
+var victory_service: Node = null
+var game_over_label: Label = null
+var score_rule_panel: Control = null
+var score_rule_button: Button = null
 
 
 func _ready() -> void:
@@ -47,6 +53,7 @@ func _setup_game() -> void:
 	$UI.visible = true
 	current_state = GameState.PLAYING
 	_init_stage_label()
+	_init_game_over_label()
 	var tile_count: int = grid_manager.get_rendered_count()
 	debug_label.text = "Three Against One v0.1 | 2.5D 开放世界 | %d 格\n空格+鼠标左键拖拽 平移 | 滚轮 缩放 | Enter/Tab 结束回合" % tile_count
 	resource_manager.resource_hovered.connect(_on_resource_hovered)
@@ -106,6 +113,7 @@ func _setup_game() -> void:
 	_init_resource_labels()
 	_init_achievement_service()
 	_init_technology_service()
+	_init_victory_service()
 
 	# 建造面板初始化
 	building_ui.set_turn_manager(turn_manager)
@@ -131,6 +139,8 @@ func _setup_game() -> void:
 	_init_achievement_tree_button()
 	_init_technology_tree_panel()
 	_init_technology_tree_button()
+	_init_score_rule_panel()
+	_init_score_rule_button()
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
@@ -282,6 +292,36 @@ func _init_technology_service() -> void:
 		resource_tracker.set_technology_service(technology_service)
 
 
+func _init_victory_service() -> void:
+	victory_service = VictoryServiceScript.new()
+	victory_service.name = "VictoryService"
+	$GameBoard.add_child(victory_service)
+	victory_service.setup(turn_manager, building_manager, unit_manager, resource_tracker, technology_service)
+	victory_service.conquest_victory_declared.connect(_on_conquest_victory_declared)
+	victory_service.final_scoring_started.connect(_on_final_scoring_started)
+
+
+func _on_conquest_victory_declared(winner: int, _reason: String) -> void:
+	current_state = GameState.GAME_OVER
+	var text := "\u5f81\u670d\u80dc\u5229\uff1a%s" % GameCatalog.faction_name(winner)
+	debug_label.text = text
+	turn_label.text = text
+	_show_game_over_text(text)
+
+
+func _on_final_scoring_started(scores: Array, winner: int) -> void:
+	current_state = GameState.GAME_OVER
+	var lines: PackedStringArray = []
+	lines.append("\u9636\u6bb5\u7ed3\u7b97\uff1a%s \u80dc\u51fa" % GameCatalog.faction_name(winner))
+	for item in scores:
+		var entry: Dictionary = item
+		lines.append("%s: %d" % [GameCatalog.faction_name(int(entry.get("player", -1))), int(entry.get("score", 0))])
+	var text := "\n".join(lines)
+	debug_label.text = lines[0]
+	turn_label.text = lines[0]
+	_show_game_over_text(text)
+
+
 func _on_achievement_completed(player: int, _achievement_id: String, title: String) -> void:
 	if player == turn_manager.current_player:
 		debug_label.text = "Achievement: %s | TP %d" % [title, achievement_service.get_tech_points(player)]
@@ -315,6 +355,8 @@ func _on_achievement_tree_button_pressed() -> void:
 		return
 	if technology_tree_panel != null:
 		technology_tree_panel.visible = false
+	if score_rule_panel != null:
+		score_rule_panel.visible = false
 	achievement_tree_panel.visible = true
 	achievement_tree_panel.queue_redraw()
 
@@ -347,8 +389,43 @@ func _on_technology_tree_button_pressed() -> void:
 		return
 	if achievement_tree_panel != null:
 		achievement_tree_panel.visible = false
+	if score_rule_panel != null:
+		score_rule_panel.visible = false
 	technology_tree_panel.visible = true
 	technology_tree_panel.queue_redraw()
+
+
+func _init_score_rule_panel() -> void:
+	score_rule_panel = ScoreRulePanelScript.new()
+	score_rule_panel.name = "ScoreRulePanel"
+	score_rule_panel.position = Vector2(360.0, 120.0)
+	score_rule_panel.size = Vector2(900.0, 760.0)
+	score_rule_panel.visible = false
+	score_rule_panel.z_index = 102
+	$UI.add_child(score_rule_panel)
+
+
+func _init_score_rule_button() -> void:
+	score_rule_button = Button.new()
+	score_rule_button.name = "ScoreRuleButton"
+	score_rule_button.text = "\u8ba1\u5206"
+	score_rule_button.position = Vector2(220.0, 176.0)
+	score_rule_button.size = Vector2(76.0, 30.0)
+	score_rule_button.focus_mode = Control.FOCUS_NONE
+	score_rule_button.z_index = 90
+	score_rule_button.pressed.connect(_on_score_rule_button_pressed)
+	$UI.add_child(score_rule_button)
+
+
+func _on_score_rule_button_pressed() -> void:
+	if score_rule_panel == null:
+		return
+	if achievement_tree_panel != null:
+		achievement_tree_panel.visible = false
+	if technology_tree_panel != null:
+		technology_tree_panel.visible = false
+	score_rule_panel.visible = true
+	score_rule_panel.queue_redraw()
 
 
 func _init_stage_event_service() -> void:
@@ -385,6 +462,30 @@ func _init_stage_label() -> void:
 	stage_label.add_theme_constant_override("shadow_offset_y", 1)
 	$UI.add_child(stage_label)
 	_update_stage_label(maxi(turn_manager.round_number, 1))
+
+
+func _init_game_over_label() -> void:
+	game_over_label = Label.new()
+	game_over_label.name = "GameOverLabel"
+	game_over_label.position = Vector2(700, 390)
+	game_over_label.size = Vector2(520, 180)
+	game_over_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	game_over_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	game_over_label.visible = false
+	game_over_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	game_over_label.add_theme_font_size_override("font_size", 28)
+	game_over_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.58))
+	game_over_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	game_over_label.add_theme_constant_override("shadow_offset_x", 2)
+	game_over_label.add_theme_constant_override("shadow_offset_y", 2)
+	$UI.add_child(game_over_label)
+
+
+func _show_game_over_text(text: String) -> void:
+	if game_over_label == null:
+		return
+	game_over_label.text = text
+	game_over_label.visible = true
 
 
 func _update_stage_label(round_number: int) -> void:

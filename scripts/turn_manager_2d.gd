@@ -19,17 +19,25 @@ var current_player := 0
 var turn_phase: TurnPhase = TurnPhase.ROUND_START
 var player_ap := [6, 6, 6]
 var player_finished := [false, false, false]
+var game_stopped := false
 
 const AP_PER_ROUND := 12
 const AP_MAX := 12
 
 
 func start_game() -> void:
+	game_stopped = false
 	## 游戏开始时启动第一回合
 	_start_new_round()
 
 
+func stop_game() -> void:
+	game_stopped = true
+
+
 func _start_new_round() -> void:
+	if game_stopped:
+		return
 	round_number += 1
 	turn_phase = TurnPhase.ROUND_START
 
@@ -42,12 +50,16 @@ func _start_new_round() -> void:
 
 
 func _start_player_turn(player: int) -> void:
+	if game_stopped:
+		return
 	current_player = player
 	turn_phase = TurnPhase.PLAYER_TURN
 	player_turn_started.emit(player)
 
 
 func end_player_turn(player: int) -> void:
+	if game_stopped:
+		return
 	if player != current_player or turn_phase != TurnPhase.PLAYER_TURN:
 		return
 
@@ -66,11 +78,15 @@ func end_player_turn(player: int) -> void:
 func _end_round() -> void:
 	turn_phase = TurnPhase.ROUND_END
 	round_ended.emit(round_number)
+	if game_stopped:
+		return
 	# 在所有玩家回合结束后、下一回合开始前，插入中立阶段
 	_start_neutral_turn()
 
 
 func _start_neutral_turn() -> void:
+	if game_stopped:
+		return
 	turn_phase = TurnPhase.NEUTRAL_TURN
 	neutral_turn_started.emit()
 
@@ -82,6 +98,8 @@ func _start_neutral_turn() -> void:
 			await get_tree().create_timer(0.5).timeout
 
 	neutral_turn_ended.emit()
+	if game_stopped:
+		return
 	_start_new_round()
 
 

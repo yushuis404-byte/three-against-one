@@ -45,6 +45,7 @@ var _attack_visuals: Dictionary = {}  # unit_id -> { t: float, flip_x: bool }
 var _death_visuals: Dictionary = {}  # unit_id -> { pos: Vector2, t: float, flip_x: bool }
 var _unit_facing_flip: Dictionary = {}  # unit_id -> bool
 var _pending_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
+var _throw_beast_source_id: int = -1
 var _last_action_preview_key := ""
 var _current_action_preview: Dictionary = {}
 
@@ -60,6 +61,10 @@ const UNIT_RADIUS := 8.0
 const SPAWN_SEARCH_RADIUS := 8
 const MOVE_VISUAL_DURATION := 1.0
 const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
+const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
+const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
+const SLINGER_THROW_RANGE := 5
+const SLINGER_THROW_AP_COST := 1
 const ORC_BLOOD_AXE_IDLE_FRAMES := 6
 const ORC_BLOOD_AXE_WALK_FRAMES := 8
 const ORC_BLOOD_AXE_HURT_FRAMES := 4
@@ -280,6 +285,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_clear_selection()
 		return
 
+	if _selected_id >= 0 and _throw_beast_source_id >= 0:
+		_try_throw_beast_to(gpos)
+		return
+
 	# 检查是否点击了可达格（移动）
 	if _selected_id >= 0 and gpos in _reachable_tiles:
 		# 检查是否可驻兵建筑
@@ -300,8 +309,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		var src := _get_unit_by_id(_selected_id)
 		if not src.is_empty():
 			var target := get_visible_unit_at(gpos)
+			if not target.is_empty() and target["faction"] == src["faction"]:
+				if _try_arm_beast_throw(src, target):
+					return
 			if not target.is_empty() and target["faction"] != src["faction"]:
 				# 中立单位（faction == -1）→ 调用 NeutralUnitManager2D 战斗
+				if _can_ranged_attack(src, target):
+					_perform_ranged_attack(src, target)
+					return
 				if _is_adjacent(src["grid_pos"], target["grid_pos"]):
 					if target["faction"] == -1:
 						numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
@@ -370,6 +385,7 @@ func _select_unit(uid: int) -> void:
 func _clear_selection() -> void:
 	_selected_id = -1
 	_reachable_tiles = []
+	_throw_beast_source_id = -1
 	_emit_action_preview({})
 	selection_cleared.emit()
 	queue_redraw()
@@ -441,6 +457,12 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 		"reason": "",
 	}
 
+	if attacker_data.attack_range > 1 and _grid_distance(from, target_pos) <= attacker_data.attack_range:
+		preview["approach_pos"] = from
+		preview["can_attack"] = true
+		preview["reason"] = "\u5c04\u7a0b\u5185\uff0c\u53ef\u4ee5\u8fdc\u7a0b\u653b\u51fb"
+		return preview
+
 	if _is_adjacent(from, target_pos):
 		preview["approach_pos"] = from
 		preview["can_attack"] = true
@@ -470,6 +492,132 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 	preview["can_attack"] = true
 	preview["reason"] = "移动到接敌格后攻击"
 	return preview
+
+
+func _can_ranged_attack(attacker: Dictionary, target: Dictionary) -> bool:
+	if attacker.is_empty() or target.is_empty():
+		return false
+	if bool(attacker.get("has_attacked", false)):
+		return false
+	var data: UnitData = _get_unit_data(attacker)
+	if data.attack_range <= 1:
+		return false
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	return _grid_distance(from, target_pos) <= data.attack_range
+
+
+func _perform_ranged_attack(attacker: Dictionary, target: Dictionary) -> void:
+	var attacker_id: int = int(attacker.get("id", -1))
+	var target_id: int = int(target.get("id", -1))
+	var dmg: int = maxi(0, _get_unit_attack_value(attacker) - _get_unit_damage_reduction(target))
+	target["hp"] = int(target.get("hp", 0)) - dmg
+	attacker["has_attacked"] = true
+	_play_attack_effect(attacker, target)
+	_play_hit_effect(target_id, target.get("grid_pos", Vector2i.ZERO), dmg)
+	if dmg > 0:
+		_try_apply_scout_poison_weaken(attacker, target)
+	if int(target.get("hp", 0)) <= 0:
+		_remove_unit_after_attack(target_id, attacker)
+	var selected: Dictionary = _get_unit_by_id(attacker_id)
+	if not selected.is_empty():
+		unit_selected.emit(_make_unit_view(selected))
+	_clear_selection()
+	queue_redraw()
+
+
+func _remove_unit_after_attack(target_id: int, attacker: Dictionary) -> void:
+	for i in range(_units.size() - 1, -1, -1):
+		if int(_units[i].get("id", -1)) != target_id:
+			continue
+		var loser: Dictionary = _units[i]
+		unit_killed.emit(int(attacker.get("faction", -1)), int(loser.get("faction", -1)), loser.duplicate())
+		_apply_kill_food_reward(attacker)
+		_move_visuals.erase(target_id)
+		_hurt_visuals.erase(target_id)
+		_attack_visuals.erase(target_id)
+		_death_visuals.erase(target_id)
+		_unit_facing_flip.erase(target_id)
+		_pending_attack_after_move.erase(target_id)
+		_units.remove_at(i)
+		return
+
+
+func _try_arm_beast_throw(slinger: Dictionary, beast: Dictionary) -> bool:
+	if not _is_orc_slinger(slinger):
+		return false
+	if not _is_orc_beast(beast):
+		return false
+	if int(slinger.get("faction", -1)) != int(beast.get("faction", -2)):
+		return false
+	if bool(slinger.get("has_attacked", false)):
+		return false
+	if not _is_adjacent(slinger.get("grid_pos", Vector2i.ZERO), beast.get("grid_pos", Vector2i.ZERO)):
+		return false
+	_throw_beast_source_id = int(beast.get("id", -1))
+	_reachable_tiles = []
+	_emit_action_preview({
+		"visible": true,
+		"action": "throw_beast",
+		"target_name": _get_unit_data(beast).unit_name,
+		"target_pos": beast.get("grid_pos", Vector2i.ZERO),
+		"approach_pos": beast.get("grid_pos", Vector2i.ZERO),
+		"ap_cost": SLINGER_THROW_AP_COST,
+		"can_attack": true,
+		"reason": "\u5df2\u9009\u4e2d\u6295\u63b7\u76ee\u6807\uff0c\u70b9\u51fb 5 \u683c\u5185\u843d\u70b9",
+	})
+	queue_redraw()
+	return true
+
+
+func _try_throw_beast_to(target: Vector2i) -> bool:
+	var slinger: Dictionary = _get_unit_by_id(_selected_id)
+	var beast: Dictionary = _get_unit_by_id(_throw_beast_source_id)
+	if slinger.is_empty() or beast.is_empty():
+		_throw_beast_source_id = -1
+		return false
+	if _grid_distance(slinger.get("grid_pos", Vector2i.ZERO), target) > SLINGER_THROW_RANGE:
+		print("[Unit] Throw target out of range.")
+		return false
+	var landing: Vector2i = _resolve_throw_landing(target)
+	if landing.x < 0:
+		print("[Unit] No valid landing tile for beast throw.")
+		return false
+	if _turn_manager:
+		var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, SLINGER_THROW_AP_COST)
+		if not ok:
+			print("[Unit] Not enough AP for beast throw.")
+			return false
+	var from: Vector2i = beast.get("grid_pos", Vector2i.ZERO)
+	beast["grid_pos"] = landing
+	beast["has_moved"] = true
+	slinger["has_attacked"] = true
+	_start_move_visual(int(beast.get("id", -1)), from, landing)
+	if _fog_manager and _turn_manager:
+		_fog_manager.reveal_area(_turn_manager.current_player, landing.x, landing.y, _get_unit_vision_value(beast))
+	_throw_beast_source_id = -1
+	_clear_selection()
+	queue_redraw()
+	return true
+
+
+func _resolve_throw_landing(preferred: Vector2i) -> Vector2i:
+	if _is_valid_spawn_tile(preferred.x, preferred.y):
+		return preferred
+	for radius in range(1, 4):
+		for dx in range(-radius, radius + 1):
+			var dy_abs: int = radius - absi(dx)
+			var candidates: Array[Vector2i] = [Vector2i(preferred.x + dx, preferred.y + dy_abs)]
+			if dy_abs != 0:
+				candidates.append(Vector2i(preferred.x + dx, preferred.y - dy_abs))
+			for candidate in candidates:
+				if _is_valid_spawn_tile(candidate.x, candidate.y):
+					return candidate
+	return Vector2i(-1, -1)
+
+
+func _grid_distance(a: Vector2i, b: Vector2i) -> int:
+	return abs(a.x - b.x) + abs(a.y - b.y)
 
 
 func _move_selected_to(target: Vector2i) -> void:
@@ -655,6 +803,14 @@ func _has_orc_blood_axe_units() -> bool:
 
 func _is_orc_blood_axe(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == ORC_BLOOD_AXE_TEMPLATE_ID
+
+
+func _is_orc_slinger(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ORC_SLINGER_TEMPLATE_ID
+
+
+func _is_orc_beast(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ORC_BEAST_TEMPLATE_ID
 
 
 func _draw_orc_blood_axe(unit: Dictionary, draw_pos: Vector2) -> void:

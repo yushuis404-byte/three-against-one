@@ -189,7 +189,7 @@ func show_unit(unit: Dictionary) -> void:
 	_hp_label.text = "%d/%d" % [hp, hp_max]
 
 	# 属性
-	_atk_label.text = str(data.atk)
+	_atk_label.text = "%d/%d" % [data.atk, data.attack_range]
 	_mov_label.text = "%d" % data.move_max
 	_vis_label.text = str(data.vision)
 	_food_label.text = str(data.food_cost)

@@ -174,6 +174,19 @@ func make_unit_templates() -> Dictionary:
 	)
 	_config_recruit(orc_guard, [_amount("food", 3)], 3, 3, 3, true)
 
+	var orc_slinger = _unit_basic(
+		"unit.orc.slinger",
+		"\u517d\u4eba\u6295\u77f3\u5175",
+		UnitTemplateScript.UnitRole.SPECIAL,
+		1,
+		2,
+		4,
+		3,
+		["orc", "slinger", "ranged", "military", "throw_beast"]
+	)
+	orc_slinger.attack_range = 4
+	_config_recruit(orc_slinger, [_amount("food", 3), _amount("stone", 4)], 2, 2, 3, true)
+
 	# ========== 中立生物模板 ==========
 	var wyvern_fire = _unit_basic(
 		"neutral.wyvern.fire",
@@ -254,6 +267,7 @@ func make_unit_templates() -> Dictionary:
 		orc_worker.id: orc_worker,
 		orc_scout.id: orc_scout,
 		orc_guard.id: orc_guard,
+		orc_slinger.id: orc_slinger,
 		wyvern_fire.id: wyvern_fire,
 		wyvern_frost.id: wyvern_frost,
 		wyvern_toxic.id: wyvern_toxic,
