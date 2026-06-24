@@ -32,6 +32,7 @@ var tags: Array[String] = []
 var unique_effect_id: String = ""
 var lord_requirement: String = ""
 var civilization_tag: String = ""
+var effect_radius: int = 0
 var is_special_building: bool = false  # 特殊建筑标记（如金矿矿井需金矿资源点+驻兵产出）
 var needs_resource_point: bool = false
 var storage_level: int = 0
@@ -246,6 +247,7 @@ static func lord_wind_speaking_tree() -> BuildingData:
 	)
 	b.tech_tier = 2
 	b.unique_effect_id = "elf.wind_speaking_tree"
+	b.effect_radius = 3
 	b.lord_requirement = "lord.elf.wind_seer"
 	b.civilization_tag = "elf"
 	b.preferred_worker_tag = "elf"
@@ -263,6 +265,7 @@ static func lord_rootweb_shrine() -> BuildingData:
 	)
 	b.tech_tier = 2
 	b.unique_effect_id = "elf.rootweb_shrine"
+	b.effect_radius = 4
 	b.lord_requirement = "lord.elf.root_keeper"
 	b.civilization_tag = "elf"
 	b.tags = ["lord_building", "elf", "mobility", "forest"]
@@ -282,6 +285,7 @@ static func lord_moonshadow_watchtower() -> BuildingData:
 	)
 	b.tech_tier = 1
 	b.unique_effect_id = "elf.moonshadow_watchtower"
+	b.effect_radius = 4
 	b.lord_requirement = "lord.elf.moon_hunter"
 	b.civilization_tag = "elf"
 	b.tags = ["lord_building", "elf", "scout", "vision"]
@@ -301,6 +305,7 @@ static func lord_deep_forge_workshop() -> BuildingData:
 	)
 	b.tech_tier = 2
 	b.unique_effect_id = "dwarf.deep_forge_workshop"
+	b.effect_radius = 0
 	b.lord_requirement = "lord.dwarf.forge_master"
 	b.civilization_tag = "dwarf"
 	b.preferred_worker_tag = "dwarf"
@@ -321,6 +326,7 @@ static func lord_iron_oath_fortress() -> BuildingData:
 	)
 	b.tech_tier = 2
 	b.unique_effect_id = "dwarf.iron_oath_fortress"
+	b.effect_radius = 3
 	b.lord_requirement = "lord.dwarf.stone_warden"
 	b.civilization_tag = "dwarf"
 	b.tags = ["lord_building", "dwarf", "defense", "territory"]
@@ -337,6 +343,7 @@ static func lord_vein_lift() -> BuildingData:
 	)
 	b.tech_tier = 1
 	b.unique_effect_id = "dwarf.vein_lift"
+	b.effect_radius = 2
 	b.lord_requirement = "lord.dwarf.mountain_engineer"
 	b.civilization_tag = "dwarf"
 	b.tags = ["lord_building", "dwarf", "mountain", "mobility"]
@@ -354,6 +361,7 @@ static func lord_war_drum_camp() -> BuildingData:
 	)
 	b.tech_tier = 1
 	b.unique_effect_id = "orc.war_drum_camp"
+	b.effect_radius = 3
 	b.lord_requirement = "lord.orc.blood_chief"
 	b.civilization_tag = "orc"
 	b.preferred_worker_tag = "orc"
@@ -374,6 +382,7 @@ static func lord_plunder_banner() -> BuildingData:
 	)
 	b.tech_tier = 2
 	b.unique_effect_id = "orc.plunder_banner"
+	b.effect_radius = 3
 	b.lord_requirement = "lord.orc.raider"
 	b.civilization_tag = "orc"
 	b.tags = ["lord_building", "orc", "raid", "border"]
@@ -391,6 +400,7 @@ static func lord_flesh_pen() -> BuildingData:
 	)
 	b.tech_tier = 2
 	b.unique_effect_id = "orc.flesh_pen"
+	b.effect_radius = 2
 	b.lord_requirement = "lord.orc.flesh_binder"
 	b.civilization_tag = "orc"
 	b.tags = ["lord_building", "orc", "food", "recruit_speed"]

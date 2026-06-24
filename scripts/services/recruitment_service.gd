@@ -12,6 +12,9 @@ var template_registry: Node = null
 var resource_tracker: Node = null
 var turn_manager: Node = null
 var unit_manager: Node = null
+var technology_service: Node = null
+var last_spawned_units: Array = []
+var _last_spawned_unit_id := -1
 
 
 func setup(
@@ -33,6 +36,10 @@ func setup(
 	unit_manager = p_unit_manager
 
 
+func set_technology_service(service: Node) -> void:
+	technology_service = service
+
+
 func request_recruitment(building_id: int, unit_template_id: String, count: int) -> bool:
 	var building: Dictionary = get_building_by_id(building_id)
 	if not is_recruit_building(building):
@@ -52,14 +59,14 @@ func request_recruitment(building_id: int, unit_template_id: String, count: int)
 		print("[Recruit] Queue is full.")
 		return false
 
-	var cost: Dictionary = get_unit_recruit_cost(unit_template)
+	var cost: Dictionary = get_unit_recruit_cost(unit_template, faction)
 	for key in cost:
 		var need: int = int(cost[key]) * safe_count
 		if resource_tracker and resource_tracker.get_resource(faction, key) < need:
 			print("[Recruit] Not enough %s." % key)
 			return false
 
-	var ap_cost: int = get_unit_recruit_ap_cost(unit_template) * safe_count
+	var ap_cost: int = get_unit_recruit_ap_cost(unit_template, faction) * safe_count
 	if turn_manager and turn_manager.get_ap(faction) < ap_cost:
 		print("[Recruit] Not enough AP.")
 		return false
@@ -70,7 +77,7 @@ func request_recruitment(building_id: int, unit_template_id: String, count: int)
 	if turn_manager:
 		turn_manager.spend_ap(faction, ap_cost)
 
-	var turns: int = maxi(1, int(unit_template.get("recruit_turns")))
+	var turns: int = get_unit_recruit_turns(unit_template, faction)
 	for i in range(safe_count):
 		queue.append({
 			"unit_template_id": unit_template_id,
@@ -85,6 +92,7 @@ func request_recruitment(building_id: int, unit_template_id: String, count: int)
 
 func process_recruit_queues(player: int) -> Array:
 	var changed: Array = []
+	last_spawned_units.clear()
 	for building in buildings:
 		if building["faction"] != player:
 			continue
@@ -101,8 +109,14 @@ func process_recruit_queues(player: int) -> Array:
 		while i < queue.size():
 			var item: Dictionary = queue[i]
 			if int(item.get("remaining_turns", 0)) <= 0:
-				var spawned: bool = spawn_recruited_unit(building, str(item.get("unit_template_id", "")))
+				var unit_template_id: String = str(item.get("unit_template_id", ""))
+				var spawned: bool = spawn_recruited_unit(building, unit_template_id)
 				if spawned:
+					last_spawned_units.append({
+						"building": building,
+						"unit_template_id": unit_template_id,
+						"unit_id": _last_spawned_unit_id,
+					})
 					queue.remove_at(i)
 					continue
 			i += 1
@@ -110,6 +124,12 @@ func process_recruit_queues(player: int) -> Array:
 		building["recruit_queue"] = queue
 		changed.append(building)
 	return changed
+
+
+func consume_last_spawned_units() -> Array:
+	var result: Array = last_spawned_units.duplicate()
+	last_spawned_units.clear()
+	return result
 
 
 func get_recruit_queue(building_id: int) -> Array:
@@ -131,9 +151,9 @@ func get_recruit_options(building: Dictionary) -> Array:
 		result.append({
 			"id": template_id,
 			"name": str(unit_template.get("display_name")),
-			"cost": get_unit_recruit_cost(unit_template),
-			"ap_cost": get_unit_recruit_ap_cost(unit_template),
-			"turns": int(unit_template.get("recruit_turns")),
+			"cost": get_unit_recruit_cost(unit_template, int(building.get("faction", -1))),
+			"ap_cost": get_unit_recruit_ap_cost(unit_template, int(building.get("faction", -1))),
+			"turns": get_unit_recruit_turns(unit_template, int(building.get("faction", -1))),
 		})
 	return result
 
@@ -192,7 +212,7 @@ func get_recruit_unit_template(unit_template_id: String) -> Resource:
 	return null
 
 
-func get_unit_recruit_cost(unit_template: Resource) -> Dictionary:
+func get_unit_recruit_cost(unit_template: Resource, faction: int = -1) -> Dictionary:
 	var result: Dictionary = {}
 	if unit_template == null:
 		return result
@@ -205,16 +225,28 @@ func get_unit_recruit_cost(unit_template: Resource) -> Dictionary:
 		if key.is_empty() or amount == 0:
 			continue
 		result[key] = int(result.get(key, 0)) + amount
+	var food_discount: int = _get_technology_modifier(faction, "recruit_food_discount")
+	if food_discount > 0 and result.has("food"):
+		result["food"] = maxi(0, int(result["food"]) - food_discount)
 	return result
 
 
-func get_unit_recruit_ap_cost(unit_template: Resource) -> int:
+func get_unit_recruit_ap_cost(unit_template: Resource, faction: int = -1) -> int:
 	if unit_template == null:
 		return 0
 	var ap_cost: int = int(unit_template.get("recruit_ap_cost"))
 	if ap_cost <= 0:
 		ap_cost = int(unit_template.get("recruit_ap"))
+	ap_cost -= _get_technology_modifier(faction, "first_recruit_ap_discount")
 	return maxi(0, ap_cost)
+
+
+func get_unit_recruit_turns(unit_template: Resource, faction: int = -1) -> int:
+	if unit_template == null:
+		return 1
+	var turns: int = maxi(1, int(unit_template.get("recruit_turns")))
+	turns -= _get_technology_modifier(faction, "recruit_turn_discount")
+	return maxi(1, turns)
 
 
 func is_recruit_building(building: Dictionary) -> bool:
@@ -225,6 +257,7 @@ func is_recruit_building(building: Dictionary) -> bool:
 
 
 func spawn_recruited_unit(building: Dictionary, unit_template_id: String) -> bool:
+	_last_spawned_unit_id = -1
 	var unit_template: Resource = get_recruit_unit_template(unit_template_id)
 	if unit_template == null:
 		return false
@@ -233,7 +266,8 @@ func spawn_recruited_unit(building: Dictionary, unit_template_id: String) -> boo
 		print("[Recruit] No empty adjacent tile; completed unit waits.")
 		return false
 	if unit_manager and unit_manager.has_method("add_unit_from_template"):
-		unit_manager.add_unit_from_template(building["faction"], unit_template, spawn_pos)
+		var unit_id: int = unit_manager.add_unit_from_template(building["faction"], unit_template, spawn_pos)
+		_last_spawned_unit_id = unit_id
 		print("[Recruit] Spawned %s at %s." % [unit_template_id, str(spawn_pos)])
 		return true
 	return false
@@ -268,3 +302,13 @@ func get_building_by_id(building_id: int) -> Dictionary:
 
 func in_bounds(gx: int, gy: int) -> bool:
 	return gx >= 0 and gx < grid_cols and gy >= 0 and gy < grid_rows
+
+
+func _get_technology_modifier(faction: int, key: String) -> int:
+	if faction < 0:
+		return 0
+	if technology_service == null and unit_manager != null and unit_manager.is_inside_tree():
+		technology_service = unit_manager.get_parent().get_node_or_null("TechnologyService")
+	if technology_service != null and technology_service.has_method("get_modifier"):
+		return int(technology_service.call("get_modifier", faction, key, 0))
+	return 0

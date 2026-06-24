@@ -1,6 +1,10 @@
 extends Node2D
 const GameStageRulesScript = preload("res://scripts/rules/game_stage_rules.gd")
 const StageEventServiceScript = preload("res://scripts/services/stage_event_service.gd")
+const AchievementServiceScript = preload("res://scripts/services/achievement_service.gd")
+const AchievementTreePanelScript = preload("res://scripts/ui/achievement_tree_panel.gd")
+const TechnologyServiceScript = preload("res://scripts/services/technology_service.gd")
+const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_panel.gd")
 ## 主场景控制器 — 2.5D 三人竞技棋
 
 @onready var camera: Camera2D = $GameCamera
@@ -26,6 +30,12 @@ var stage_event_service: StageEventService = null
 var _goblin_market_round := -1
 var action_preview_panel: Control = null
 var ap_status_label: Label = null
+var achievement_service: AchievementService = null
+var achievement_tree_panel: Control = null
+var achievement_tree_button: Button = null
+var technology_service: Node = null
+var technology_tree_panel: Control = null
+var technology_tree_button: Button = null
 
 
 func _ready() -> void:
@@ -94,6 +104,8 @@ func _setup_game() -> void:
 	resource_tracker.set_building_manager(building_manager)
 	resource_tracker.resources_updated.connect(_on_resources_updated)
 	_init_resource_labels()
+	_init_achievement_service()
+	_init_technology_service()
 
 	# 建造面板初始化
 	building_ui.set_turn_manager(turn_manager)
@@ -115,6 +127,10 @@ func _setup_game() -> void:
 		# 单位信息面板初始化
 	_init_unit_info_panel()
 	_init_action_preview_panel()
+	_init_achievement_tree_panel()
+	_init_achievement_tree_button()
+	_init_technology_tree_panel()
+	_init_technology_tree_button()
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
@@ -245,6 +261,94 @@ func _init_resource_labels() -> void:
 func _on_resources_updated(_player: int) -> void:
 	var cp: int = turn_manager.current_player
 	resource_tracker.update_display(cp)
+
+
+func _init_achievement_service() -> void:
+	achievement_service = AchievementServiceScript.new()
+	achievement_service.name = "AchievementService"
+	$GameBoard.add_child(achievement_service)
+	achievement_service.setup(resource_tracker, building_manager, unit_manager, neutral_unit_manager)
+	achievement_service.achievement_completed.connect(_on_achievement_completed)
+
+
+func _init_technology_service() -> void:
+	technology_service = TechnologyServiceScript.new()
+	technology_service.name = "TechnologyService"
+	$GameBoard.add_child(technology_service)
+	technology_service.setup(achievement_service, civilization_rules)
+	if building_manager != null and building_manager.has_method("set_technology_service"):
+		building_manager.set_technology_service(technology_service)
+	if resource_tracker != null and resource_tracker.has_method("set_technology_service"):
+		resource_tracker.set_technology_service(technology_service)
+
+
+func _on_achievement_completed(player: int, _achievement_id: String, title: String) -> void:
+	if player == turn_manager.current_player:
+		debug_label.text = "Achievement: %s | TP %d" % [title, achievement_service.get_tech_points(player)]
+
+
+func _init_achievement_tree_panel() -> void:
+	achievement_tree_panel = AchievementTreePanelScript.new()
+	achievement_tree_panel.name = "AchievementTreePanel"
+	achievement_tree_panel.position = Vector2(48.0, 64.0)
+	achievement_tree_panel.size = Vector2(1824.0, 936.0)
+	achievement_tree_panel.visible = false
+	achievement_tree_panel.z_index = 100
+	$UI.add_child(achievement_tree_panel)
+	achievement_tree_panel.setup(achievement_service, turn_manager)
+
+
+func _init_achievement_tree_button() -> void:
+	achievement_tree_button = Button.new()
+	achievement_tree_button.name = "AchievementTreeButton"
+	achievement_tree_button.text = "\u6210\u5c31\u6811"
+	achievement_tree_button.position = Vector2(16.0, 176.0)
+	achievement_tree_button.size = Vector2(96.0, 30.0)
+	achievement_tree_button.focus_mode = Control.FOCUS_NONE
+	achievement_tree_button.z_index = 90
+	achievement_tree_button.pressed.connect(_on_achievement_tree_button_pressed)
+	$UI.add_child(achievement_tree_button)
+
+
+func _on_achievement_tree_button_pressed() -> void:
+	if achievement_tree_panel == null:
+		return
+	if technology_tree_panel != null:
+		technology_tree_panel.visible = false
+	achievement_tree_panel.visible = true
+	achievement_tree_panel.queue_redraw()
+
+
+func _init_technology_tree_panel() -> void:
+	technology_tree_panel = TechnologyTreePanelScript.new()
+	technology_tree_panel.name = "TechnologyTreePanel"
+	technology_tree_panel.position = Vector2(48.0, 64.0)
+	technology_tree_panel.size = Vector2(1824.0, 936.0)
+	technology_tree_panel.visible = false
+	technology_tree_panel.z_index = 101
+	$UI.add_child(technology_tree_panel)
+	technology_tree_panel.setup(technology_service, achievement_service, turn_manager)
+
+
+func _init_technology_tree_button() -> void:
+	technology_tree_button = Button.new()
+	technology_tree_button.name = "TechnologyTreeButton"
+	technology_tree_button.text = "\u79d1\u6280\u6811"
+	technology_tree_button.position = Vector2(118.0, 176.0)
+	technology_tree_button.size = Vector2(96.0, 30.0)
+	technology_tree_button.focus_mode = Control.FOCUS_NONE
+	technology_tree_button.z_index = 90
+	technology_tree_button.pressed.connect(_on_technology_tree_button_pressed)
+	$UI.add_child(technology_tree_button)
+
+
+func _on_technology_tree_button_pressed() -> void:
+	if technology_tree_panel == null:
+		return
+	if achievement_tree_panel != null:
+		achievement_tree_panel.visible = false
+	technology_tree_panel.visible = true
+	technology_tree_panel.queue_redraw()
 
 
 func _init_stage_event_service() -> void:

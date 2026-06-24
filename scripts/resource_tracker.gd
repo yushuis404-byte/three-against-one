@@ -7,6 +7,7 @@ extends Node
 var _resources: Array = [{}, {}, {}]  # Array[Dictionary]
 var _building_mgr: Node = null
 var _turn_mgr: Node = null
+var _technology_service: Node = null
 
 const CAPPED_RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore"]
 const BASE_RESOURCE_CAPS := {
@@ -47,6 +48,10 @@ func set_turn_manager(tm: Node) -> void:
 
 func set_building_manager(bm: Node) -> void:
 	_building_mgr = bm
+
+
+func set_technology_service(service: Node) -> void:
+	_technology_service = service
 
 
 func set_faction_label(label: Label) -> void:
@@ -92,6 +97,7 @@ func get_resource_cap(player: int, key: String) -> int:
 	if not (key in CAPPED_RESOURCE_KEYS):
 		return -1
 	var cap: int = int(BASE_RESOURCE_CAPS.get(key, 0))
+	cap += _get_technology_modifier(player, "storage_flat_bonus")
 	if not _building_mgr or not _building_mgr.has_method("get_all_buildings"):
 		return cap
 	var buildings: Array = _building_mgr.get_all_buildings()
@@ -128,14 +134,14 @@ func _on_round_ended(_round: int) -> void:
 		# 基础产出
 		if not prod.is_empty():
 			for key in prod:
-				add_resource(faction, key, prod[key])
+				add_resource(faction, key, int(prod[key]) + _get_production_bonus(faction, str(key)))
 
 		# 驻兵加成（独立判断，即使无基础产出也可能有加成）
 		if _building_mgr.has_method("get_garrison_bonus"):
 			var bonus: Dictionary = _building_mgr.get_garrison_bonus(b["id"])
 			if not bonus.is_empty():
 				for key in bonus:
-					add_resource(faction, key, bonus[key])
+					add_resource(faction, key, int(bonus[key]) + _get_garrison_production_bonus(faction))
 
 
 	# 金币铸造厂：消耗金矿石 → 产出金币
@@ -145,7 +151,7 @@ func _on_round_ended(_round: int) -> void:
 			var garr: Array = b.get("garrison", [])
 			var gcount := garr.size()
 			if gcount > 0:
-				var max_gold := gcount * 2
+				var max_gold := gcount * 2 + _get_technology_modifier(faction, "mint_conversion_bonus")
 				var ore_avail := get_resource(faction, "gold_ore")
 				var ore_use := mini(max_gold, ore_avail)
 				if ore_use > 0:
@@ -170,3 +176,26 @@ func update_display(player: int) -> void:
 				label.text = "%s: %d/%d" % [name, res.get(key, 0), cap]
 			else:
 				label.text = "%s: %d" % [name, res.get(key, 0)]
+
+
+func _get_production_bonus(player: int, key: String) -> int:
+	match key:
+		"iron":
+			return _get_technology_modifier(player, "iron_production_bonus")
+		"ancient_wood":
+			return _get_technology_modifier(player, "ancient_wood_production_bonus")
+		"gold_ore":
+			return _get_technology_modifier(player, "gold_ore_production_bonus")
+	return 0
+
+
+func _get_garrison_production_bonus(player: int) -> int:
+	return _get_technology_modifier(player, "garrison_production_bonus") + _get_technology_modifier(player, "worker_garrison_bonus")
+
+
+func _get_technology_modifier(player: int, key: String) -> int:
+	if _technology_service == null and is_inside_tree():
+		_technology_service = get_parent().get_node_or_null("TechnologyService")
+	if _technology_service != null and _technology_service.has_method("get_modifier"):
+		return int(_technology_service.call("get_modifier", player, key, 0))
+	return 0

@@ -18,6 +18,7 @@ var building_grid: Array = []         # [y][x] → building_id 或 -1
 var _buildings: Array = []            # Array[Dictionary]
 var _next_id := 1
 var _selected_id := -1
+var _hovered_id := -1
 
 var _grid_manager: Node = null
 var _turn_manager: Node = null
@@ -25,6 +26,7 @@ var _territory_mgr: Node = null
 var _fog_mgr: Node = null
 var _resource_mgr: Node = null
 var _template_registry: Node = null
+var _technology_service: Node = null
 var _garrison_service = GarrisonServiceScript.new()
 var _recruitment_service = RecruitmentServiceScript.new()
 var _upgrade_service = BuildingUpgradeServiceScript.new()
@@ -44,9 +46,15 @@ signal placement_canceled()
 signal recruit_panel_requested(building_id: int, building_name: String, options: Array, queue: Array)
 signal recruit_panel_closed()
 signal recruit_queue_changed(building_id: int, queue: Array)
+signal building_placed(player: int, building: Dictionary)
+signal building_upgraded(player: int, building: Dictionary, level: int)
+signal building_garrisoned(player: int, building: Dictionary, unit: Dictionary)
+signal unit_recruited(player: int, unit: Dictionary, unit_template_id: String)
 
 const BUILDING_ALPHA := 0.85
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.6)
+const EFFECT_RANGE_COLOR := Color(0.35, 0.75, 1.0, 0.18)
+const EFFECT_RANGE_BORDER_COLOR := Color(0.6, 0.9, 1.0, 0.35)
 const ELF_CAPITAL_TEXTURE_SCALE := 1.45
 
 
@@ -57,6 +65,7 @@ func _ready() -> void:
 	_fog_mgr = get_parent().get_node("FogOfWar2D")
 	_resource_mgr = get_parent().get_node("ResourceManager2D")
 	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
+	_technology_service = get_parent().get_node_or_null("TechnologyService")
 	_configure_services()
 
 
@@ -100,6 +109,18 @@ func _configure_services() -> void:
 	)
 	if _upgrade_service:
 		_upgrade_service.setup(_buildings, _resource_tracker, _turn_manager)
+	if _technology_service == null and is_inside_tree():
+		_technology_service = get_parent().get_node_or_null("TechnologyService")
+	if _technology_service != null:
+		if _recruitment_service != null and _recruitment_service.has_method("set_technology_service"):
+			_recruitment_service.set_technology_service(_technology_service)
+		if _upgrade_service != null and _upgrade_service.has_method("set_technology_service"):
+			_upgrade_service.set_technology_service(_technology_service)
+
+
+func set_technology_service(service: Node) -> void:
+	_technology_service = service
+	_configure_services()
 
 
 func _on_player_turn_started(player: int) -> void:
@@ -181,6 +202,9 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		if _resource_mgr and _resource_mgr.has_method("remove_resource"):
 			_resource_mgr.remove_resource(origin.x, origin.y)
 
+	var placed_building: Dictionary = _get_building_by_id(bid)
+	if not placed_building.is_empty():
+		building_placed.emit(faction, placed_building.duplicate())
 	queue_redraw()
 	return true
 
@@ -285,6 +309,8 @@ func upgrade_building(building_id: int) -> bool:
 		var building: Dictionary = _get_building_by_id(building_id)
 		if not building.is_empty() and _resource_tracker and _resource_tracker.has_method("update_display"):
 			_resource_tracker.update_display(int(building.get("faction", 0)))
+		if not building.is_empty():
+			building_upgraded.emit(int(building.get("faction", -1)), building.duplicate(), int(building.get("level", 1)))
 		queue_redraw()
 	return ok
 
@@ -302,6 +328,9 @@ func can_garrison(building_id: int, faction: int, unit_category: int = -1) -> bo
 func garrison_unit(building_id: int, unit_dict: Dictionary) -> void:
 	if _garrison_service.garrison_unit(_buildings, building_id, unit_dict):
 		_just_garrisoned[building_id] = true
+		var building: Dictionary = _get_building_by_id(building_id)
+		if not building.is_empty():
+			building_garrisoned.emit(int(building.get("faction", -1)), building.duplicate(), unit_dict.duplicate())
 		queue_redraw()
 
 
@@ -335,6 +364,7 @@ func _find_ungarrison_pos(building: Dictionary) -> Vector2i:
 
 func _draw() -> void:
 	if not _buildings.is_empty():
+		_draw_effect_ranges()
 		_draw_buildings()
 
 	# 放置模式幽灵预览
@@ -448,6 +478,52 @@ func _draw_buildings() -> void:
 				var plus_size := font.get_string_size(plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8)
 				var plus_pos := Vector2(dots_start_x + 4 * dot_spacing + 2, top_left.y - 10 + 3)
 				draw_string(font, plus_pos, plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color.WHITE)
+
+
+func _draw_effect_ranges() -> void:
+	var range_buildings: Array[Dictionary] = []
+	if _hovered_id >= 0:
+		var hovered: Dictionary = _get_building_by_id(_hovered_id)
+		if _should_draw_effect_range(hovered):
+			range_buildings.append(hovered)
+	if _selected_id >= 0 and _selected_id != _hovered_id:
+		var selected: Dictionary = _get_building_by_id(_selected_id)
+		if _should_draw_effect_range(selected):
+			range_buildings.append(selected)
+
+	for building in range_buildings:
+		_draw_effect_range_for_building(building)
+
+
+func _should_draw_effect_range(building: Dictionary) -> bool:
+	if building.is_empty() or not building.has("data"):
+		return false
+	var data: BuildingData = building["data"]
+	return data.effect_radius > 0
+
+
+func _draw_effect_range_for_building(building: Dictionary) -> void:
+	var data: BuildingData = building["data"]
+	var center: Vector2i = _get_building_center(building)
+	var radius: int = data.effect_radius
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			if not _in_bounds(x, y):
+				continue
+			var dist: int = absi(center.x - x) + absi(center.y - y)
+			if dist > radius:
+				continue
+			var world_pos: Vector2 = _grid_to_world(x, y)
+			var top_left := Vector2(world_pos.x - tile_size * 0.5, world_pos.y - tile_size * 0.5)
+			var rect := Rect2(top_left, Vector2(tile_size, tile_size))
+			draw_rect(rect, EFFECT_RANGE_COLOR, true)
+			draw_rect(rect, EFFECT_RANGE_BORDER_COLOR, false, 1.0)
+
+
+func _get_building_center(building: Dictionary) -> Vector2i:
+	var data: BuildingData = building["data"]
+	var origin: Vector2i = building.get("origin", Vector2i.ZERO)
+	return Vector2i(origin.x + data.footprint.x / 2, origin.y + data.footprint.y / 2)
 
 
 func _should_draw_elven_capital_texture(data: BuildingData, faction: int) -> bool:
@@ -597,19 +673,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		var cursor := get_global_mouse_position()
 		var gpos := _world_to_grid(cursor)
 		if gpos.x < 0 or gpos.x >= grid_cols or gpos.y < 0 or gpos.y >= grid_rows:
+			_set_hovered_building(-1)
 			return
 		var building := get_building_at(gpos)
 		if not building.is_empty():
+			_set_hovered_building(int(building["id"]))
 			var data: BuildingData = building["data"]
 			var fname := GameCatalog.faction_name(int(building["faction"]))
 			var building_name: String = data.name
 			if int(building.get("level", 1)) > 1 and data.max_level > 1:
 				building_name = "%s Lv%d" % [data.name, int(building.get("level", 1))]
-			var hover_text := "%s · %s (HP:%d/%d)" % [fname, building_name, building["hp"], data.hp_max]
+			var hover_text := "%s - %s (HP:%d/%d)" % [fname, building_name, building["hp"], data.hp_max]
+			if data.effect_radius > 0:
+				hover_text += " - Range:%d" % data.effect_radius
 			var garr: Array = building.get("garrison", [])
 			if not garr.is_empty():
-				hover_text += " 驻军:%d" % garr.size()
+				hover_text += " - Garrison:%d" % garr.size()
 			building_hovered.emit(hover_text)
+		else:
+			_set_hovered_building(-1)
 
 
 func _handle_placement_input(event: InputEvent) -> void:
@@ -649,6 +731,13 @@ func _clear_selection() -> void:
 
 
 # ========== 放置模式 ==========
+
+
+func _set_hovered_building(building_id: int) -> void:
+	if _hovered_id == building_id:
+		return
+	_hovered_id = building_id
+	queue_redraw()
 
 func start_placement(data: BuildingData, faction: int) -> void:
 	## 点击建筑卡片后进入放置模式
@@ -763,11 +852,21 @@ func get_recruit_queue(building_id: int) -> Array:
 
 func _process_recruit_queues(player: int) -> void:
 	var changed_buildings: Array = _recruitment_service.process_recruit_queues(player)
+	var spawned_units: Array = _recruitment_service.consume_last_spawned_units()
 	for building in changed_buildings:
 		var queue: Array = building.get("recruit_queue", [])
 		recruit_queue_changed.emit(building["id"], queue.duplicate(true))
 		if building["id"] == _selected_id:
 			_emit_recruit_panel(building)
+	var unit_mgr = get_parent().get_node_or_null("UnitManager2D")
+	for entry in spawned_units:
+		var unit_id: int = int(entry.get("unit_id", -1))
+		if unit_id < 0 or unit_mgr == null or not unit_mgr.has_method("get_unit_by_id"):
+			continue
+		var unit: Dictionary = unit_mgr.get_unit_by_id(unit_id)
+		if unit.is_empty():
+			continue
+		unit_recruited.emit(player, unit.duplicate(), str(entry.get("unit_template_id", "")))
 
 
 func _spawn_recruited_unit(building: Dictionary, unit_template_id: String) -> bool:

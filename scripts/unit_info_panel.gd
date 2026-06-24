@@ -81,6 +81,7 @@ func _build_ui() -> void:
 
 	var row2_y := start_y + row_h + 8
 
+
 	# HP 条
 	var hp_label_title := Label.new()
 	hp_label_title.position = Vector2(margin, row2_y)
@@ -167,6 +168,12 @@ func show_unit(unit: Dictionary) -> void:
 	else:
 		_status_label.text = "可行动"
 		_status_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3))
+
+	var statuses: Dictionary = unit.get("statuses", {})
+	var weaken_turns: int = int(statuses.get("poison_weakened_turns", 0))
+	if weaken_turns > 0:
+		_status_label.text = "\u865a\u5f31 %d \u56de\u5408" % weaken_turns
+		_status_label.add_theme_color_override("font_color", Color(0.55, 1.0, 0.55))
 
 	# HP 条
 	var hp: int = unit.get("hp", data.hp_max)

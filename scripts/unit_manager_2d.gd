@@ -1,4 +1,5 @@
 extends Node2D
+const BuildingEffectServiceScript := preload("res://scripts/services/building_effect_service.gd")
 const ORC_BLOOD_AXE_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png")
 const ORC_BLOOD_AXE_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Walk.png")
 const ORC_BLOOD_AXE_HURT_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Hurt.png")
@@ -14,6 +15,7 @@ signal combat_started()
 signal combat_ended()
 signal hidden_trader_discovered(faction: int)
 signal action_preview_changed(preview: Dictionary)
+signal unit_killed(killer_player: int, victim_player: int, victim: Dictionary)
 
 var grid_cols := 100
 var grid_rows := 56
@@ -29,6 +31,9 @@ var _turn_manager: Node = null
 var _grid_manager: Node = null
 var _fog_manager: Node = null
 var _template_registry: Node = null
+var _building_manager: Node = null
+var _technology_service: Node = null
+var _building_effect_service = BuildingEffectServiceScript.new()
 
 # 战斗系统
 var _in_combat := false
@@ -72,6 +77,8 @@ func _ready() -> void:
 	_grid_manager = get_parent().get_node("GridManager2D")
 	_fog_manager = get_parent().get_node_or_null("FogOfWar2D")
 	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
+	_building_manager = get_parent().get_node_or_null("BuildingManager2D")
+	_technology_service = get_parent().get_node_or_null("TechnologyService")
 	set_process(true)
 
 
@@ -112,7 +119,7 @@ func place_initial_units() -> void:
 			if u["faction"] != p:
 				continue
 			var upos: Vector2i = u["grid_pos"]
-			fog_mgr.reveal_area(p, upos.x, upos.y, _get_unit_data(u).vision)
+			fog_mgr.reveal_area(p, upos.x, upos.y, _get_unit_vision_value(u))
 
 
 func _add_initial_unit(faction: int, template_id: String, fallback: UnitData, grid_pos: Vector2i) -> int:
@@ -446,8 +453,9 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 		return preview
 
 	var steps: int = _calc_path_length(from, approach_tile)
+	var ap_cost: int = _get_movement_ap_cost(attacker, steps)
 	preview["approach_pos"] = approach_tile
-	preview["ap_cost"] = maxi(steps, 0)
+	preview["ap_cost"] = ap_cost
 	if steps <= 0:
 		preview["reason"] = "无法到达接敌格"
 		return preview
@@ -455,7 +463,7 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 	var current_ap := 0
 	if _turn_manager:
 		current_ap = int(_turn_manager.get_ap(_turn_manager.current_player))
-	if _turn_manager and steps > current_ap:
+	if _turn_manager and ap_cost > current_ap:
 		preview["reason"] = "AP 不足"
 		return preview
 
@@ -472,12 +480,13 @@ func _move_selected_to(target: Vector2i) -> void:
 		if u["id"] == _selected_id:
 			var from: Vector2i = u["grid_pos"]
 			var steps := _calc_path_length(from, target)
+			var ap_cost: int = _get_movement_ap_cost(u, steps)
 			if steps <= 0:
 				break
 
 			# 扣 AP（1 AP/步，原型简化）
 			if _turn_manager:
-				var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, steps)
+				var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, ap_cost)
 				if not ok:
 					# AP 不足，回退
 					break
@@ -491,7 +500,7 @@ func _move_selected_to(target: Vector2i) -> void:
 			var fog_mgr = get_parent().get_node("FogOfWar2D")
 			if fog_mgr:
 				var cp: int = _turn_manager.current_player
-				fog_mgr.reveal_area(cp, target.x, target.y, data.vision)
+				fog_mgr.reveal_area(cp, target.x, target.y, _get_unit_vision_value(u))
 
 			# 通知中立单位管理器重绘（新揭示区域的中立单位立即显示）
 			var numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
@@ -527,8 +536,9 @@ func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
 	var steps: int = _calc_path_length(from, approach_tile)
 	if steps <= 0:
 		return false
+	var ap_cost: int = _get_movement_ap_cost(attacker, steps)
 	if _turn_manager:
-		var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, steps)
+		var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, ap_cost)
 		if not ok:
 			return false
 
@@ -541,7 +551,7 @@ func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
 			var data: UnitData = _get_unit_data(u)
 			var fog_mgr = get_parent().get_node("FogOfWar2D")
 			if fog_mgr and _turn_manager:
-				fog_mgr.reveal_area(_turn_manager.current_player, approach_tile.x, approach_tile.y, data.vision)
+				fog_mgr.reveal_area(_turn_manager.current_player, approach_tile.x, approach_tile.y, _get_unit_vision_value(u))
 			_reachable_tiles = []
 			queue_redraw()
 			return true
@@ -823,6 +833,7 @@ func _on_player_turn_started(player: int) -> void:
 		if u["faction"] == player:
 			u["has_moved"] = false
 			u["has_attacked"] = false
+			_tick_unit_statuses(u)
 
 	_clear_selection()
 
@@ -908,9 +919,13 @@ func _combat_tick() -> void:
 		defender = unit_a
 
 	# 造成伤害
-	var dmg: int = _get_unit_data(attacker).atk
+	var raw_dmg: int = _get_unit_attack_value(attacker)
+	var reduction: int = _get_unit_damage_reduction(defender)
+	var dmg: int = maxi(1, raw_dmg - reduction) if raw_dmg > 0 else 0
 	_play_attack_effect(attacker, defender)
 	defender["hp"] -= dmg
+	if dmg > 0:
+		_try_apply_scout_poison_weaken(attacker, defender)
 
 	# 受击视觉效果
 	_play_hit_effect(defender["id"], defender["grid_pos"], dmg)
@@ -949,6 +964,10 @@ func _end_combat(winner_id: int, attacker_pos: Vector2i = Vector2i(-1, -1), lose
 		for i in range(_units.size() - 1, -1, -1):
 			if _units[i]["id"] == loser_id:
 				var loser: Dictionary = _units[i]
+				var winner: Dictionary = _get_unit_by_id(winner_id)
+				if not winner.is_empty():
+					unit_killed.emit(int(winner.get("faction", -1)), int(loser.get("faction", -1)), loser.duplicate())
+					_apply_kill_food_reward(winner)
 				if _is_orc_blood_axe(loser):
 					_start_death_visual(loser_id, loser["grid_pos"], attacker_pos, loser_pos)
 				_move_visuals.erase(loser_id)
@@ -1181,9 +1200,101 @@ func get_unit_atk_value(uid: int) -> int:
 	var unit := _get_unit_by_id(uid)
 	if unit.is_empty():
 		return 0
-	var data := _get_unit_data(unit)
-	return data.atk
+	return _get_unit_attack_value(unit)
 
+
+
+func _get_unit_vision_value(unit: Dictionary) -> int:
+	var data: UnitData = _get_unit_data(unit)
+	var bonus: int = _get_building_effect_modifier(unit, BuildingEffectService.MOD_VISION_BONUS)
+	bonus += _get_technology_modifier_for_unit(unit, "unit_vision_bonus")
+	if data.category == UnitData.UnitCategory.SCOUT:
+		bonus += _get_technology_modifier_for_unit(unit, "scout_vision_bonus")
+	return maxi(0, data.vision + bonus)
+
+
+func _get_unit_attack_value(unit: Dictionary) -> int:
+	var data: UnitData = _get_unit_data(unit)
+	var bonus: int = _get_building_effect_modifier(unit, BuildingEffectService.MOD_ATTACK_BONUS)
+	if data.category == UnitData.UnitCategory.GUARD or "melee" in data.tags:
+		bonus += _get_technology_modifier_for_unit(unit, "melee_attack_bonus")
+	if "light" in data.tags or data.category == UnitData.UnitCategory.SCOUT:
+		bonus += _get_technology_modifier_for_unit(unit, "light_unit_attack_bonus")
+	if int(unit.get("faction", -1)) == 2:
+		bonus += _get_technology_modifier_for_unit(unit, "orc_lord_military_bonus")
+	var penalty: int = 0
+	var statuses: Dictionary = unit.get("statuses", {})
+	if int(statuses.get("poison_weakened_turns", 0)) > 0:
+		penalty += 1
+	return maxi(0, data.atk + bonus - penalty)
+
+
+func _get_unit_damage_reduction(unit: Dictionary) -> int:
+	var bonus: int = _get_building_effect_modifier(unit, BuildingEffectService.MOD_DAMAGE_REDUCTION)
+	bonus += _get_technology_modifier_for_unit(unit, "damage_reduction_bonus")
+	return maxi(0, bonus)
+
+
+func _get_movement_ap_cost(unit: Dictionary, steps: int) -> int:
+	if steps <= 0:
+		return 0
+	var data: UnitData = _get_unit_data(unit)
+	var discount := 0
+	if data.category == UnitData.UnitCategory.SCOUT or "scout" in data.tags:
+		discount += _get_technology_modifier_for_unit(unit, "forest_scout_move_discount")
+	return maxi(0, steps - discount)
+
+
+func _apply_kill_food_reward(winner: Dictionary) -> void:
+	var reward: int = _get_technology_modifier_for_unit(winner, "kill_food_reward")
+	if reward <= 0:
+		return
+	var faction: int = int(winner.get("faction", -1))
+	var tracker: Node = get_parent().get_node_or_null("ResourceTracker") if is_inside_tree() else null
+	if tracker != null and tracker.has_method("add_resource"):
+		tracker.add_resource(faction, "food", reward)
+
+
+func _try_apply_scout_poison_weaken(attacker: Dictionary, defender: Dictionary) -> void:
+	var data: UnitData = _get_unit_data(attacker)
+	if data.category != UnitData.UnitCategory.SCOUT and not ("scout" in data.tags):
+		return
+	var turns: int = _get_technology_modifier_for_unit(attacker, "scout_poison_weaken_turns")
+	if turns <= 0:
+		return
+	var statuses: Dictionary = defender.get("statuses", {})
+	statuses["poison_weakened_turns"] = maxi(int(statuses.get("poison_weakened_turns", 0)), turns)
+	defender["statuses"] = statuses
+
+
+func _tick_unit_statuses(unit: Dictionary) -> void:
+	var statuses: Dictionary = unit.get("statuses", {})
+	if statuses.is_empty():
+		return
+	if statuses.has("poison_weakened_turns"):
+		var turns: int = int(statuses.get("poison_weakened_turns", 0)) - 1
+		if turns > 0:
+			statuses["poison_weakened_turns"] = turns
+		else:
+			statuses.erase("poison_weakened_turns")
+	unit["statuses"] = statuses
+
+
+func _get_building_effect_modifier(unit: Dictionary, modifier_key: String) -> int:
+	if _building_effect_service == null:
+		return 0
+	return _building_effect_service.get_modifier_for_unit(_building_manager, unit, modifier_key)
+
+
+func _get_technology_modifier_for_unit(unit: Dictionary, modifier_key: String) -> int:
+	var faction: int = int(unit.get("faction", -1))
+	if faction < 0:
+		return 0
+	if _technology_service == null and is_inside_tree():
+		_technology_service = get_parent().get_node_or_null("TechnologyService")
+	if _technology_service != null and _technology_service.has_method("get_modifier"):
+		return int(_technology_service.call("get_modifier", faction, modifier_key, 0))
+	return 0
 
 func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) -> int:
 	## 公共接口：添加一个单位到地图上（用于驻兵撤出等）
@@ -1203,6 +1314,7 @@ func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) ->
 		"hp": hp if hp >= 0 else data.hp_max,
 		"has_moved": false,
 		"has_attacked": false,
+		"statuses": {},
 	})
 	if spawn_pos != grid_pos:
 		print("[Unit] Adjusted spawn %s -> %s for %s." % [str(grid_pos), str(spawn_pos), data.unit_name])

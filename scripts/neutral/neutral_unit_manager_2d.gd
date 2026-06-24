@@ -9,6 +9,7 @@ signal neutral_selected(unit_data: Dictionary)
 signal selection_cleared()
 signal neutral_combat_started()
 signal neutral_combat_ended()
+signal neutral_unit_killed(killer_player: int, neutral_unit: Dictionary)
 
 # ========== 网格常量（与 UnitManager2D 一致） ==========
 const GRID_COLS := 100
@@ -58,6 +59,7 @@ var _turn_manager: Node = null
 var _fog_manager: Node = null
 var _unit_manager: Node = null
 var _resource_tracker: Node = null
+var _technology_service: Node = null
 
 
 func _ready() -> void:
@@ -65,6 +67,7 @@ func _ready() -> void:
 	_fog_manager = get_parent().get_node("FogOfWar2D")
 	_unit_manager = get_parent().get_node("UnitManager2D")
 	_resource_tracker = get_parent().get_node("ResourceTracker")
+	_technology_service = get_parent().get_node_or_null("TechnologyService")
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -518,8 +521,10 @@ func _end_combat(winner_id: int) -> void:
 func _on_neutral_defeated(neutral_unit_id: int, killer_player: int) -> void:
 	## 中立单位被击杀后的处理：掉落、移除
 	var template_id: String = ""
+	var defeated_unit: Dictionary = {}
 	for u in _neutral_units:
 		if u["id"] == neutral_unit_id:
+			defeated_unit = u.duplicate()
 			template_id = u.get("template_id", "")
 			break
 
@@ -529,7 +534,26 @@ func _on_neutral_defeated(neutral_unit_id: int, killer_player: int) -> void:
 		_resource_tracker.add_resource(killer_player, blood_key, 1)
 		print("[中立] 阵营 %d 击杀 %s，获得 %s ×1" % [killer_player, template_id, blood_key])
 
+	if not defeated_unit.is_empty():
+		neutral_unit_killed.emit(killer_player, defeated_unit)
+		_apply_kill_food_reward(killer_player)
 	remove_neutral_unit(neutral_unit_id)
+
+
+func _apply_kill_food_reward(killer_player: int) -> void:
+	var reward: int = _get_technology_modifier(killer_player, "kill_food_reward")
+	if reward <= 0:
+		return
+	if _resource_tracker != null and _resource_tracker.has_method("add_resource"):
+		_resource_tracker.add_resource(killer_player, "food", reward)
+
+
+func _get_technology_modifier(player: int, key: String) -> int:
+	if _technology_service == null and is_inside_tree():
+		_technology_service = get_parent().get_node_or_null("TechnologyService")
+	if _technology_service != null and _technology_service.has_method("get_modifier"):
+		return int(_technology_service.call("get_modifier", player, key, 0))
+	return 0
 
 
 func _start_ai_combat(neutral_unit_id: int, player_unit_id: int) -> void:
