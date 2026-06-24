@@ -22,6 +22,7 @@ static func get_initial_unit_defs(faction: int) -> Array:
 				{"template_id": "unit.orc.worker", "fallback": UnitData.new("兽人工人", UnitData.UnitCategory.WORKER, 1, 0, 4, 1, 1)},
 				{"template_id": "unit.orc.scout", "fallback": UnitData.new("猎齿兽", UnitData.UnitCategory.SCOUT, 2, 2, 5, 2, 1)},
 				{"template_id": "unit.orc.guard", "fallback": UnitData.new("血斧兵", UnitData.UnitCategory.GUARD, 1, 4, 6, 1, 2)},
+				{"template_id": "unit.orc.slinger", "fallback": UnitData.new("\u517d\u4eba\u6295\u77f3\u5175", UnitData.UnitCategory.SPECIAL, 1, 2, 4, 3, 3, 4)},
 			]
 	return [
 		{"template_id": "unit.worker", "fallback": UnitData.worker()},

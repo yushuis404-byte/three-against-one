@@ -115,9 +115,9 @@ func place_initial_units() -> void:
 		var pos: Vector2i = s["pos"]
 		var offset: int = s["name_offset"]
 		var unit_defs: Array = UnitRoster.get_initial_unit_defs(p)
-		_add_initial_unit(p, str(unit_defs[0]["template_id"]), unit_defs[0]["fallback"], Vector2i(pos.x + offset, pos.y))
-		_add_initial_unit(p, str(unit_defs[1]["template_id"]), unit_defs[1]["fallback"], Vector2i(pos.x + offset + 1, pos.y))
-		_add_initial_unit(p, str(unit_defs[2]["template_id"]), unit_defs[2]["fallback"], Vector2i(pos.x + offset + 2, pos.y))
+		for i in range(unit_defs.size()):
+			var unit_def: Dictionary = unit_defs[i]
+			_add_initial_unit(p, str(unit_def["template_id"]), unit_def["fallback"], Vector2i(pos.x + offset + i, pos.y))
 
 		# 初始放置时揭示视野
 		for u in _units:
