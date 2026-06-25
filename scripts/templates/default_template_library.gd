@@ -102,6 +102,44 @@ func make_unit_templates() -> Dictionary:
 	)
 	_config_recruit(elf_guard, [_amount("food", 3)], 3, 3, 3, true)
 
+	var elf_ranger = _unit_basic(
+		"unit.elf.ranger",
+		"林影游侠",
+		UnitTemplateScript.UnitRole.SPECIAL,
+		3,
+		2,
+		3,
+		4,
+		["elf", "ranger", "ranged", "scout", "military", "forest_move_bonus", "high_vision"]
+	)
+	elf_ranger.attack_range = 3
+	_config_recruit(elf_ranger, [_amount("food", 3), _amount("wood", 2)], 2, 2, 2, true)
+
+	var elf_blade_dancer = _unit_basic(
+		"unit.elf.blade_dancer",
+		"月刃舞者",
+		UnitTemplateScript.UnitRole.ELITE,
+		3,
+		3,
+		4,
+		2,
+		["elf", "elite", "military", "melee", "mobile_attacker", "skirmisher"]
+	)
+	_config_recruit(elf_blade_dancer, [_amount("food", 4), _amount("wood", 1)], 3, 3, 3, true)
+
+	var elf_root_guard = _unit_basic(
+		"unit.elf.root_guard",
+		"星藤守卫",
+		UnitTemplateScript.UnitRole.GUARD,
+		1,
+		2,
+		7,
+		2,
+		["elf", "guard", "military", "melee", "defender", "forest_guard", "damage_soak"]
+	)
+	elf_root_guard.damage_reduction = 1
+	_config_recruit(elf_root_guard, [_amount("food", 3), _amount("wood", 3)], 2, 2, 3, true)
+
 	var dwarf_worker = _unit_basic(
 		"unit.dwarf.worker",
 		"矮人工人",
@@ -137,6 +175,44 @@ func make_unit_templates() -> Dictionary:
 		["dwarf", "guard", "military", "melee", "high_hp", "defender"]
 	)
 	_config_recruit(dwarf_guard, [_amount("food", 3)], 3, 3, 3, true)
+
+	var dwarf_shieldbearer = _unit_basic(
+		"unit.dwarf.shieldbearer",
+		"盾誓卫",
+		UnitTemplateScript.UnitRole.GUARD,
+		1,
+		2,
+		10,
+		1,
+		["dwarf", "guard", "military", "melee", "tank", "shield", "defender", "damage_soak"]
+	)
+	dwarf_shieldbearer.damage_reduction = 1
+	_config_recruit(dwarf_shieldbearer, [_amount("food", 3), _amount("stone", 2)], 2, 2, 3, true)
+
+	var dwarf_crossbow = _unit_basic(
+		"unit.dwarf.crossbow",
+		"山弩手",
+		UnitTemplateScript.UnitRole.SPECIAL,
+		1,
+		2,
+		5,
+		2,
+		["dwarf", "crossbow", "ranged", "military", "line_holder"]
+	)
+	dwarf_crossbow.attack_range = 3
+	_config_recruit(dwarf_crossbow, [_amount("food", 3), _amount("wood", 2), _amount("iron", 1)], 2, 2, 3, true)
+
+	var dwarf_sapper = _unit_basic(
+		"unit.dwarf.sapper",
+		"爆破工",
+		UnitTemplateScript.UnitRole.SIEGE,
+		1,
+		3,
+		5,
+		1,
+		["dwarf", "siege", "military", "melee", "engineer", "building_breaker"]
+	)
+	_config_recruit(dwarf_sapper, [_amount("food", 2), _amount("stone", 3), _amount("iron", 2)], 2, 2, 3, true)
 
 	var orc_worker = _unit_basic(
 		"unit.orc.worker",
@@ -299,9 +375,15 @@ func make_unit_templates() -> Dictionary:
 		elf_worker.id: elf_worker,
 		elf_scout.id: elf_scout,
 		elf_guard.id: elf_guard,
+		elf_ranger.id: elf_ranger,
+		elf_blade_dancer.id: elf_blade_dancer,
+		elf_root_guard.id: elf_root_guard,
 		dwarf_worker.id: dwarf_worker,
 		dwarf_scout.id: dwarf_scout,
 		dwarf_guard.id: dwarf_guard,
+		dwarf_shieldbearer.id: dwarf_shieldbearer,
+		dwarf_crossbow.id: dwarf_crossbow,
+		dwarf_sapper.id: dwarf_sapper,
 		orc_worker.id: orc_worker,
 		orc_scout.id: orc_scout,
 		orc_guard.id: orc_guard,
@@ -453,7 +535,7 @@ func make_lord_templates() -> Dictionary:
 	)
 	elf_lord.description = "\u7cbe\u7075\u8def\u7ebf\u521d\u59cb\u9886\u4e3b\uff1a\u5f3a\u5316\u89c6\u91ce\u3001\u4fa6\u5bdf\u548c\u8ff7\u96fe\u4e92\u52a8\u3002"
 	elf_lord.unlock_building_ids = ["building.wind_ancient_tree"]
-	elf_lord.unlock_action_ids = ["action.fog.reveal"]
+	elf_lord.unlock_action_ids = ["action.fog.reveal", "action.fog.conceal"]
 	elf_lord.passive_modifiers = {
 		"scout_move_bonus": 1,
 	}

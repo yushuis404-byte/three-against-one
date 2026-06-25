@@ -10,12 +10,14 @@ static func get_initial_unit_defs(faction: int) -> Array:
 				{"template_id": "unit.elf.worker", "fallback": UnitData.new("精灵工人", UnitData.UnitCategory.WORKER, 2, 0, 3, 1, 1)},
 				{"template_id": "unit.elf.scout", "fallback": UnitData.new("风行斥候", UnitData.UnitCategory.SCOUT, 4, 1, 3, 4, 1)},
 				{"template_id": "unit.elf.guard", "fallback": UnitData.new("月影刺客", UnitData.UnitCategory.GUARD, 2, 3, 5, 2, 2)},
+				{"template_id": "unit.elf.ranger", "fallback": UnitData.new("林影游侠", UnitData.UnitCategory.SPECIAL, 3, 2, 3, 4, 2, 3)},
 			]
 		1:
 			return [
 				{"template_id": "unit.dwarf.worker", "fallback": UnitData.new("矮人工人", UnitData.UnitCategory.WORKER, 1, 0, 4, 1, 1)},
 				{"template_id": "unit.dwarf.scout", "fallback": UnitData.new("勘探者", UnitData.UnitCategory.SCOUT, 2, 1, 4, 2, 1)},
 				{"template_id": "unit.dwarf.guard", "fallback": UnitData.new("铁锤卫", UnitData.UnitCategory.GUARD, 1, 3, 8, 1, 2)},
+				{"template_id": "unit.dwarf.crossbow", "fallback": UnitData.new("山弩手", UnitData.UnitCategory.SPECIAL, 1, 2, 5, 2, 2, 3)},
 			]
 		2:
 			return [

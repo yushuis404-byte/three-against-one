@@ -47,6 +47,7 @@ var _unlock_names: Dictionary = {
 	"building.blood_fang_den": "\u8840\u7259\u5de2\u7a74",
 	"recipe.mithril.basic": "\u79d8\u94f6\u57fa\u7840\u5de5\u827a",
 	"action.fog.reveal": "\u63ed\u793a\u8ff7\u96fe",
+	"action.fog.conceal": "\u906e\u853d\u8ff7\u96fe",
 	"action.warband.form": "\u7ec4\u5efa\u6218\u5e2e",
 }
 

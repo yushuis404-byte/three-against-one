@@ -42,6 +42,11 @@ var _building_effect_service = BuildingEffectServiceScript.new()
 var _in_combat := false
 var _combat_timer: Timer = null
 var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
+var _combat_sequence_id: int = 0
+var _combat_choice_panel: Panel = null
+var _combat_choice_label: Label = null
+var _combat_retreat_button: Button = null
+var _combat_engage_button: Button = null
 var _move_visuals: Dictionary = {}  # unit_id -> { from: Vector2, to: Vector2, t: float }
 var _hurt_visuals: Dictionary = {}  # unit_id -> { t: float }
 var _attack_visuals: Dictionary = {}  # unit_id -> { t: float, flip_x: bool }
@@ -49,6 +54,10 @@ var _death_visuals: Dictionary = {}  # unit_id -> { pos: Vector2, t: float, flip
 var _unit_facing_flip: Dictionary = {}  # unit_id -> bool
 var _pending_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
 var _throw_beast_source_id: int = -1
+var _fog_reveal_mode: bool = false
+var _fog_reveal_tiles: Array[Vector2i] = []
+var _fog_conceal_mode: bool = false
+var _fog_conceal_tiles: Array[Vector2i] = []
 var _last_action_preview_key := ""
 var _current_action_preview: Dictionary = {}
 var _next_warband_id: int = 1
@@ -63,6 +72,10 @@ const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
 const ATTACK_RANGE_COLOR := Color(1.0, 0.18, 0.12, 0.24)
 const THROW_RANGE_COLOR := Color(0.1, 0.82, 1.0, 0.25)
+const FOG_REVEAL_COLOR := Color(0.25, 1.0, 0.58, 0.22)
+const FOG_REVEAL_BORDER_COLOR := Color(0.68, 1.0, 0.78, 0.82)
+const FOG_CONCEAL_COLOR := Color(0.38, 0.72, 1.0, 0.22)
+const FOG_CONCEAL_BORDER_COLOR := Color(0.62, 0.92, 1.0, 0.82)
 const WARBAND_RING_COLOR := Color(1.0, 0.16, 0.08, 0.55)
 const WARBAND_AREA_COLOR := Color(1.0, 0.12, 0.06, 0.10)
 const WARBAND_COMMAND_COLOR := Color(0.1, 0.55, 1.0, 0.95)
@@ -75,12 +88,25 @@ const MOVE_VISUAL_DURATION := 1.0
 const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
 const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
 const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
+const ELF_FOG_REVEAL_CASTER_TEMPLATE_ID := "unit.elf.scout"
+const ELF_FOG_CONCEAL_CASTER_TEMPLATE_ID := "unit.elf.guard"
 const SLINGER_THROW_RANGE := 5
 const SLINGER_THROW_AP_COST := 1
+const FOG_REVEAL_RANGE := 6
+const FOG_REVEAL_RADIUS := 2
+const FOG_REVEAL_AP_COST := 1
+const FOG_CONCEAL_RANGE := 6
+const FOG_CONCEAL_RADIUS := 2
+const FOG_CONCEAL_AP_COST := 1
+const FOG_REVEAL_COOLDOWN_KEY := "fog_reveal_cooldown_turns"
+const FOG_CONCEAL_COOLDOWN_KEY := "fog_conceal_cooldown_turns"
+const RETREAT_HIDDEN_FROM_FACTION_KEY := "retreat_hidden_from_faction"
+const RETREAT_UNSELECTABLE_BY_UNIT_KEY := "retreat_unselectable_by_unit_id"
 const WARBAND_RADIUS := 3
 const WARBAND_MIN_MEMBERS := 3
 const WARBAND_MAX_MEMBERS := 8
 const WARBAND_AP_COST := 1
+const ELVEN_FIRST_STRIKE_SECOND_HIT_RATIO := 0.5
 const ORC_BLOOD_AXE_IDLE_FRAMES := 6
 const ORC_BLOOD_AXE_WALK_FRAMES := 8
 const ORC_BLOOD_AXE_HURT_FRAMES := 4
@@ -109,7 +135,9 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_update_action_preview()
-	if not _move_visuals.is_empty() or not _hurt_visuals.is_empty() or not _attack_visuals.is_empty() or not _death_visuals.is_empty() or _has_orc_blood_axe_units():
+	_update_fog_reveal_preview()
+	_update_fog_conceal_preview()
+	if _fog_reveal_mode or _fog_conceal_mode or not _move_visuals.is_empty() or not _hurt_visuals.is_empty() or not _attack_visuals.is_empty() or not _death_visuals.is_empty() or _has_orc_blood_axe_units():
 		queue_redraw()
 
 
@@ -152,6 +180,7 @@ func _add_initial_unit(faction: int, template_id: String, fallback: UnitData, gr
 		var template: Resource = _template_registry.call("get_unit", template_id)
 		if template != null:
 			return add_unit_from_template(faction, template, grid_pos)
+	fallback.template_id = template_id
 	return _add_unit(faction, fallback, grid_pos)
 
 
@@ -173,6 +202,10 @@ func _add_unit(faction: int, data: UnitData, grid_pos: Vector2i) -> int:
 		"has_moved": false,
 		"has_attacked": false,
 		"has_thrown_beast": false,
+		"fog_reveal_cooldown_turns": 0,
+		"fog_conceal_cooldown_turns": 0,
+		"retreat_hidden_from_faction": -1,
+		"retreat_unselectable_by_unit_id": -1,
 	})
 	if spawn_pos != grid_pos:
 		print("[Unit] Adjusted spawn %s -> %s for %s." % [str(grid_pos), str(spawn_pos), data.unit_name])
@@ -212,9 +245,17 @@ func get_unit_by_id(uid: int) -> Dictionary:
 
 
 func _is_unit_visible_to_current_player(unit: Dictionary) -> bool:
-	if _turn_manager == null or _fog_manager == null:
+	if _turn_manager == null:
 		return true
 	var viewer: int = int(_turn_manager.current_player)
+	return _is_unit_visible_to_player(viewer, unit)
+
+
+func _is_unit_visible_to_player(viewer: int, unit: Dictionary) -> bool:
+	if int(unit.get(RETREAT_HIDDEN_FROM_FACTION_KEY, -1)) == viewer:
+		return false
+	if _fog_manager == null:
+		return true
 	var faction: int = int(unit.get("faction", -1))
 	if faction == viewer:
 		return true
@@ -241,6 +282,16 @@ func _draw() -> void:
 	for t in _throw_range_tiles:
 		var pos_throw := _grid_to_world(t.x, t.y)
 		draw_circle(pos_throw, UNIT_RADIUS * 1.7, THROW_RANGE_COLOR)
+	for t in _fog_reveal_tiles:
+		var pos_reveal := _grid_to_world(t.x, t.y)
+		var reveal_rect := Rect2(pos_reveal - Vector2(tile_size, tile_size) * 0.5, Vector2(tile_size, tile_size))
+		draw_rect(reveal_rect.grow(-3.0), FOG_REVEAL_COLOR, true)
+		draw_rect(reveal_rect.grow(-3.0), FOG_REVEAL_BORDER_COLOR, false, 1.5)
+	for t in _fog_conceal_tiles:
+		var pos_conceal := _grid_to_world(t.x, t.y)
+		var conceal_rect := Rect2(pos_conceal - Vector2(tile_size, tile_size) * 0.5, Vector2(tile_size, tile_size))
+		draw_rect(conceal_rect.grow(-3.0), FOG_CONCEAL_COLOR, true)
+		draw_rect(conceal_rect.grow(-3.0), FOG_CONCEAL_BORDER_COLOR, false, 1.5)
 
 	_draw_action_preview_highlight()
 	_draw_warband_highlights()
@@ -296,6 +347,17 @@ func _draw() -> void:
 # ========== 交互 ==========
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F:
+			_toggle_fog_reveal_mode()
+			return
+		if event.keycode == KEY_G:
+			_toggle_fog_conceal_mode()
+			return
+		if event.keycode == KEY_ESCAPE and (_fog_reveal_mode or _fog_conceal_mode):
+			_cancel_fog_modes()
+			return
+
 	if not event is InputEventMouseButton:
 		return
 	if event.button_index != MOUSE_BUTTON_LEFT or not event.pressed:
@@ -315,6 +377,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not _in_bounds(gpos.x, gpos.y):
 		if not _is_warband_selection_active():
 			_clear_selection()
+		return
+
+	if _fog_conceal_mode:
+		_try_conceal_fog_at(gpos)
+		return
+	if _fog_reveal_mode:
+		_try_reveal_fog_at(gpos)
 		return
 
 	if _is_warband_selection_active():
@@ -352,8 +421,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _selected_id >= 0:
 		var src := _get_unit_by_id(_selected_id)
 		if not src.is_empty():
+			var bmgr_for_attack: Node = get_parent().get_node_or_null("BuildingManager2D")
+			if bmgr_for_attack and bmgr_for_attack.has_method("get_building_at"):
+				var building_target: Dictionary = bmgr_for_attack.call("get_building_at", gpos)
+				if _try_attack_building(src, building_target):
+					return
 			var target := get_visible_unit_at(gpos)
 			if not target.is_empty() and target["faction"] != src["faction"]:
+				if _is_retreat_unselectable_for_attacker(src, target):
+					print("[Combat] Target cannot be selected by this attacker until its next turn.")
+					return
 				# 中立单位（faction == -1）→ 调用 NeutralUnitManager2D 战斗
 				if _can_ranged_attack(src, target):
 					_initiate_ranged_combat(int(src.get("id", -1)), int(target.get("id", -1)))
@@ -434,9 +511,227 @@ func _clear_selection() -> void:
 	_attack_range_tiles = []
 	_throw_range_tiles = []
 	_throw_beast_source_id = -1
+	_cancel_fog_modes()
 	_emit_action_preview({})
 	selection_cleared.emit()
 	queue_redraw()
+
+
+func _toggle_fog_reveal_mode() -> void:
+	if _fog_reveal_mode:
+		_cancel_fog_reveal_mode()
+		return
+	var caster: Dictionary = _get_selected_fog_reveal_caster()
+	if caster.is_empty():
+		print("[Fog] Select Windrunner Scout on Elf turn before pressing F.")
+		return
+	if _is_fog_talent_on_cooldown(caster, FOG_REVEAL_COOLDOWN_KEY):
+		print("[Fog] Windrunner Scout reveal is cooling down.")
+		return
+	_cancel_fog_conceal_mode()
+	_fog_reveal_mode = true
+	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
+	_throw_beast_source_id = -1
+	_emit_action_preview({})
+	_update_fog_reveal_preview()
+	queue_redraw()
+
+
+func _cancel_fog_reveal_mode() -> void:
+	_fog_reveal_mode = false
+	_fog_reveal_tiles.clear()
+	queue_redraw()
+
+
+func _toggle_fog_conceal_mode() -> void:
+	if _fog_conceal_mode:
+		_cancel_fog_conceal_mode()
+		return
+	var caster: Dictionary = _get_selected_fog_conceal_caster()
+	if caster.is_empty():
+		print("[Fog] Select Moonshadow Assassin on Elf turn before pressing G.")
+		return
+	if _is_fog_talent_on_cooldown(caster, FOG_CONCEAL_COOLDOWN_KEY):
+		print("[Fog] Moonshadow Assassin conceal is cooling down.")
+		return
+	_cancel_fog_reveal_mode()
+	_fog_conceal_mode = true
+	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
+	_throw_beast_source_id = -1
+	_emit_action_preview({})
+	_update_fog_conceal_preview()
+	queue_redraw()
+
+
+func _cancel_fog_conceal_mode() -> void:
+	_fog_conceal_mode = false
+	_fog_conceal_tiles.clear()
+	queue_redraw()
+
+
+func _cancel_fog_modes() -> void:
+	_fog_reveal_mode = false
+	_fog_reveal_tiles.clear()
+	_fog_conceal_mode = false
+	_fog_conceal_tiles.clear()
+	queue_redraw()
+
+
+func _get_selected_elven_caster() -> Dictionary:
+	if _turn_manager == null or int(_turn_manager.current_player) != 0:
+		return {}
+	if _selected_id < 0:
+		return {}
+	var caster: Dictionary = _get_unit_by_id(_selected_id)
+	if caster.is_empty():
+		return {}
+	if int(caster.get("faction", -1)) != 0:
+		return {}
+	return caster
+
+
+func _get_selected_fog_reveal_caster() -> Dictionary:
+	var caster: Dictionary = _get_selected_elven_caster()
+	if caster.is_empty():
+		return {}
+	if str(caster.get("template_id", "")) != ELF_FOG_REVEAL_CASTER_TEMPLATE_ID:
+		return {}
+	return caster
+
+
+func _get_selected_fog_conceal_caster() -> Dictionary:
+	var caster: Dictionary = _get_selected_elven_caster()
+	if caster.is_empty():
+		return {}
+	if str(caster.get("template_id", "")) != ELF_FOG_CONCEAL_CASTER_TEMPLATE_ID:
+		return {}
+	return caster
+
+
+func _is_fog_talent_on_cooldown(unit: Dictionary, cooldown_key: String) -> bool:
+	return int(unit.get(cooldown_key, 0)) > 0
+
+
+func _set_fog_talent_cooldown(unit: Dictionary, cooldown_key: String) -> void:
+	unit[cooldown_key] = 1
+
+
+func _tick_fog_talent_cooldowns(unit: Dictionary) -> void:
+	var keys: Array[String] = [FOG_REVEAL_COOLDOWN_KEY, FOG_CONCEAL_COOLDOWN_KEY]
+	for key in keys:
+		var cooldown: int = int(unit.get(key, 0))
+		if cooldown > 0:
+			unit[key] = cooldown - 1
+
+
+func _clear_retreat_state(unit: Dictionary) -> void:
+	unit[RETREAT_HIDDEN_FROM_FACTION_KEY] = -1
+	unit[RETREAT_UNSELECTABLE_BY_UNIT_KEY] = -1
+
+
+func _update_fog_reveal_preview() -> void:
+	if not _fog_reveal_mode:
+		if not _fog_reveal_tiles.is_empty():
+			_fog_reveal_tiles.clear()
+		return
+	var caster: Dictionary = _get_selected_fog_reveal_caster()
+	if caster.is_empty():
+		_cancel_fog_reveal_mode()
+		return
+	if _is_fog_talent_on_cooldown(caster, FOG_REVEAL_COOLDOWN_KEY):
+		_cancel_fog_reveal_mode()
+		return
+	var target: Vector2i = _world_to_grid(get_global_mouse_position())
+	if not _in_bounds(target.x, target.y):
+		_fog_reveal_tiles.clear()
+		return
+	var caster_pos: Vector2i = caster.get("grid_pos", Vector2i.ZERO)
+	if _grid_distance(caster_pos, target) > FOG_REVEAL_RANGE:
+		_fog_reveal_tiles.clear()
+		return
+	_fog_reveal_tiles = _get_tiles_in_manhattan_radius(target, FOG_REVEAL_RADIUS)
+
+
+func _update_fog_conceal_preview() -> void:
+	if not _fog_conceal_mode:
+		if not _fog_conceal_tiles.is_empty():
+			_fog_conceal_tiles.clear()
+		return
+	var caster: Dictionary = _get_selected_fog_conceal_caster()
+	if caster.is_empty():
+		_cancel_fog_conceal_mode()
+		return
+	if _is_fog_talent_on_cooldown(caster, FOG_CONCEAL_COOLDOWN_KEY):
+		_cancel_fog_conceal_mode()
+		return
+	var target: Vector2i = _world_to_grid(get_global_mouse_position())
+	if not _in_bounds(target.x, target.y):
+		_fog_conceal_tiles.clear()
+		return
+	var caster_pos: Vector2i = caster.get("grid_pos", Vector2i.ZERO)
+	if _grid_distance(caster_pos, target) > FOG_CONCEAL_RANGE:
+		_fog_conceal_tiles.clear()
+		return
+	_fog_conceal_tiles = _get_tiles_in_manhattan_radius(target, FOG_CONCEAL_RADIUS)
+
+
+func _try_reveal_fog_at(target: Vector2i) -> bool:
+	var caster: Dictionary = _get_selected_fog_reveal_caster()
+	if caster.is_empty():
+		_cancel_fog_reveal_mode()
+		return false
+	if _is_fog_talent_on_cooldown(caster, FOG_REVEAL_COOLDOWN_KEY):
+		_cancel_fog_reveal_mode()
+		return false
+	var caster_pos: Vector2i = caster.get("grid_pos", Vector2i.ZERO)
+	if _grid_distance(caster_pos, target) > FOG_REVEAL_RANGE:
+		print("[Fog] Reveal target is out of range.")
+		return false
+	if _fog_manager == null or not _fog_manager.has_method("reveal_area"):
+		return false
+	if _turn_manager != null:
+		var ok: bool = _turn_manager.spend_ap(int(_turn_manager.current_player), FOG_REVEAL_AP_COST)
+		if not ok:
+			print("[Fog] Not enough AP to reveal fog.")
+			return false
+	_fog_manager.call("reveal_area", int(_turn_manager.current_player), target.x, target.y, FOG_REVEAL_RADIUS)
+	_set_fog_talent_cooldown(caster, FOG_REVEAL_COOLDOWN_KEY)
+	_cancel_fog_reveal_mode()
+	print("[Fog] Windrunner Scout revealed area %s." % str(target))
+	return true
+
+
+func _try_conceal_fog_at(target: Vector2i) -> bool:
+	var caster: Dictionary = _get_selected_fog_conceal_caster()
+	if caster.is_empty():
+		_cancel_fog_conceal_mode()
+		return false
+	if _is_fog_talent_on_cooldown(caster, FOG_CONCEAL_COOLDOWN_KEY):
+		_cancel_fog_conceal_mode()
+		return false
+	var caster_pos: Vector2i = caster.get("grid_pos", Vector2i.ZERO)
+	if _grid_distance(caster_pos, target) > FOG_CONCEAL_RANGE:
+		print("[Fog] Conceal target is out of range.")
+		return false
+	if _fog_manager == null or not _fog_manager.has_method("conceal_area"):
+		return false
+	if _turn_manager != null:
+		var ok: bool = _turn_manager.spend_ap(int(_turn_manager.current_player), FOG_CONCEAL_AP_COST)
+		if not ok:
+			print("[Fog] Not enough AP to conceal fog.")
+			return false
+	for player in range(3):
+		if player == 0:
+			continue
+		_fog_manager.call("conceal_area", player, target.x, target.y, FOG_CONCEAL_RADIUS)
+	_set_fog_talent_cooldown(caster, FOG_CONCEAL_COOLDOWN_KEY)
+	_cancel_fog_conceal_mode()
+	print("[Fog] Moonshadow Assassin concealed area %s." % str(target))
+	return true
 
 
 # ========== 移动 ==========
@@ -561,6 +856,9 @@ func _handle_warband_selection_click(gpos: Vector2i) -> void:
 
 
 func _update_action_preview() -> void:
+	if _fog_reveal_mode or _fog_conceal_mode:
+		_emit_action_preview({})
+		return
 	if _selected_id < 0 or _in_combat or not _move_visuals.is_empty():
 		_emit_action_preview({})
 		return
@@ -582,6 +880,9 @@ func _update_action_preview() -> void:
 				_emit_action_preview(_make_neutral_attack_preview(attacker, neutral_target))
 				return
 	if target.is_empty() or target["faction"] == attacker["faction"] or target["faction"] == -1:
+		_emit_action_preview({})
+		return
+	if _is_retreat_unselectable_for_attacker(attacker, target):
 		_emit_action_preview({})
 		return
 	_emit_action_preview(_make_attack_preview(attacker, target))
@@ -710,12 +1011,16 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 		preview["can_attack"] = true
 		preview["is_ranged"] = true
 		preview["reason"] = "\u5c04\u7a0b\u5185\uff0c\u53ef\u4ee5\u8fdc\u7a0b\u653b\u51fb"
+		if _can_trigger_elven_first_strike(attacker, target):
+			preview["reason"] += "\uff1b\u4fe1\u606f\u4f18\u52bf\u89e6\u53d1\u5148\u624b\u8fde\u51fb"
 		return preview
 
 	if _is_adjacent(from, target_pos):
 		preview["approach_pos"] = from
 		preview["can_attack"] = true
 		preview["reason"] = "已相邻，可以攻击"
+		if _can_trigger_elven_first_strike(attacker, target):
+			preview["reason"] += "\uff1b\u4fe1\u606f\u4f18\u52bf\u89e6\u53d1\u5148\u624b\u8fde\u51fb"
 		return preview
 
 	var approach_tile: Vector2i = _find_attack_approach_tile(attacker, target)
@@ -788,6 +1093,120 @@ func _can_ranged_attack(attacker: Dictionary, target: Dictionary) -> bool:
 	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
 	var dist: int = _grid_distance(from, target_pos)
 	return dist > 1 and dist <= data.attack_range
+
+
+func _can_unit_attack_unit(attacker: Dictionary, target: Dictionary) -> bool:
+	if attacker.is_empty() or target.is_empty():
+		return false
+	var data: UnitData = _get_unit_data(attacker)
+	if data.atk <= 0:
+		return false
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	var distance: int = _grid_distance(from, target_pos)
+	return distance > 0 and distance <= data.attack_range
+
+
+func _can_unit_see_unit(viewer: Dictionary, target: Dictionary) -> bool:
+	if viewer.is_empty() or target.is_empty():
+		return false
+	var viewer_faction: int = int(viewer.get("faction", -1))
+	if int(target.get(RETREAT_HIDDEN_FROM_FACTION_KEY, -1)) == viewer_faction:
+		return false
+	if viewer_faction == int(target.get("faction", -2)):
+		return true
+	var viewer_pos: Vector2i = viewer.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	return _grid_distance(viewer_pos, target_pos) <= _get_unit_vision_value(viewer)
+
+
+func _is_retreat_unselectable_for_attacker(attacker: Dictionary, target: Dictionary) -> bool:
+	if attacker.is_empty() or target.is_empty():
+		return false
+	return int(target.get(RETREAT_UNSELECTABLE_BY_UNIT_KEY, -1)) == int(attacker.get("id", -2))
+
+
+func _choose_tactical_first_attacker(initiator: Dictionary, target: Dictionary) -> int:
+	var initiator_sees_target: bool = _can_unit_see_unit(initiator, target)
+	var target_sees_initiator: bool = _can_unit_see_unit(target, initiator)
+	if initiator_sees_target and not target_sees_initiator:
+		return int(initiator.get("id", -1))
+	if target_sees_initiator and not initiator_sees_target:
+		return int(target.get("id", -1))
+	var initiator_range: int = _get_unit_data(initiator).attack_range
+	var target_range: int = _get_unit_data(target).attack_range
+	if target_range > initiator_range:
+		return int(target.get("id", -1))
+	return int(initiator.get("id", -1))
+
+
+func _apply_unit_attack_damage(attacker: Dictionary, defender: Dictionary) -> bool:
+	if attacker.is_empty() or defender.is_empty():
+		return false
+	var raw_dmg: int = _get_unit_attack_value(attacker)
+	var reduction: int = _get_unit_damage_reduction(defender)
+	var dmg: int = maxi(1, raw_dmg - reduction) if raw_dmg > 0 else 0
+	_play_attack_effect(attacker, defender)
+	defender["hp"] = int(defender.get("hp", 0)) - dmg
+	if dmg > 0:
+		_try_apply_scout_poison_weaken(attacker, defender)
+	_play_hit_effect(int(defender.get("id", -1)), defender.get("grid_pos", Vector2i.ZERO), dmg)
+	if int(defender.get("hp", 0)) <= 0:
+		return true
+	if _apply_elven_first_strike_followup(attacker, defender):
+		return int(defender.get("hp", 0)) <= 0
+	return false
+
+
+func _try_attack_building(attacker: Dictionary, building: Dictionary) -> bool:
+	if attacker.is_empty() or building.is_empty():
+		return false
+	if bool(attacker.get("has_attacked", false)):
+		return false
+	if int(building.get("faction", -1)) == int(attacker.get("faction", -2)):
+		return false
+	var data: UnitData = _get_unit_data(attacker)
+	if data.atk <= 0:
+		return false
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var distance: int = _distance_to_building(from, building)
+	if distance < 0 or distance > data.attack_range:
+		return false
+	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+	if bmgr == null or not bmgr.has_method("damage_building"):
+		return false
+	var damage: int = _get_unit_attack_value(attacker)
+	if data.category == UnitData.UnitCategory.SIEGE or "building_breaker" in data.tags:
+		damage += 2
+	if damage <= 0:
+		return false
+	attacker["has_attacked"] = true
+	bmgr.call("damage_building", int(building.get("id", -1)), damage, int(attacker.get("faction", -1)))
+	var selected: Dictionary = _get_unit_by_id(int(attacker.get("id", -1)))
+	if not selected.is_empty():
+		unit_selected.emit(_make_unit_view(selected))
+	queue_redraw()
+	return true
+
+
+func _distance_to_building(from: Vector2i, building: Dictionary) -> int:
+	var best: int = 999
+	for tile in _get_building_tiles(building):
+		var pos: Vector2i = tile
+		best = mini(best, _grid_distance(from, pos))
+	return -1 if best == 999 else best
+
+
+func _get_building_tiles(building: Dictionary) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if building.is_empty() or not building.has("data"):
+		return result
+	var data: BuildingData = building["data"]
+	var origin: Vector2i = building.get("origin", Vector2i.ZERO)
+	for dy in range(data.footprint.y):
+		for dx in range(data.footprint.x):
+			result.append(Vector2i(origin.x + dx, origin.y + dy))
+	return result
 
 
 func _remove_unit_after_attack(target_id: int, attacker: Dictionary) -> void:
@@ -1550,7 +1969,10 @@ func _on_player_turn_started(player: int) -> void:
 		if u["faction"] == player:
 			u["has_moved"] = false
 			u["has_attacked"] = false
+			u["has_first_struck"] = false
 			u["has_thrown_beast"] = false
+			_clear_retreat_state(u)
+			_tick_fog_talent_cooldowns(u)
 			_tick_unit_statuses(u)
 
 	_clear_selection()
@@ -1628,13 +2050,275 @@ func _move_warband_to(selected_unit: Dictionary, target: Vector2i) -> void:
 
 # ========== 战斗系统 ==========
 
+func _begin_tactical_encounter(initiator_id: int, target_id: int) -> bool:
+	if _in_combat:
+		return false
+	var initiator: Dictionary = _get_unit_by_id(initiator_id)
+	var target: Dictionary = _get_unit_by_id(target_id)
+	if initiator.is_empty() or target.is_empty():
+		return false
+	if int(initiator.get("faction", -1)) == int(target.get("faction", -2)):
+		return false
+	if int(initiator.get("faction", -1)) < 0 or int(target.get("faction", -1)) < 0:
+		return false
+	var first_id: int = _choose_tactical_first_attacker(initiator, target)
+	var first_attacker: Dictionary = _get_unit_by_id(first_id)
+	var decision_unit: Dictionary = target if first_id == initiator_id else initiator
+	if not _can_unit_attack_unit(first_attacker, decision_unit):
+		if _can_unit_attack_unit(initiator, target):
+			first_attacker = initiator
+			decision_unit = target
+			first_id = initiator_id
+		elif _can_unit_attack_unit(target, initiator):
+			first_attacker = target
+			decision_unit = initiator
+			first_id = target_id
+		else:
+			return false
+
+	_in_combat = true
+	_combat_sequence_id += 1
+	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
+	_throw_beast_source_id = -1
+	_emit_action_preview({})
+	_combat_data = {
+		"mode": "tactical_decision",
+		"phase": "decision",
+		"initiator_id": initiator_id,
+		"target_id": target_id,
+		"first_attacker_id": first_id,
+		"decision_unit_id": int(decision_unit.get("id", -1)),
+		"committed_to_engage": false,
+		"sequence_id": _combat_sequence_id,
+	}
+	first_attacker["has_attacked"] = true
+	combat_started.emit()
+	var dead: bool = _apply_unit_attack_damage(first_attacker, decision_unit)
+	if dead:
+		_remove_unit_after_attack(int(decision_unit.get("id", -1)), first_attacker)
+		_finish_combat_state()
+		queue_redraw()
+		return true
+	_show_combat_choice_panel(decision_unit, first_attacker)
+	queue_redraw()
+	return true
+
+
+func _start_locked_duel(first_attacker_id: int, second_unit_id: int) -> void:
+	if _combat_timer:
+		_combat_timer.stop()
+		_combat_timer.queue_free()
+		_combat_timer = null
+	_hide_combat_choice_panel()
+	_combat_data = {
+		"unit_a_id": first_attacker_id,
+		"unit_b_id": second_unit_id,
+		"next_attacker_id": first_attacker_id,
+		"initial_attacker_id": first_attacker_id,
+		"locked_until_death": true,
+	}
+	_combat_timer = Timer.new()
+	_combat_timer.wait_time = 1.0
+	_combat_timer.timeout.connect(_combat_tick)
+	add_child(_combat_timer)
+	_combat_timer.start()
+	_combat_tick()
+
+
+func _show_combat_choice_panel(decision_unit: Dictionary, first_attacker: Dictionary) -> void:
+	_ensure_combat_choice_panel()
+	if _combat_choice_panel == null:
+		return
+	var unit_name: String = _get_unit_data(decision_unit).unit_name
+	var attacker_name: String = _get_unit_data(first_attacker).unit_name
+	_combat_choice_label.text = "%s 受到 %s 先手攻击，选择撤离或战斗。" % [unit_name, attacker_name]
+	_combat_choice_panel.visible = true
+
+
+func _ensure_combat_choice_panel() -> void:
+	if _combat_choice_panel != null:
+		return
+	var parent_node: Node = null
+	if get_tree().current_scene != null:
+		parent_node = get_tree().current_scene.get_node_or_null("UI")
+	if parent_node == null:
+		parent_node = self
+	_combat_choice_panel = Panel.new()
+	_combat_choice_panel.name = "CombatChoicePanel"
+	_combat_choice_panel.position = Vector2(760.0, 420.0)
+	_combat_choice_panel.size = Vector2(420.0, 150.0)
+	_combat_choice_panel.visible = false
+	_combat_choice_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_combat_choice_panel.z_index = 120
+	parent_node.add_child(_combat_choice_panel)
+
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	_combat_choice_panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(vbox)
+
+	_combat_choice_label = Label.new()
+	_combat_choice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_combat_choice_label.add_theme_font_size_override("font_size", 16)
+	vbox.add_child(_combat_choice_label)
+
+	var buttons := HBoxContainer.new()
+	buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(buttons)
+
+	_combat_retreat_button = Button.new()
+	_combat_retreat_button.text = "撤离"
+	_combat_retreat_button.focus_mode = Control.FOCUS_NONE
+	_combat_retreat_button.pressed.connect(_on_combat_retreat_pressed)
+	buttons.add_child(_combat_retreat_button)
+
+	_combat_engage_button = Button.new()
+	_combat_engage_button.text = "战斗"
+	_combat_engage_button.focus_mode = Control.FOCUS_NONE
+	_combat_engage_button.pressed.connect(_on_combat_engage_pressed)
+	buttons.add_child(_combat_engage_button)
+
+
+func _hide_combat_choice_panel() -> void:
+	if _combat_choice_panel != null:
+		_combat_choice_panel.visible = false
+
+
+func _on_combat_retreat_pressed() -> void:
+	_resolve_tactical_retreat()
+
+
+func _on_combat_engage_pressed() -> void:
+	_resolve_tactical_engage()
+
+
+func _resolve_tactical_retreat() -> void:
+	if str(_combat_data.get("mode", "")) != "tactical_decision":
+		return
+	if bool(_combat_data.get("committed_to_engage", false)):
+		return
+	var retreat_unit: Dictionary = _get_unit_by_id(int(_combat_data.get("decision_unit_id", -1)))
+	var attacker: Dictionary = _get_unit_by_id(int(_combat_data.get("first_attacker_id", -1)))
+	if retreat_unit.is_empty() or attacker.is_empty():
+		_finish_combat_state()
+		return
+	if int(retreat_unit.get("faction", -1)) == 0:
+		retreat_unit[RETREAT_HIDDEN_FROM_FACTION_KEY] = int(attacker.get("faction", -1))
+	else:
+		retreat_unit[RETREAT_UNSELECTABLE_BY_UNIT_KEY] = int(attacker.get("id", -1))
+	print("[Combat] Unit retreated from tactical encounter.")
+	_finish_combat_state()
+	queue_redraw()
+
+
+func _resolve_tactical_engage() -> void:
+	if str(_combat_data.get("mode", "")) != "tactical_decision":
+		return
+	_combat_data["committed_to_engage"] = true
+	_combat_data["phase"] = "committed_approach"
+	_hide_combat_choice_panel()
+	_continue_committed_engage()
+
+
+func _continue_committed_engage(expected_sequence_id: int = -1) -> void:
+	if not _in_combat:
+		return
+	if str(_combat_data.get("mode", "")) != "tactical_decision":
+		return
+	if expected_sequence_id >= 0 and int(_combat_data.get("sequence_id", -2)) != expected_sequence_id:
+		return
+	if not bool(_combat_data.get("committed_to_engage", false)):
+		return
+	var mover: Dictionary = _get_unit_by_id(int(_combat_data.get("decision_unit_id", -1)))
+	var opponent: Dictionary = _get_unit_by_id(int(_combat_data.get("first_attacker_id", -1)))
+	if mover.is_empty() or opponent.is_empty():
+		_finish_combat_state()
+		return
+	if _can_unit_attack_unit(mover, opponent):
+		_start_locked_duel(int(mover.get("id", -1)), int(opponent.get("id", -1)))
+		return
+	var approach_tile: Vector2i = _find_forced_approach_tile(mover, opponent)
+	if approach_tile.x < 0:
+		print("[Combat] Forced approach blocked; ending encounter.")
+		_finish_combat_state()
+		return
+	_move_unit_without_ap(mover, approach_tile)
+	var dead: bool = _apply_unit_attack_damage(opponent, mover)
+	if dead:
+		_remove_unit_after_attack(int(mover.get("id", -1)), opponent)
+		_finish_combat_state()
+		queue_redraw()
+		return
+	_schedule_committed_engage_continue()
+
+
+func _schedule_committed_engage_continue() -> void:
+	if not is_inside_tree():
+		return
+	var sequence_id: int = int(_combat_data.get("sequence_id", -1))
+	var timer: SceneTreeTimer = get_tree().create_timer(MOVE_VISUAL_DURATION + 0.1)
+	timer.timeout.connect(_continue_committed_engage.bind(sequence_id))
+
+
+func _find_forced_approach_tile(mover: Dictionary, opponent: Dictionary) -> Vector2i:
+	var reachable: Array = _calc_reachable(mover)
+	if reachable.is_empty():
+		return Vector2i(-1, -1)
+	var opponent_pos: Vector2i = opponent.get("grid_pos", Vector2i.ZERO)
+	var current_pos: Vector2i = mover.get("grid_pos", Vector2i.ZERO)
+	var current_dist: int = _grid_distance(current_pos, opponent_pos)
+	var attack_range: int = _get_unit_data(mover).attack_range
+	var best_attack_tile := Vector2i(-1, -1)
+	var best_attack_dist: int = 999
+	var best_approach_tile := Vector2i(-1, -1)
+	var best_approach_dist: int = current_dist
+	for tile_variant in reachable:
+		var tile: Vector2i = tile_variant
+		var dist: int = _grid_distance(tile, opponent_pos)
+		if dist <= attack_range and dist < best_attack_dist:
+			best_attack_tile = tile
+			best_attack_dist = dist
+		elif dist < best_approach_dist:
+			best_approach_tile = tile
+			best_approach_dist = dist
+	if best_attack_tile.x >= 0:
+		return best_attack_tile
+	return best_approach_tile
+
+
+func _move_unit_without_ap(unit: Dictionary, target: Vector2i) -> void:
+	var from: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	unit["grid_pos"] = target
+	unit["has_moved"] = true
+	_start_move_visual(int(unit.get("id", -1)), from, target)
+	if _fog_manager:
+		var faction: int = int(unit.get("faction", -1))
+		_fog_manager.reveal_area(faction, target.x, target.y, _get_unit_vision_value(unit))
+	queue_redraw()
+
+
 func _initiate_combat(attacker_id: int, defender_id: int) -> void:
+	if _begin_tactical_encounter(attacker_id, defender_id):
+		return
+	if _in_combat:
+		return
 	## 发起决斗：创建 1 秒间隔 Timer，轮流攻击直至死亡
 	_in_combat = true
 	_combat_data = {
 		"unit_a_id": attacker_id,
 		"unit_b_id": defender_id,
 		"next_attacker_id": attacker_id,
+		"initial_attacker_id": attacker_id,
 	}
 	combat_started.emit()
 
@@ -1651,6 +2335,10 @@ func _initiate_combat(attacker_id: int, defender_id: int) -> void:
 
 func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
 	if attacker_id < 0 or defender_id < 0:
+		return
+	if _begin_tactical_encounter(attacker_id, defender_id):
+		return
+	if _in_combat:
 		return
 	_in_combat = true
 	_combat_data = {
@@ -1712,6 +2400,11 @@ func _ranged_combat_tick() -> void:
 		_remove_unit_after_attack(int(defender.get("id", -1)), attacker)
 		_finish_ranged_combat()
 		return
+	if _apply_elven_first_strike_followup(attacker, defender):
+		if int(defender.get("hp", 0)) <= 0:
+			_remove_unit_after_attack(int(defender.get("id", -1)), attacker)
+			_finish_ranged_combat()
+			return
 	queue_redraw()
 
 
@@ -1776,6 +2469,8 @@ func _combat_tick() -> void:
 
 	# 受击视觉效果
 	_play_hit_effect(defender["id"], defender["grid_pos"], dmg)
+	if int(attacker.get("id", -1)) == int(_combat_data.get("initial_attacker_id", -1)):
+		_apply_elven_first_strike_followup(attacker, defender)
 
 	# 刷新 UI（重发选中单位数据）
 	var selected := _get_unit_by_id(_selected_id)
@@ -1911,7 +2606,9 @@ func _finish_death_visual(unit_id: int) -> void:
 
 
 func _finish_combat_state() -> void:
+	_hide_combat_choice_panel()
 	_in_combat = false
+	_combat_sequence_id += 1
 	_combat_data = {}
 	combat_ended.emit()
 	_clear_selection()
@@ -2088,6 +2785,39 @@ func _get_unit_damage_reduction(unit: Dictionary) -> int:
 	return maxi(0, bonus)
 
 
+func _can_trigger_elven_first_strike(attacker: Dictionary, defender: Dictionary) -> bool:
+	if attacker.is_empty() or defender.is_empty():
+		return false
+	var attacker_data: UnitData = _get_unit_data(attacker)
+	if int(attacker.get("faction", -1)) != 0 and not ("elf" in attacker_data.tags):
+		return false
+	if attacker_data.atk <= 0:
+		return false
+	if bool(attacker.get("has_first_struck", false)):
+		return false
+	if int(attacker.get("faction", -1)) == int(defender.get("faction", -2)):
+		return false
+	var attacker_pos: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var defender_pos: Vector2i = defender.get("grid_pos", Vector2i.ZERO)
+	var distance: int = _grid_distance(attacker_pos, defender_pos)
+	return distance <= _get_unit_vision_value(attacker) and distance > _get_unit_vision_value(defender)
+
+
+func _apply_elven_first_strike_followup(attacker: Dictionary, defender: Dictionary) -> bool:
+	if not _can_trigger_elven_first_strike(attacker, defender):
+		return false
+	var raw_dmg: int = _get_unit_attack_value(attacker)
+	var reduction: int = _get_unit_damage_reduction(defender)
+	var normal_damage: int = maxi(1, raw_dmg - reduction) if raw_dmg > 0 else 0
+	if normal_damage <= 0:
+		return false
+	var followup_damage: int = maxi(1, int(ceil(float(normal_damage) * ELVEN_FIRST_STRIKE_SECOND_HIT_RATIO)))
+	defender["hp"] = int(defender.get("hp", 0)) - followup_damage
+	attacker["has_first_struck"] = true
+	_play_hit_effect(int(defender.get("id", -1)), defender.get("grid_pos", Vector2i.ZERO), followup_damage)
+	return true
+
+
 func _get_movement_ap_cost(unit: Dictionary, steps: int) -> int:
 	if steps <= 0:
 		return 0
@@ -2168,6 +2898,10 @@ func add_unit(faction: int, data: UnitData, grid_pos: Vector2i, hp: int = -1) ->
 		"has_moved": false,
 		"has_attacked": false,
 		"has_thrown_beast": false,
+		"fog_reveal_cooldown_turns": 0,
+		"fog_conceal_cooldown_turns": 0,
+		"retreat_hidden_from_faction": -1,
+		"retreat_unselectable_by_unit_id": -1,
 		"statuses": {},
 	})
 	if spawn_pos != grid_pos:

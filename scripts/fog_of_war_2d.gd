@@ -150,6 +150,24 @@ func reveal_area_immediate(player: int, cx: int, cy: int, radius: int) -> void:
 		queue_redraw()
 
 
+func conceal_area(player: int, cx: int, cy: int, radius: int) -> void:
+	## 将指定玩家已探索区域重新遮蔽为迷雾。
+	var changed := false
+	var fading: Dictionary = _fading_out[player]
+	for y in range(cy - radius, cy + radius + 1):
+		for x in range(cx - radius, cx + radius + 1):
+			if _in_bounds(x, y) and _manhattan_dist(x, y, cx, cy) <= radius:
+				var pos := Vector2i(x, y)
+				if fading.has(pos):
+					fading.erase(pos)
+				if fog_grids[player][y][x] < 0.7:
+					fog_grids[player][y][x] = 0.7
+					changed = true
+	if changed:
+		queue_redraw()
+		fog_updated.emit(player)
+
+
 func explore_area(player: int, cx: int, cy: int, radius: int) -> void:
 	## 依现有设计：无未探索态，故本函数仅保留接口
 	pass
