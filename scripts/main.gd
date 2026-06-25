@@ -17,6 +17,7 @@ const CivilizationRoutePanelScript = preload("res://scripts/ui/civilization_rout
 @onready var turn_manager: Node = $GameBoard/TurnManager2D
 @onready var unit_manager: Node2D = $GameBoard/UnitManager2D
 @onready var building_manager: Node2D = $GameBoard/BuildingManager2D
+@onready var wall_blueprint_manager: Node2D = $GameBoard/WallBlueprintManager2D
 @onready var turn_label: Label = $UI/TurnLabel
 @onready var resource_tracker: Node = $GameBoard/ResourceTracker
 @onready var resource_panel: Panel = $UI/ResourcePanel
@@ -46,6 +47,8 @@ var score_rule_button: Button = null
 var civilization_route_panel: Control = null
 var civilization_route_button: Button = null
 var creative_mode_button: Button = null
+var wall_blueprint_button: Button = null
+var wall_blueprint_status_label: Label = null
 var _creative_mode_enabled := false
 
 
@@ -89,6 +92,18 @@ func _setup_game() -> void:
 	building_manager.set_turn_manager(turn_manager)
 	building_manager.building_hovered.connect(_on_resource_hovered)
 	building_manager.set_resource_tracker(resource_tracker)
+	if wall_blueprint_manager.has_method("set_turn_manager"):
+		wall_blueprint_manager.set_turn_manager(turn_manager)
+	if wall_blueprint_manager.has_method("set_building_manager"):
+		wall_blueprint_manager.set_building_manager(building_manager)
+	if wall_blueprint_manager.has_method("set_resource_tracker"):
+		wall_blueprint_manager.set_resource_tracker(resource_tracker)
+	if wall_blueprint_manager.has_signal("wall_hovered"):
+		wall_blueprint_manager.wall_hovered.connect(_on_resource_hovered)
+	if wall_blueprint_manager.has_signal("wall_mode_changed"):
+		wall_blueprint_manager.wall_mode_changed.connect(_on_wall_mode_changed)
+	if wall_blueprint_manager.has_signal("wall_preview_changed"):
+		wall_blueprint_manager.wall_preview_changed.connect(_on_wall_preview_changed)
 	if building_manager.has_method("set_civilization_rules"):
 		building_manager.set_civilization_rules(civilization_rules)
 	building_manager.recruit_panel_requested.connect(_on_recruit_panel_requested)
@@ -156,6 +171,7 @@ func _setup_game() -> void:
 	_init_score_rule_button()
 	_init_civilization_route_panel()
 	_init_civilization_route_button()
+	_init_wall_blueprint_ui()
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
@@ -256,6 +272,7 @@ func _on_player_turn_started(player: int) -> void:
 	debug_label.text = _format_ap_debug_text(player)
 	_update_ap_status_label(player)
 	resource_tracker.update_display(player)
+	_update_wall_blueprint_ui(player, "")
 	# 海克斯商队触发检查
 	if _goblin_market_round == turn_manager.round_number:
 		if neutral_unit_manager.should_caravan_visit(player):
@@ -272,6 +289,7 @@ func _on_round_ended(round: int) -> void:
 func _on_ap_changed(player: int, ap: int) -> void:
 	debug_label.text = _format_ap_debug_text(player)
 	_update_ap_status_label(player)
+	_update_wall_blueprint_ui(player, "")
 	resource_tracker.update_display(player)
 	building_ui.refresh(player)
 
@@ -537,6 +555,76 @@ func _on_civilization_route_button_pressed() -> void:
 	civilization_route_panel.queue_redraw()
 
 
+func _init_wall_blueprint_ui() -> void:
+	wall_blueprint_button = Button.new()
+	wall_blueprint_button.name = "WallBlueprintButton"
+	wall_blueprint_button.text = "\u57ce\u5899"
+	wall_blueprint_button.toggle_mode = true
+	wall_blueprint_button.position = Vector2(384.0, 176.0)
+	wall_blueprint_button.size = Vector2(76.0, 30.0)
+	wall_blueprint_button.focus_mode = Control.FOCUS_NONE
+	wall_blueprint_button.z_index = 90
+	wall_blueprint_button.tooltip_text = "\u77ee\u4eba\u56de\u5408\uff1a\u8fde\u63a5\u4e24\u5ea7\u5efa\u7b51\u89c4\u5212\u57ce\u5899"
+	wall_blueprint_button.pressed.connect(_on_wall_blueprint_button_pressed)
+	$UI.add_child(wall_blueprint_button)
+
+	wall_blueprint_status_label = Label.new()
+	wall_blueprint_status_label.name = "WallBlueprintStatusLabel"
+	wall_blueprint_status_label.position = Vector2(16.0, 214.0)
+	wall_blueprint_status_label.size = Vector2(520.0, 48.0)
+	wall_blueprint_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wall_blueprint_status_label.z_index = 90
+	wall_blueprint_status_label.add_theme_font_size_override("font_size", 13)
+	wall_blueprint_status_label.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0, 0.95))
+	wall_blueprint_status_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.85))
+	wall_blueprint_status_label.add_theme_constant_override("shadow_offset_x", 1)
+	wall_blueprint_status_label.add_theme_constant_override("shadow_offset_y", 1)
+	$UI.add_child(wall_blueprint_status_label)
+	_update_wall_blueprint_ui(turn_manager.current_player, "")
+
+
+func _on_wall_blueprint_button_pressed() -> void:
+	if wall_blueprint_manager == null:
+		return
+	if turn_manager.current_player != 1:
+		debug_label.text = "\u53ea\u6709\u77ee\u4eba\u56de\u5408\u53ef\u4ee5\u89c4\u5212\u57ce\u5899"
+		return
+	if wall_blueprint_manager.has_method("is_wall_mode_active") and bool(wall_blueprint_manager.call("is_wall_mode_active")):
+		wall_blueprint_manager.call("cancel_wall_blueprint")
+	else:
+		wall_blueprint_manager.call("start_wall_anchor_selection")
+
+
+func _on_wall_mode_changed(active: bool, message: String) -> void:
+	_update_wall_blueprint_ui(turn_manager.current_player, message)
+	if wall_blueprint_button != null:
+		wall_blueprint_button.button_pressed = active
+
+
+func _on_wall_preview_changed(message: String, valid: bool, cells: int, stone_cost: int) -> void:
+	var state_text := "\u53ef\u786e\u8ba4" if valid else "\u672a\u5b8c\u6210"
+	var full_message := message
+	if cells > 0:
+		full_message = "\u57ce\u5899\u84dd\u56fe %d\u683c | \u77f3\u6599 %d | %s" % [cells, stone_cost, state_text]
+	_update_wall_blueprint_ui(turn_manager.current_player, full_message)
+
+
+func _update_wall_blueprint_ui(player: int, message: String) -> void:
+	if wall_blueprint_button != null:
+		var is_dwarf := player == 1
+		wall_blueprint_button.disabled = not is_dwarf
+		wall_blueprint_button.modulate = Color(0.72, 0.86, 1.0, 1.0) if is_dwarf else Color(0.45, 0.45, 0.45, 0.72)
+	if wall_blueprint_status_label == null:
+		return
+	if player != 1:
+		wall_blueprint_status_label.text = ""
+		return
+	if message.is_empty():
+		wall_blueprint_status_label.text = "\u57ce\u5899\uff1a\u70b9\u51fb\u6309\u94ae\u6216 W \u8fdb\u5165\u84dd\u56fe\u6a21\u5f0f"
+	else:
+		wall_blueprint_status_label.text = message
+
+
 func _init_stage_event_service() -> void:
 	stage_event_service = StageEventServiceScript.new()
 	stage_event_service.name = "StageEventService"
@@ -684,6 +772,9 @@ func _init_action_preview_panel() -> void:
 func _input(event: InputEvent) -> void:
 	# Enter 或 Tab 都可结束回合（Tab 在编辑器内嵌模式可能被截获）
 	if event is InputEventKey and event.pressed and not event.echo:
+		if wall_blueprint_manager != null and wall_blueprint_manager.has_method("is_wall_mode_active"):
+			if bool(wall_blueprint_manager.call("is_wall_mode_active")) and event.keycode == KEY_ENTER:
+				return
 		if event.keycode == KEY_ENTER or event.keycode == KEY_TAB:
 			_on_end_turn()
 

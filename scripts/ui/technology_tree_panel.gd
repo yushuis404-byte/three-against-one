@@ -19,8 +19,8 @@ var _turn_manager: Node = null
 var _selected_id := ""
 var _node_world_positions: Dictionary = {}
 var _node_screen_rects: Dictionary = {}
-var _pan := Vector2(480.0, 230.0)
-var _zoom := 0.92
+var _pan := Vector2(760.0, 540.0)
+var _zoom := 0.68
 var _dragging := false
 var _last_mouse := Vector2.ZERO
 var _research_rect := Rect2()
@@ -106,6 +106,7 @@ func _draw() -> void:
 		return
 	var player: int = int(_turn_manager.current_player)
 	_draw_header(player)
+	_draw_branch_guides()
 	_draw_connections(player)
 	_draw_nodes(player)
 	_draw_detail(player)
@@ -222,6 +223,21 @@ func _draw_grid() -> void:
 		y += step
 
 
+func _draw_branch_guides() -> void:
+	var center := _world_to_screen(Vector2.ZERO)
+	var radii: Array[float] = [170.0, 320.0, 470.0, 620.0, 770.0]
+	for radius in radii:
+		draw_arc(center, radius * _zoom, deg_to_rad(-168.0), deg_to_rad(168.0), 96, Color(1.0, 1.0, 1.0, 0.055), 1.0, true)
+	var sector_lines: Array[float] = [-165.0, -95.0, -20.0, 52.0, 122.0, 168.0]
+	for angle in sector_lines:
+		var end := _world_to_screen(_polar_to_world(angle, 830.0))
+		draw_line(center, end, Color(1.0, 1.0, 1.0, 0.045), 1.0, true)
+	_draw_centered_text(_world_to_screen(_polar_to_world(-132.0, 880.0)), "\u7cbe\u7075", 14, Color(0.56, 0.94, 0.62, 0.55))
+	_draw_centered_text(_world_to_screen(_polar_to_world(-56.0, 880.0)), "\u5de8\u9f99", 14, Color(0.42, 0.96, 0.76, 0.55))
+	_draw_centered_text(_world_to_screen(_polar_to_world(27.0, 880.0)), "\u517d\u4eba", 14, Color(1.0, 0.45, 0.36, 0.55))
+	_draw_centered_text(_world_to_screen(_polar_to_world(140.0, 880.0)), "\u77ee\u4eba", 14, Color(0.94, 0.76, 0.38, 0.55))
+
+
 func _draw_connections(player: int) -> void:
 	for definition in _service.get_definitions():
 		var id: String = str(definition["id"])
@@ -238,7 +254,7 @@ func _draw_connections(player: int) -> void:
 				color = LINE_DONE
 			elif _service.is_researched(player, parent_id):
 				color = LINE_OPEN
-			_draw_curve(from_pos, to_pos, color, 2.2)
+			_draw_elbow_line(from_pos, to_pos, color, 2.2)
 		for any_variant in definition.get("required_any_techs", []):
 			var any_id: String = str(any_variant)
 			if not _node_world_positions.has(any_id):
@@ -249,7 +265,7 @@ func _draw_connections(player: int) -> void:
 				any_color = LINE_DONE
 			elif _service.is_researched(player, any_id):
 				any_color = LINE_OPEN
-			_draw_curve(any_from, to_pos, Color(any_color.r, any_color.g, any_color.b, 0.55), 1.4)
+			_draw_elbow_line(any_from, to_pos, Color(any_color.r, any_color.g, any_color.b, 0.55), 1.4)
 
 
 func _draw_nodes(player: int) -> void:
@@ -300,7 +316,7 @@ func _draw_detail(player: int) -> void:
 	draw_line(Vector2(x, HEADER_H), Vector2(x, size.y), Color(1, 1, 1, 0.12), 1.0)
 	if _selected_id.is_empty():
 		_draw_text(Vector2(x + 18.0, HEADER_H + 32.0), "\u9009\u62e9\u4e00\u4e2a\u79d1\u6280\u8282\u70b9", 15, Color(0.94, 0.97, 1.0))
-		_draw_text(Vector2(x + 18.0, HEADER_H + 58.0), "\u5706\u5f62\u4ee3\u8868\u79d1\u6280\uff0c\u66f2\u7ebf\u4ee3\u8868\u524d\u7f6e\u5173\u7cfb\u3002", 12, Color(0.68, 0.74, 0.84))
+		_draw_text(Vector2(x + 18.0, HEADER_H + 58.0), "\u5706\u5f62\u4ee3\u8868\u79d1\u6280\uff0c\u6298\u7ebf\u4ee3\u8868\u524d\u7f6e\u5173\u7cfb\u3002", 12, Color(0.68, 0.74, 0.84))
 		return
 	var definition: Dictionary = _service.get_definition(_selected_id)
 	if definition.is_empty():
@@ -353,63 +369,88 @@ func _status_text(researched: bool, available: bool, info: Dictionary) -> String
 func _build_static_layout() -> void:
 	_node_world_positions = {
 		"tech.root.civilization": Vector2(0, 0),
-		"tech.common.map_drawing": Vector2(210, -210),
-		"tech.common.terrain_record": Vector2(430, -310),
-		"tech.common.resource_marking": Vector2(430, -120),
-		"tech.common.border_survey": Vector2(680, -310),
-		"tech.common.basic_forging": Vector2(210, 0),
-		"tech.common.tool_forging": Vector2(430, 30),
-		"tech.common.iron_mining": Vector2(430, 180),
-		"tech.common.metal_parts": Vector2(680, 120),
-		"tech.common.grain_ration": Vector2(210, 220),
-		"tech.common.recruitment_rules": Vector2(430, 320),
-		"tech.common.war_drum_mobilization": Vector2(680, 370),
-		"tech.common.storage_system": Vector2(210, 420),
-		"tech.common.building_upgrade": Vector2(680, 520),
-		"tech.common.gold_mining": Vector2(700, -60),
-		"tech.common.coin_machinery": Vector2(940, 40),
-		"tech.dragon.nest_survey": Vector2(940, -110),
-		"tech.dragon.wyvern_fire_research": Vector2(1190, -230),
-		"tech.dragon.wyvern_frost_research": Vector2(1190, -110),
-		"tech.dragon.wyvern_toxic_research": Vector2(1190, 10),
-		"tech.dragon.fire_blade": Vector2(1460, -260),
-		"tech.dragon.frost_scale": Vector2(1460, -110),
-		"tech.dragon.corrosive_weapons": Vector2(1460, 40),
-		"tech.lord.elf.wind_sight": Vector2(940, -330),
-		"tech.lord.elf.forest_sense": Vector2(1190, -410),
-		"tech.lord.elf.hidden_march": Vector2(1190, -250),
-		"tech.lord.dwarf.deep_forge": Vector2(940, 180),
-		"tech.lord.dwarf.vein_echo": Vector2(1190, 110),
-		"tech.lord.dwarf.stone_oath": Vector2(1190, 270),
-		"tech.lord.orc.blood_drum": Vector2(940, 410),
-		"tech.lord.orc.raid_ration": Vector2(1190, 390),
-		"tech.lord.orc.berserker_training": Vector2(1190, 540),
-		"tech.lord.orc.dragon_war_lore": Vector2(1460, 650),
-		"tech.lord.orc.dragon_slayer": Vector2(1740, 560),
-		"tech.lord.orc.dragonbone_shield": Vector2(1740, 660),
-		"tech.lord.orc.dragon_blood_berserker": Vector2(1740, 760),
-		"tech.lord.orc.dragon_rider_path": Vector2(2020, 660),
-		"tech.hybrid.ancient_iron_branch": Vector2(1460, -160),
-		"tech.hybrid.forge_war_drum": Vector2(1460, 230),
-		"tech.hybrid.forest_raid": Vector2(1460, 460),
-		"tech.hybrid.tri_lord_pact": Vector2(1740, 130),
+		"tech.common.map_drawing": _polar_to_world(-132.0, 170.0),
+		"tech.common.terrain_record": _polar_to_world(-146.0, 320.0),
+		"tech.common.resource_marking": _polar_to_world(-62.0, 170.0),
+		"tech.common.border_survey": _polar_to_world(-132.0, 470.0),
+		"tech.common.basic_forging": _polar_to_world(140.0, 170.0),
+		"tech.common.tool_forging": _polar_to_world(154.0, 320.0),
+		"tech.common.iron_mining": _polar_to_world(126.0, 320.0),
+		"tech.common.metal_parts": _polar_to_world(140.0, 470.0),
+		"tech.common.grain_ration": _polar_to_world(52.0, 170.0),
+		"tech.common.recruitment_rules": _polar_to_world(52.0, 320.0),
+		"tech.common.war_drum_mobilization": _polar_to_world(52.0, 470.0),
+		"tech.common.storage_system": _polar_to_world(168.0, 270.0),
+		"tech.common.building_upgrade": _polar_to_world(168.0, 470.0),
+		"tech.common.gold_mining": _polar_to_world(-40.0, 320.0),
+		"tech.common.coin_machinery": _polar_to_world(-24.0, 470.0),
+		"tech.dragon.nest_survey": _polar_to_world(-62.0, 320.0),
+		"tech.dragon.wyvern_fire_research": _polar_to_world(-82.0, 470.0),
+		"tech.dragon.wyvern_frost_research": _polar_to_world(-62.0, 470.0),
+		"tech.dragon.wyvern_toxic_research": _polar_to_world(-42.0, 470.0),
+		"tech.dragon.fire_blade": _polar_to_world(-82.0, 620.0),
+		"tech.dragon.frost_scale": _polar_to_world(-62.0, 620.0),
+		"tech.dragon.corrosive_weapons": _polar_to_world(-42.0, 620.0),
+		"tech.lord.elf.wind_sight": _polar_to_world(-132.0, 620.0),
+		"tech.lord.elf.forest_sense": _polar_to_world(-150.0, 770.0),
+		"tech.lord.elf.hidden_march": _polar_to_world(-114.0, 770.0),
+		"tech.lord.dwarf.deep_forge": _polar_to_world(140.0, 620.0),
+		"tech.lord.dwarf.vein_echo": _polar_to_world(122.0, 770.0),
+		"tech.lord.dwarf.stone_oath": _polar_to_world(158.0, 770.0),
+		"tech.lord.orc.blood_drum": _polar_to_world(52.0, 620.0),
+		"tech.lord.orc.raid_ration": _polar_to_world(34.0, 770.0),
+		"tech.lord.orc.berserker_training": _polar_to_world(70.0, 770.0),
+		"tech.lord.orc.dragon_war_lore": _polar_to_world(-4.0, 620.0),
+		"tech.lord.orc.dragon_slayer": _polar_to_world(-16.0, 770.0),
+		"tech.lord.orc.dragonbone_shield": _polar_to_world(0.0, 770.0),
+		"tech.lord.orc.dragon_blood_berserker": _polar_to_world(16.0, 860.0),
+		"tech.lord.orc.dragon_rider_path": _polar_to_world(-4.0, 860.0),
+		"tech.hybrid.ancient_iron_branch": _polar_to_world(-178.0, 620.0),
+		"tech.hybrid.forge_war_drum": _polar_to_world(96.0, 620.0),
+		"tech.hybrid.forest_raid": _polar_to_world(88.0, 770.0),
+		"tech.hybrid.tri_lord_pact": _polar_to_world(112.0, 860.0),
 	}
 
 
-func _draw_curve(from_pos: Vector2, to_pos: Vector2, color: Color, width: float) -> void:
+func _draw_elbow_line(from_pos: Vector2, to_pos: Vector2, color: Color, width: float) -> void:
+	var from_world := _screen_to_world(from_pos)
+	var to_world := _screen_to_world(to_pos)
+	var from_radius := from_world.length()
+	var to_radius := to_world.length()
+	if from_radius < 8.0 or to_radius < 8.0:
+		draw_line(from_pos, to_pos, color, width, true)
+		return
+	var from_angle := rad_to_deg(atan2(from_world.y, from_world.x))
+	var to_angle := rad_to_deg(atan2(to_world.y, to_world.x))
 	var points := PackedVector2Array()
-	var delta_x: float = absf(to_pos.x - from_pos.x)
-	var c1 := from_pos + Vector2(maxf(80.0, delta_x * 0.42), 0.0)
-	var c2 := to_pos - Vector2(maxf(80.0, delta_x * 0.42), 0.0)
-	for i in range(25):
-		var t: float = float(i) / 24.0
-		points.append(_cubic_bezier(from_pos, c1, c2, to_pos, t))
+	var radial_joint_world := _polar_to_world(from_angle, to_radius)
+	if absf(to_radius - from_radius) > 24.0:
+		points.append(from_pos)
+		points.append(_world_to_screen(radial_joint_world))
+		_append_arc_points(points, to_radius, from_angle, to_angle)
+		points.append(to_pos)
+	else:
+		_append_arc_points(points, from_radius, from_angle, to_angle)
 	draw_polyline(points, color, width, true)
 
 
-func _cubic_bezier(a: Vector2, b: Vector2, c: Vector2, d: Vector2, t: float) -> Vector2:
-	var u := 1.0 - t
-	return a * u * u * u + b * 3.0 * u * u * t + c * 3.0 * u * t * t + d * t * t * t
+func _append_arc_points(points: PackedVector2Array, radius: float, from_angle: float, to_angle: float) -> void:
+	var diff := _shortest_angle_delta(from_angle, to_angle)
+	var steps := maxi(5, int(absf(diff) / 8.0))
+	for i in range(steps + 1):
+		var t := float(i) / float(steps)
+		var angle := from_angle + diff * t
+		points.append(_world_to_screen(_polar_to_world(angle, radius)))
+
+
+func _shortest_angle_delta(from_angle: float, to_angle: float) -> float:
+	var delta := fposmod(to_angle - from_angle + 180.0, 360.0) - 180.0
+	return delta
+
+
+func _polar_to_world(angle_degrees: float, radius: float) -> Vector2:
+	var angle := deg_to_rad(angle_degrees)
+	return Vector2(cos(angle), sin(angle)) * radius
 
 
 func _world_to_screen(world: Vector2) -> Vector2:

@@ -19,6 +19,7 @@
 [ext_resource type="Script" uid="uid://b5om17u3yr423" path="res://scripts/civilization/civilization_route_state.gd" id="17_civ_state"]
 [ext_resource type="Script" uid="uid://bfxk3wx0fa53k" path="res://scripts/civilization/civilization_rule_service.gd" id="18_civ_rules"]
 [ext_resource type="Script" uid="uid://cl0hntk8pko77" path="res://scripts/ui/civilization_debug_panel.gd" id="19_civ_debug"]
+[ext_resource type="Script" path="res://scripts/wall_blueprint_manager_2d.gd" id="20_wall"]
 
 [sub_resource type="Image" id="Image_0ld40"]
 data = {
@@ -63,6 +64,9 @@ script = ExtResource("7_turn")
 
 [node name="BuildingManager2D" type="Node2D" parent="GameBoard" unique_id=280439113]
 script = ExtResource("9_build")
+
+[node name="WallBlueprintManager2D" type="Node2D" parent="GameBoard"]
+script = ExtResource("20_wall")
 
 [node name="UnitManager2D" type="Node2D" parent="GameBoard" unique_id=635143604]
 script = ExtResource("8_unit")

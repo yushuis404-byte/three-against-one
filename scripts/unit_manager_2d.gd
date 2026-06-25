@@ -35,6 +35,7 @@ var _grid_manager: Node = null
 var _fog_manager: Node = null
 var _template_registry: Node = null
 var _building_manager: Node = null
+var _wall_manager: Node = null
 var _technology_service: Node = null
 var _building_effect_service = BuildingEffectServiceScript.new()
 
@@ -129,6 +130,7 @@ func _ready() -> void:
 	_fog_manager = get_parent().get_node_or_null("FogOfWar2D")
 	_template_registry = get_parent().get_node_or_null("TemplateRegistry")
 	_building_manager = get_parent().get_node_or_null("BuildingManager2D")
+	_wall_manager = get_parent().get_node_or_null("WallBlueprintManager2D")
 	_technology_service = get_parent().get_node_or_null("TechnologyService")
 	set_process(true)
 
@@ -2924,6 +2926,11 @@ func get_selected_id() -> int:
 # ========== 工具 ==========
 
 func _is_tile_passable(gx: int, gy: int) -> bool:
+	if _wall_manager == null and is_inside_tree():
+		_wall_manager = get_parent().get_node_or_null("WallBlueprintManager2D")
+	if _wall_manager != null and _wall_manager.has_method("blocks_movement_at"):
+		if bool(_wall_manager.call("blocks_movement_at", Vector2i(gx, gy))):
+			return false
 	if _grid_manager and _grid_manager.has_method("get_terrain_at"):
 		var t: int = _grid_manager.get_terrain_at(gx, gy)
 		return TerrainData.is_passable(t)
