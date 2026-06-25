@@ -7,8 +7,13 @@ const PREFERRED_WORKER_PRODUCTION_BONUS := 2
 
 
 func max_garrison(building: Dictionary) -> int:
-	var fp: Vector2i = building["data"].footprint
-	return max(2, fp.x * fp.y)
+	if not building.has("data"):
+		return 0
+	var data: BuildingData = building["data"]
+	if data.garrison_capacity > 0:
+		return data.garrison_capacity
+	var fp: Vector2i = data.footprint
+	return max(0, fp.x * fp.y)
 
 
 func can_garrison(buildings: Array, building_id: int, faction: int, unit_category: int = -1) -> bool:
@@ -18,13 +23,12 @@ func can_garrison(buildings: Array, building_id: int, faction: int, unit_categor
 		if building["faction"] != faction:
 			return false
 		var data: BuildingData = building["data"]
-		if data.production.is_empty() and not data.is_special_building and data.upgrade_rules.is_empty():
+		if data.garrison_capacity <= 0:
 			return false
 		if building["garrison"].size() >= max_garrison(building):
 			return false
-		if not data.production.is_empty() or data.is_special_building or not data.upgrade_rules.is_empty():
-			if unit_category >= 0 and unit_category != UnitData.UnitCategory.WORKER:
-				return false
+		if unit_category >= 0 and unit_category != UnitData.UnitCategory.WORKER:
+			return false
 		return true
 	return false
 
@@ -73,6 +77,29 @@ func get_garrison_bonus(buildings: Array, building_id: int) -> Dictionary:
 				bonus[key] = current + bonus_amount
 		return bonus
 	return {}
+
+
+func has_worker_garrison(building: Dictionary) -> bool:
+	var garrison: Array = building.get("garrison", [])
+	for unit in garrison:
+		var unit_dict: Dictionary = unit
+		if not unit_dict.has("data"):
+			continue
+		var unit_data: UnitData = unit_dict["data"]
+		if unit_data.category == UnitData.UnitCategory.WORKER:
+			return true
+	return false
+
+
+func get_repair_per_round(building: Dictionary) -> int:
+	if not building.has("data"):
+		return 0
+	var data: BuildingData = building["data"]
+	if data.garrison_capacity <= 0:
+		return 0
+	if data.garrison_repair_requires_worker and not has_worker_garrison(building):
+		return 0
+	return maxi(0, data.garrison_repair_per_round)
 
 
 func _get_worker_production_bonus(unit: Dictionary, preferred_worker_tag: String) -> int:

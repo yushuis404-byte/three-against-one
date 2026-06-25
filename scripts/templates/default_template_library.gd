@@ -436,16 +436,6 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	lumber_camp.max_per_faction = 7
 	lumber_camp.tags = ["infra", "production", "wood"]
 
-	var stone_wall = BuildingTemplateScript.new()
-	stone_wall.id = "building.stone_wall"
-	stone_wall.display_name = "\u77f3\u5899"
-	stone_wall.description = "\u77ee\u4eba\u9632\u7ebf\u5efa\u7b51\uff1a\u5360\u683c\u963b\u6321\u79fb\u52a8\uff0c\u53ef\u88ab\u653b\u51fb\u548c\u4fee\u590d\u3002"
-	stone_wall.role = BuildingTemplateScript.BuildingRole.SPECIAL
-	stone_wall.hp_max = 12
-	stone_wall.build_cost = [_amount("stone", 8)]
-	stone_wall.max_per_faction = 99
-	stone_wall.tags = ["defense", "wall", "stone_wall", "blocks_movement", "dwarf"]
-
 	var watch_tower = BuildingTemplateScript.new()
 	watch_tower.id = "building.watch_tower"
 	watch_tower.display_name = "\u77ad\u671b\u5854"
@@ -516,7 +506,6 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 		recruit_camp.id: recruit_camp,
 		barracks.id: barracks,
 		lumber_camp.id: lumber_camp,
-		stone_wall.id: stone_wall,
 		watch_tower.id: watch_tower,
 		forge.id: forge,
 		wind_ancient_tree.id: wind_ancient_tree,
@@ -549,7 +538,7 @@ func make_lord_templates() -> Dictionary:
 		["lord", "dwarf", "space", "starter"]
 	)
 	dwarf_lord.description = "\u77ee\u4eba\u8def\u7ebf\u521d\u59cb\u9886\u4e3b\uff1a\u5f3a\u5316\u5efa\u7b51\u3001\u9632\u7ebf\u548c\u7a7a\u95f4\u63a7\u5236\u3002"
-	dwarf_lord.unlock_building_ids = ["building.stone_wall", "building.watch_tower", "building.forge"]
+	dwarf_lord.unlock_building_ids = ["building.watch_tower", "building.forge"]
 	dwarf_lord.unlock_recipe_ids = ["recipe.mithril.basic"]
 	dwarf_lord.passive_modifiers = {
 		"building_hp_bonus": 2,

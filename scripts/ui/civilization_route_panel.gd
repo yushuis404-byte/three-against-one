@@ -41,7 +41,6 @@ var _modifier_names: Dictionary = {
 
 var _unlock_names: Dictionary = {
 	"building.wind_ancient_tree": "\u98ce\u8bed\u53e4\u6811",
-	"building.stone_wall": "\u77f3\u5899",
 	"building.watch_tower": "\u77ad\u671b\u5854",
 	"building.forge": "\u7194\u7089",
 	"building.blood_fang_den": "\u8840\u7259\u5de2\u7a74",

@@ -149,6 +149,7 @@ func _on_player_turn_started(player: int) -> void:
 	_reveal_town_hall_vision(player)
 	_reveal_watch_tower_vision(player)
 	_process_recruit_queues(player)
+	_process_garrison_repairs(player)
 	queue_redraw()
 
 
@@ -402,6 +403,23 @@ func repair_building(building_id: int) -> bool:
 		_resource_tracker.update_display(faction)
 	queue_redraw()
 	return true
+
+
+func _process_garrison_repairs(player: int) -> void:
+	for i in range(_buildings.size()):
+		var building: Dictionary = _buildings[i]
+		if int(building.get("faction", -1)) != player:
+			continue
+		var repair_amount: int = _garrison_service.get_repair_per_round(building)
+		if repair_amount <= 0:
+			continue
+		var hp_max: int = _get_building_hp_max_from_instance(building)
+		var current_hp: int = int(building.get("hp", hp_max))
+		if current_hp >= hp_max:
+			continue
+		building["hp"] = mini(hp_max, current_hp + repair_amount)
+		_buildings[i] = building
+		_show_building_heal_text(building, int(building["hp"]) - current_hp)
 
 
 func show_building_resource_text(building_id: int, resources: Dictionary) -> void:
@@ -911,6 +929,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				hover_text += " - \u914d\u65b9:2\u94c1+1\u77f3=>1\u7cbe\u94a2; 2\u94c1+1\u9b54\u5c18=>1\u79d8\u94f6"
 			if data.effect_radius > 0:
 				hover_text += " - Range:%d" % data.effect_radius
+			hover_text += " - %s" % data.get_garrison_rule_text()
 			var network_info: Dictionary = get_building_network_info(int(building["id"]))
 			if _should_draw_network_range(building):
 				var linked_count: int = int(network_info.get("linked_count", 0))
@@ -923,7 +942,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					hover_text += " - \u5efa\u7b51\u7f51\u7edc:\u672a\u8fde\u63a5"
 			var garr: Array = building.get("garrison", [])
 			if not garr.is_empty():
-				hover_text += " - Garrison:%d" % garr.size()
+				hover_text += " - Garrison:%d/%d" % [garr.size(), max_garrison(building)]
 			if _turn_manager != null:
 				if int(building.get("faction", -1)) == _turn_manager.current_player and int(building.get("hp", 0)) < _get_building_hp_max_from_instance(building):
 					hover_text += " - H\u4fee\u590d:%d\u77f3\u6599+%dAP" % [REPAIR_STONE_COST, REPAIR_AP_COST]

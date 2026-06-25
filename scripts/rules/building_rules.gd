@@ -5,13 +5,11 @@ extends RefCounted
 const OUTPOST_NAME := "\u524d\u54e8\u7ad9"
 const GOLD_MINE_SHAFT_NAME := "\u91d1\u77ff\u77ff\u4e95"
 const MINT_NAME := "\u91d1\u5e01\u94f8\u9020\u5382"
-const STONE_WALL_NAME := "\u77f3\u5899"
 const WATCH_TOWER_NAME := "\u77ad\u671b\u5854"
 const FORGE_NAME := "\u7194\u7089"
 
 const TEMPLATE_RECRUIT_CAMP := "building.recruit_camp"
 const TEMPLATE_BARRACKS_LV1 := "building.barracks_lv1"
-const TEMPLATE_STONE_WALL := "building.stone_wall"
 const TEMPLATE_WATCH_TOWER := "building.watch_tower"
 const TEMPLATE_FORGE := "building.forge"
 
@@ -28,10 +26,6 @@ static func is_mint(data: BuildingData) -> bool:
 	return data != null and data.name == MINT_NAME
 
 
-static func is_stone_wall(data: BuildingData) -> bool:
-	return data != null and data.name == STONE_WALL_NAME
-
-
 static func is_watch_tower(data: BuildingData) -> bool:
 	return data != null and data.name == WATCH_TOWER_NAME
 
@@ -41,7 +35,7 @@ static func is_forge(data: BuildingData) -> bool:
 
 
 static func is_defense_building(data: BuildingData) -> bool:
-	return data != null and ("defense" in data.tags or is_stone_wall(data) or is_watch_tower(data))
+	return data != null and ("defense" in data.tags or is_watch_tower(data))
 
 
 static func get_faction_unit_prefix(faction: int) -> String:
@@ -79,8 +73,6 @@ static func get_building_template_id(data: BuildingData) -> String:
 		return TEMPLATE_RECRUIT_CAMP
 	if "barracks" in data.tags:
 		return TEMPLATE_BARRACKS_LV1
-	if "stone_wall" in data.tags:
-		return TEMPLATE_STONE_WALL
 	if "watch_tower" in data.tags:
 		return TEMPLATE_WATCH_TOWER
 	if "forge" in data.tags:

@@ -41,6 +41,9 @@ var storage_bonus_by_level: Dictionary = {}
 var max_level: int = 1
 var upgrade_rules: Dictionary = {}
 var preferred_worker_tag: String = ""  # Garrisoned workers with this tag provide the stronger production bonus.
+var garrison_capacity: int = 0
+var garrison_repair_per_round: int = 1
+var garrison_repair_requires_worker: bool = true
 
 
 func _init(p_name: String, p_cat: BuildingCategory, p_fp: Vector2i,
@@ -60,6 +63,25 @@ func _init(p_name: String, p_cat: BuildingCategory, p_fp: Vector2i,
 	terrain_compatibility = p_terrain
 	max_per_faction = p_max
 	description = p_desc
+	garrison_capacity = _default_garrison_capacity(p_cat)
+
+
+func get_garrison_rule_text() -> String:
+	if garrison_capacity <= 0:
+		return "不可入驻"
+	return "入驻上限:%d 工人; 入驻工人每轮修复:%dHP" % [garrison_capacity, garrison_repair_per_round]
+
+
+static func _default_garrison_capacity(p_cat: BuildingCategory) -> int:
+	match p_cat:
+		BuildingCategory.CORE:
+			return 4
+		BuildingCategory.EXPANSION, BuildingCategory.SCOUT, BuildingCategory.RECRUITMENT:
+			return 1
+		BuildingCategory.ECONOMY, BuildingCategory.STORAGE, BuildingCategory.INDUSTRY, BuildingCategory.GOLD_CHAIN, BuildingCategory.RARE, BuildingCategory.LORD_SPECIAL:
+			return 2
+		_:
+			return 0
 
 
 # ========== 静态工厂 ==========
@@ -208,6 +230,7 @@ static func barracks_lv1() -> BuildingData:
 		99, "Lv1 \u53ef\u62db\u52df\u5b88\u536b\u3001\u65a5\u5019"
 	)
 	b.tech_tier = 1
+	b.garrison_capacity = 2
 	b.tags = ["recruit", "military", "barracks"]
 	return b
 
@@ -255,23 +278,6 @@ static func outpost() -> BuildingData:
 	)
 	b.tech_tier = 1
 	b.tags = ["expansion", "territory"]
-	return b
-
-static func stone_wall() -> BuildingData:
-	var b := BuildingData.new(
-		"\u77f3\u5899", BuildingCategory.EXPANSION, Vector2i(1, 1),
-		0, 0, 8, 0, 0,
-		12, {},
-		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
-		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
-		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
-		 TerrainData.Terrain.RUINS],
-		99, "\u77ee\u4eba\u9632\u7ebf\u5efa\u7b51\uff1a\u5360\u683c\u963b\u6321\u79fb\u52a8\uff0c\u53ef\u88ab\u653b\u51fb\u548c\u4fee\u590d"
-	)
-	b.tech_tier = 1
-	b.lord_requirement = "lord.dwarf.stone_warden"
-	b.civilization_tag = "dwarf"
-	b.tags = ["defense", "wall", "stone_wall", "blocks_movement", "dwarf"]
 	return b
 
 static func recruit_camp() -> BuildingData:
@@ -464,7 +470,7 @@ static func get_templates() -> Dictionary:
 		BuildingCategory.CORE: [town_hall()],
 		BuildingCategory.ECONOMY: [infra_lumber_camp(), infra_quarry(), infra_farm()],
 		BuildingCategory.STORAGE: [infra_warehouse()],
-		BuildingCategory.EXPANSION: [outpost(), stone_wall()],
+		BuildingCategory.EXPANSION: [outpost()],
 		BuildingCategory.SCOUT: [scout_post(), watch_tower()],
 		BuildingCategory.RECRUITMENT: [recruit_camp(), barracks_lv1()],
 		BuildingCategory.INDUSTRY: [t1_mine(), forge()],

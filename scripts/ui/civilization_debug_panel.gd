@@ -106,8 +106,6 @@ func _building_name(building_id: String) -> String:
 	match building_id:
 		"building.wind_ancient_tree":
 			return "风语古树"
-		"building.stone_wall":
-			return "石墙"
 		"building.watch_tower":
 			return "瞭望塔"
 		"building.forge":
