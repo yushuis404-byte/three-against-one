@@ -42,6 +42,12 @@ static func _def(id: String, title: String, branch: String, parents: Array, cond
 		"id": id,
 		"title": title,
 		"branch": branch,
+		"panel": _panel_for_id(id, branch),
+		"position": _position_for_id(id),
+		"icon_key": _icon_for_id(id, condition),
+		"description": _description_for_id(id, title),
+		"target": _target_for_condition(condition),
+		"unlocks_hint": _unlocks_for_id(id),
 		"parents": parents,
 		"condition": condition,
 		"reward": reward,
@@ -59,3 +65,139 @@ static func _reward(tech_points: int, resources: Dictionary) -> Dictionary:
 		"tech_points": tech_points,
 		"resources": resources,
 	}
+
+
+static func _panel_for_id(id: String, branch: String) -> String:
+	match id:
+		"military.dragon_blood.fire", "military.dragon_blood.frost", "military.dragon_blood.toxic":
+			return "dragon"
+		"lord.elf.first":
+			return "elf_shadow"
+		"lord.dwarf.first":
+			return "dwarf_fortress"
+		"lord.orc.first":
+			return "orc_war"
+		"lord.building.first":
+			return "lord"
+	return branch
+
+
+static func _position_for_id(id: String) -> Vector2i:
+	var positions: Dictionary = {
+		"foundation.worker.force": Vector2i(0, 0),
+		"foundation.lumber.first": Vector2i(1, 0),
+		"foundation.quarry.first": Vector2i(2, 0),
+		"foundation.farm.first": Vector2i(3, 0),
+		"foundation.storage.first": Vector2i(2, 1),
+		"foundation.worker.garrison": Vector2i(1, 1),
+
+		"industry.iron.first": Vector2i(0, 0),
+		"industry.gold.shaft": Vector2i(1, 0),
+		"industry.gold_ore.first": Vector2i(2, 0),
+		"industry.mint.first": Vector2i(3, 0),
+		"industry.gold.first": Vector2i(4, 0),
+		"industry.rare.first": Vector2i(2, 1),
+
+		"military.barracks.first": Vector2i(0, 0),
+		"military.barracks.two": Vector2i(1, 0),
+		"military.barracks.worker": Vector2i(1, 1),
+		"military.recruit.first": Vector2i(2, 0),
+		"military.force.three": Vector2i(3, 0),
+		"military.force.six": Vector2i(4, 0),
+		"military.kill.neutral": Vector2i(3, 1),
+		"military.kill.player": Vector2i(4, 1),
+
+		"military.dragon_blood.fire": Vector2i(1, 0),
+		"military.dragon_blood.frost": Vector2i(2, 0),
+		"military.dragon_blood.toxic": Vector2i(3, 0),
+
+		"lord.building.first": Vector2i(0, 0),
+		"lord.elf.first": Vector2i(0, 0),
+		"lord.dwarf.first": Vector2i(0, 0),
+		"lord.orc.first": Vector2i(0, 0),
+	}
+	if positions.has(id):
+		var result: Vector2i = positions[id]
+		return result
+	return Vector2i.ZERO
+
+
+static func _icon_for_id(id: String, condition: Dictionary) -> String:
+	if id.begins_with("lord.elf"):
+		return "elf"
+	if id.begins_with("lord.dwarf"):
+		return "dwarf"
+	if id.begins_with("lord.orc"):
+		return "orc"
+	if id.find("dragon_blood") >= 0:
+		return "dragon"
+	var kind: String = str(condition.get("kind", ""))
+	match kind:
+		"building", "building_count", "building_garrison":
+			if condition.has("production_key"):
+				return str(condition["production_key"])
+			if condition.has("special"):
+				return str(condition["special"])
+			if condition.has("tag"):
+				return str(condition["tag"])
+			return "building"
+		"unit_recruited", "unit_count":
+			if bool(condition.get("worker", false)):
+				return "worker"
+			return "unit"
+		"kill":
+			return "kill"
+		"resource_stock", "resource_any_stock":
+			if condition.has("key"):
+				return str(condition["key"])
+			return "resource"
+	return "achievement"
+
+
+static func _description_for_id(id: String, title: String) -> String:
+	var descriptions: Dictionary = {
+		"foundation.worker.force": "拥有 3 名工人，说明基础劳动力已经成型。",
+		"foundation.worker.garrison": "让工人进入建筑驻守，开启驻守产出和建筑协作。",
+		"industry.gold.shaft": "在金矿资源点上建立金矿井，进入金币经济链。",
+		"industry.gold_ore.first": "产出第一批金矿石，为铸币做准备。",
+		"military.recruit.first": "招募第一名真正的战斗单位。",
+		"military.force.six": "形成 6 人规模的战团雏形。",
+		"military.kill.neutral": "完成第一次狩猎，打开战争经济的入口。",
+		"military.kill.player": "击败其他玩家单位，进入真实冲突阶段。",
+		"lord.building.first": "建造任意领主特色建筑，开始选择文明路线。",
+		"lord.elf.first": "建立精灵领主据点，进入情报、视野和迷雾路线。",
+		"lord.dwarf.first": "建立矮人领主据点，进入筑防、驻守和阵地路线。",
+		"lord.orc.first": "建立兽人领主据点，进入击杀收益和战团路线。",
+	}
+	if descriptions.has(id):
+		return str(descriptions[id])
+	return title
+
+
+static func _target_for_condition(condition: Dictionary) -> int:
+	if condition.has("amount"):
+		return int(condition["amount"])
+	if condition.has("count"):
+		return int(condition["count"])
+	return 1
+
+
+static func _unlocks_for_id(id: String) -> Array:
+	var hints: Dictionary = {
+		"foundation.worker.force": ["tech.common.map_drawing"],
+		"foundation.storage.first": ["tech.common.storage_system", "tech.common.border_survey"],
+		"foundation.worker.garrison": ["tech.common.tool_forging", "tech.common.building_upgrade"],
+		"industry.iron.first": ["tech.common.iron_mining"],
+		"industry.gold.shaft": ["tech.common.gold_mining"],
+		"industry.mint.first": ["tech.common.coin_machinery"],
+		"military.barracks.first": ["tech.common.recruitment_rules"],
+		"military.recruit.first": ["tech.common.war_drum_mobilization"],
+		"military.kill.neutral": ["tech.dragon.nest_survey", "tech.lord.orc.raid_ration"],
+		"lord.elf.first": ["tech.lord.elf.wind_sight"],
+		"lord.dwarf.first": ["tech.lord.dwarf.deep_forge"],
+		"lord.orc.first": ["tech.lord.orc.blood_drum"],
+	}
+	if hints.has(id):
+		var result: Array = hints[id]
+		return result.duplicate()
+	return []
