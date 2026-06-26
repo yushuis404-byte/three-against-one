@@ -18,6 +18,8 @@ signal resource_hovered(text: String)
 const GOLD_MINE_TEXTURE: Texture2D = preload("res://assets/texture/Gold mine.png")
 const QUARRY_TEXTURE: Texture2D = preload("res://assets/texture/stone.png")
 const RESOURCE_TEXTURE_SIZE := 28.0
+const RESOURCE_DISTRIBUTION_SCALE := 1.5
+const RESOURCE_ACTIVE_ZONES := [7, 8, 9, 10, 11, 12, 4]
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -164,48 +166,163 @@ func expand_grid(cols: int, rows: int, offset_x: int) -> void:
 # ========== 资源放置 ==========
 
 func place_resources(zone_grid: Array, terrain_grid: Array, grid_size: int) -> void:
+	var plans: Array = []
 	for def in RESOURCE_DEFS:
-		var rtype: int = def[0]
-		var zone_counts: Dictionary = def[4]
-		var compat_terrains: Array = def[5]
+		plans.append({
+			"def": def,
+			"rtype": int(def[0]),
+			"zone_counts": _build_scaled_zone_counts(def[4]),
+			"compat_terrains": def[5],
+			"placed": {},
+		})
+	_fit_plans_to_zone_capacity(plans, zone_grid, terrain_grid, grid_size)
 
-		for zone_tag in zone_counts:
-			var needed: int = zone_counts[zone_tag]
-			var candidates: Array = []
+	for zone_tag in RESOURCE_ACTIVE_ZONES:
+		for plan_variant in plans:
+			var plan: Dictionary = plan_variant
+			var needed: int = int(plan["zone_counts"].get(zone_tag, 0))
+			if needed <= 0:
+				continue
+			var placed: int = _place_resource_count(zone_grid, terrain_grid, grid_size, plan, int(zone_tag), 1)
+			var placed_counts: Dictionary = plan["placed"]
+			placed_counts[zone_tag] = int(placed_counts.get(zone_tag, 0)) + placed
+			plan["placed"] = placed_counts
 
-			for y in range(grid_size):
-				for x in range(grid_size):
-					if zone_grid[y][x] != zone_tag:
-						continue
-					if resource_grid[y][x] != ResourceType.NONE:
-						continue
-					if compat_terrains.size() > 0 and not (terrain_grid[y][x] in compat_terrains):
-						continue
-					candidates.append(Vector2i(x, y))
+	for plan_variant in plans:
+		var plan: Dictionary = plan_variant
+		var zone_counts: Dictionary = plan["zone_counts"]
+		var placed_counts: Dictionary = plan["placed"]
+		for zone_tag in RESOURCE_ACTIVE_ZONES:
+			var needed: int = int(zone_counts.get(zone_tag, 0))
+			var placed_before: int = int(placed_counts.get(zone_tag, 0))
+			var remaining: int = needed - placed_before
+			if remaining <= 0:
+				continue
+			var placed: int = _place_resource_count(zone_grid, terrain_grid, grid_size, plan, int(zone_tag), remaining)
+			placed_counts[zone_tag] = placed_before + placed
+			if placed < remaining:
+				var def: Array = plan["def"]
+				print("[Resource] Warning: %s zone %d placed %d/%d" % [def[1], zone_tag, placed_before + placed, needed])
+		plan["placed"] = placed_counts
 
-			# Deterministic shuffle
-			for i in range(candidates.size() - 1, 0, -1):
-				var shuffle_seed := int(rtype * 100 + zone_tag * 10 + i)
-				var j := int(_simple_hash(candidates[i].x, candidates[i].y, shuffle_seed) * (i + 1))
-				var temp: Vector2i = candidates[i]
-				candidates[i] = candidates[j]
-				candidates[j] = temp
 
-			var placed := 0
-			for cell in candidates:
-				if placed >= needed:
+func _place_resource_count(zone_grid: Array, terrain_grid: Array, grid_size: int, plan: Dictionary, zone_tag: int, amount: int) -> int:
+	if amount <= 0:
+		return 0
+	var rtype: int = int(plan["rtype"])
+	var compat_terrains: Array = plan["compat_terrains"]
+	var candidates: Array = _collect_resource_candidates(zone_grid, terrain_grid, grid_size, zone_tag, compat_terrains, true)
+	if candidates.size() < amount:
+		candidates = _collect_resource_candidates(zone_grid, terrain_grid, grid_size, zone_tag, compat_terrains, false)
+	_shuffle_resource_candidates(candidates, rtype, zone_tag)
+	var placed: int = 0
+	for cell in candidates:
+		if placed >= amount:
+			break
+		var cx: int = cell.x
+		var cy: int = cell.y
+		if resource_grid[cy][cx] == ResourceType.NONE:
+			resource_grid[cy][cx] = rtype
+			placed += 1
+	return placed
+
+
+func _fit_plans_to_zone_capacity(plans: Array, zone_grid: Array, terrain_grid: Array, grid_size: int) -> void:
+	for zone_tag in RESOURCE_ACTIVE_ZONES:
+		var capacity: int = _count_resource_zone_capacity(zone_grid, terrain_grid, grid_size, int(zone_tag))
+		if capacity <= 0:
+			for plan_variant in plans:
+				var plan: Dictionary = plan_variant
+				var counts: Dictionary = plan["zone_counts"]
+				counts[zone_tag] = 0
+				plan["zone_counts"] = counts
+			continue
+		var planned_total: int = 0
+		for plan_variant in plans:
+			var plan: Dictionary = plan_variant
+			var counts: Dictionary = plan["zone_counts"]
+			planned_total += int(counts.get(zone_tag, 0))
+		while planned_total > capacity:
+			var reduced := false
+			for plan_variant in plans:
+				var plan: Dictionary = plan_variant
+				var counts: Dictionary = plan["zone_counts"]
+				var current: int = int(counts.get(zone_tag, 0))
+				if current <= 1:
+					continue
+				counts[zone_tag] = current - 1
+				plan["zone_counts"] = counts
+				planned_total -= 1
+				reduced = true
+				if planned_total <= capacity:
 					break
-				var cx: int = cell.x
-				var cy: int = cell.y
-				if resource_grid[cy][cx] == ResourceType.NONE:
-					resource_grid[cy][cx] = rtype
-					placed += 1
-
-			if placed < needed:
-				print("[资源] 警告: %s 在区域 %d 中仅放置 %d/%d" % [def[1], zone_tag, placed, needed])
+			if not reduced:
+				break
 
 
-# ========== 哈希（与地形系统共享算法） ==========
+func _count_resource_zone_capacity(zone_grid: Array, terrain_grid: Array, grid_size: int, zone_tag: int) -> int:
+	var capacity: int = 0
+	for y in range(grid_size):
+		for x in range(grid_size):
+			if zone_grid[y][x] != zone_tag:
+				continue
+			var terrain: int = terrain_grid[y][x]
+			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER:
+				continue
+			capacity += 1
+	return capacity
+
+
+func _build_scaled_zone_counts(zone_counts: Dictionary) -> Dictionary:
+	var original_total: int = 0
+	for zone_tag in zone_counts:
+		original_total += int(zone_counts[zone_tag])
+	var target_total: int = maxi(1, int(ceil(float(original_total) * RESOURCE_DISTRIBUTION_SCALE)))
+	var result: Dictionary = {}
+	var seeded_total: int = 0
+	for zone_tag in RESOURCE_ACTIVE_ZONES:
+		var count: int = int(zone_counts.get(zone_tag, 0))
+		if count <= 0:
+			count = 1
+		result[zone_tag] = count
+		seeded_total += count
+	target_total = maxi(target_total, seeded_total)
+	var remaining: int = target_total - seeded_total
+	var cursor: int = 0
+	while remaining > 0:
+		var zone_tag: int = int(RESOURCE_ACTIVE_ZONES[cursor % RESOURCE_ACTIVE_ZONES.size()])
+		result[zone_tag] = int(result.get(zone_tag, 0)) + 1
+		remaining -= 1
+		cursor += 1
+	return result
+
+
+func _collect_resource_candidates(zone_grid: Array, terrain_grid: Array, grid_size: int, zone_tag: int, compat_terrains: Array, require_compatible_terrain: bool) -> Array:
+	var candidates: Array = []
+	for y in range(grid_size):
+		for x in range(grid_size):
+			if zone_grid[y][x] != zone_tag:
+				continue
+			if resource_grid[y][x] != ResourceType.NONE:
+				continue
+			var terrain: int = terrain_grid[y][x]
+			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER:
+				continue
+			if require_compatible_terrain and compat_terrains.size() > 0 and not (terrain in compat_terrains):
+				continue
+			candidates.append(Vector2i(x, y))
+	return candidates
+
+
+func _shuffle_resource_candidates(candidates: Array, rtype: int, zone_tag: int) -> void:
+	for i in range(candidates.size() - 1, 0, -1):
+		var current: Vector2i = candidates[i]
+		var shuffle_seed := int(rtype * 100 + zone_tag * 10 + i)
+		var j := int(_simple_hash(current.x, current.y, shuffle_seed) * (i + 1))
+		var temp: Vector2i = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = temp
+
 
 func _simple_hash(x: int, y: int, seed: int = 12345) -> float:
 	var val := (x * 374761393 + y * 668265263 + seed) & 0x7FFFFFFF
