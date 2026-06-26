@@ -1,44 +1,81 @@
 class_name AchievementTreePanel
 extends Control
 
-const PANEL_COLOR := Color(0.035, 0.04, 0.045, 0.86)
+const PANEL_COLOR := Color(0.035, 0.04, 0.045, 0.88)
 const BORDER_COLOR := Color(0.34, 0.48, 0.68, 0.55)
-const LINE_LOCKED := Color(0.26, 0.28, 0.30, 0.75)
-const LINE_OPEN := Color(0.38, 0.55, 0.80, 0.85)
-const NODE_LOCKED := Color(0.12, 0.13, 0.14, 0.95)
-const NODE_OPEN := Color(0.16, 0.23, 0.32, 0.96)
+const BLOCK_COLOR := Color(0.06, 0.075, 0.085, 0.82)
+const BLOCK_BORDER := Color(0.42, 0.52, 0.66, 0.55)
+const BLOCK_TITLE_COLOR := Color(0.82, 0.90, 1.0)
+const LINE_LOCKED := Color(0.25, 0.27, 0.30, 0.72)
+const LINE_OPEN := Color(0.42, 0.64, 0.92, 0.88)
+const LINE_DONE := Color(0.50, 0.92, 0.50, 0.92)
+const NODE_LOCKED := Color(0.10, 0.11, 0.12, 0.96)
+const NODE_OPEN := Color(0.13, 0.22, 0.34, 0.96)
 const NODE_DONE := Color(0.18, 0.42, 0.23, 0.96)
 const NODE_BORDER := Color(0.72, 0.84, 1.0, 0.72)
 const NODE_DONE_BORDER := Color(0.62, 1.0, 0.58, 0.88)
-const NODE_SIZE := Vector2(104, 46)
-const SIDEBAR_W := 112.0
-const HEADER_H := 34.0
-const DETAIL_H := 82.0
-const NODE_GAP_X := 142.0
-const NODE_GAP_Y := 68.0
+const NODE_SIZE := Vector2(44.0, 44.0)
+const NODE_STEP := Vector2(82.0, 62.0)
+const HEADER_H := 40.0
+const DETAIL_H := 114.0
+const BOARD_MARGIN := 18.0
+const GRID_GAP := 14.0
 const CLOSE_RECT := Rect2(0, 0, 72, 26)
 
 var _service: AchievementService = null
 var _turn_manager: Node = null
-var _selected_branch := "foundation"
 var _selected_id := ""
 var _node_rects: Dictionary = {}
-var _branch_order: Array[String] = ["foundation", "industry", "military", "lord"]
-var _branch_names: Dictionary = {
-	"foundation": "\u6839\u57fa",
-	"industry": "\u5de5\u4e1a",
-	"military": "\u519b\u4e8b",
-	"lord": "\u9886\u4e3b",
+var _node_defs: Dictionary = {}
+var _panel_rects: Dictionary = {}
+var _panel_order: Array[String] = [
+	"foundation",
+	"military",
+	"elf_shadow",
+	"industry",
+	"dragon",
+	"dwarf_fortress",
+	"lord",
+	"orc_war",
+	"hybrid_end",
+]
+var _panel_names: Dictionary = {
+	"foundation": "基础建设",
+	"military": "军事训练",
+	"elf_shadow": "精灵情报",
+	"industry": "资源工业",
+	"dragon": "龙血路线",
+	"dwarf_fortress": "矮人筑防",
+	"lord": "领主据点",
+	"orc_war": "兽人战争",
+	"hybrid_end": "终局融合",
 }
 var _resource_names: Dictionary = {
-	"wood": "\u6728\u6750",
-	"stone": "\u77f3\u6599",
-	"food": "\u98df\u7269",
-	"iron": "\u94c1\u77ff",
-	"magic_dust": "\u9b54\u5c18",
-	"gold": "\u91d1\u5e01",
-	"ancient_wood": "\u53e4\u6728",
-	"gold_ore": "\u91d1\u77ff\u77f3",
+	"wood": "木材",
+	"stone": "石料",
+	"food": "食物",
+	"iron": "铁矿",
+	"magic_dust": "魔尘",
+	"gold": "金币",
+	"ancient_wood": "古木",
+	"gold_ore": "金矿石",
+}
+var _tech_names: Dictionary = {
+	"tech.common.map_drawing": "地图绘制",
+	"tech.common.storage_system": "仓储制度",
+	"tech.common.border_survey": "边境测绘",
+	"tech.common.tool_forging": "工具锻造",
+	"tech.common.building_upgrade": "建筑升级",
+	"tech.common.iron_mining": "铁矿开采",
+	"tech.common.gold_mining": "金矿开采",
+	"tech.common.coin_machinery": "铸币机械",
+	"tech.common.recruitment_rules": "招募规程",
+	"tech.common.war_drum_mobilization": "战鼓动员",
+	"tech.dragon.nest_survey": "龙巢勘测",
+	"tech.lord.elf.wind_sight": "风语视界",
+	"tech.lord.dwarf.deep_forge": "深炉工艺",
+	"tech.lord.orc.blood_drum": "血鼓号令",
+	"tech.lord.orc.raid_ration": "掠食军粮",
 }
 
 
@@ -64,14 +101,18 @@ func setup(service: AchievementService, turn_manager: Node) -> void:
 
 func _draw() -> void:
 	_node_rects.clear()
+	_node_defs.clear()
 	_draw_panel()
 	if _service == null or _turn_manager == null:
-		_draw_text(Vector2(16, 28), "\u6210\u5c31\u6811\u672a\u8fde\u63a5", 14, Color(0.9, 0.9, 0.9))
+		_draw_text(Vector2(16.0, 28.0), "成就树未连接", 14, Color(0.9, 0.9, 0.9))
 		return
 	var player: int = int(_turn_manager.current_player)
 	_draw_header(player)
-	_draw_branch_tabs(player)
-	_draw_tree(player)
+	_panel_rects = _make_panel_rects()
+	_draw_block_frames(player)
+	_build_node_rects()
+	_draw_links(player)
+	_draw_nodes(player)
 	_draw_detail(player)
 
 
@@ -82,21 +123,11 @@ func _gui_input(event: InputEvent) -> void:
 	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 	var pos: Vector2 = mb.position
-	var close_rect := Rect2(size.x - 86.0, 5.0, CLOSE_RECT.size.x, CLOSE_RECT.size.y)
+	var close_rect := Rect2(size.x - 86.0, 7.0, CLOSE_RECT.size.x, CLOSE_RECT.size.y)
 	if close_rect.has_point(pos):
 		visible = false
 		accept_event()
 		return
-	var tab_y := HEADER_H + 8.0
-	for i in range(_branch_order.size()):
-		var branch: String = _branch_order[i]
-		var rect := Rect2(8.0, tab_y + i * 34.0, SIDEBAR_W - 16.0, 28.0)
-		if rect.has_point(pos):
-			_selected_branch = branch
-			_selected_id = ""
-			queue_redraw()
-			accept_event()
-			return
 	for id in _node_rects.keys():
 		var rect: Rect2 = _node_rects[id]
 		if rect.has_point(pos):
@@ -126,164 +157,261 @@ func _draw_panel() -> void:
 	bg.set_border_width_all(1)
 	bg.set_corner_radius_all(4)
 	draw_style_box(bg, Rect2(Vector2.ZERO, size))
-	draw_line(Vector2(SIDEBAR_W, HEADER_H), Vector2(SIDEBAR_W, size.y - DETAIL_H), Color(1, 1, 1, 0.12), 1.0)
-	draw_line(Vector2(0, HEADER_H), Vector2(size.x, HEADER_H), Color(1, 1, 1, 0.12), 1.0)
-	draw_line(Vector2(SIDEBAR_W, size.y - DETAIL_H), Vector2(size.x, size.y - DETAIL_H), Color(1, 1, 1, 0.12), 1.0)
-	draw_rect(Rect2(size.x - 86.0, 5.0, CLOSE_RECT.size.x, CLOSE_RECT.size.y), Color(0.18, 0.08, 0.08, 0.82), true)
-	draw_rect(Rect2(size.x - 86.0, 5.0, CLOSE_RECT.size.x, CLOSE_RECT.size.y), Color(1.0, 0.55, 0.48, 0.72), false, 1.0)
-	_draw_text(Vector2(size.x - 73.0, 23.0), "\u5173\u95ed", 13, Color(1.0, 0.84, 0.80))
+	draw_line(Vector2(0.0, HEADER_H), Vector2(size.x, HEADER_H), Color(1.0, 1.0, 1.0, 0.12), 1.0)
+	draw_line(Vector2(0.0, size.y - DETAIL_H), Vector2(size.x, size.y - DETAIL_H), Color(1.0, 1.0, 1.0, 0.12), 1.0)
+	draw_rect(Rect2(size.x - 86.0, 7.0, CLOSE_RECT.size.x, CLOSE_RECT.size.y), Color(0.18, 0.08, 0.08, 0.82), true)
+	draw_rect(Rect2(size.x - 86.0, 7.0, CLOSE_RECT.size.x, CLOSE_RECT.size.y), Color(1.0, 0.55, 0.48, 0.72), false, 1.0)
+	_draw_text(Vector2(size.x - 73.0, 25.0), "关闭", 13, Color(1.0, 0.84, 0.80))
 
 
 func _draw_header(player: int) -> void:
-	var title := "\u6210\u5c31\u6811 | %s | \u79d1\u6280\u70b9 %d" % [
+	var title := "成就树 | %s | 科技点 %d" % [
 		GameCatalog.faction_name(player),
 		_service.get_tech_points(player),
 	]
-	_draw_text(Vector2(12, 22), title, 15, Color(0.94, 0.97, 1.0))
+	_draw_text(Vector2(14.0, 25.0), title, 16, Color(0.94, 0.97, 1.0))
 	var total: int = _service.get_definitions().size()
 	var done: int = _service.get_completed_count(player)
-	_draw_text(Vector2(size.x - 112.0, 22), "%d / %d" % [done, total], 14, Color(0.72, 0.86, 1.0))
+	_draw_text(Vector2(size.x - 190.0, 25.0), "%d / %d" % [done, total], 14, Color(0.72, 0.86, 1.0))
+	_draw_text(Vector2(330.0, 25.0), "绿色=已完成  蓝色=可完成  灰色=前置未完成  虚线=跨板块前置", 12, Color(0.68, 0.75, 0.86))
 
 
-func _draw_branch_tabs(player: int) -> void:
-	var summary: Dictionary = _service.get_branch_summary(player)
-	var y := HEADER_H + 8.0
-	for i in range(_branch_order.size()):
-		var branch: String = _branch_order[i]
-		var rect := Rect2(8.0, y + i * 34.0, SIDEBAR_W - 16.0, 28.0)
-		var active: bool = branch == _selected_branch
-		var color := Color(0.12, 0.17, 0.23, 0.96) if active else Color(0.07, 0.08, 0.09, 0.72)
-		draw_rect(rect, color, true)
-		draw_rect(rect, Color(0.54, 0.70, 0.92, 0.55) if active else Color(1, 1, 1, 0.12), false, 1.0)
-		var s: Dictionary = summary.get(branch, {})
-		var label := "%s %d/%d" % [
-			str(_branch_names.get(branch, branch)),
-			int(s.get("completed", 0)),
-			int(s.get("total", 0)),
+func _make_panel_rects() -> Dictionary:
+	var result: Dictionary = {}
+	var board_x: float = BOARD_MARGIN
+	var board_y: float = HEADER_H + BOARD_MARGIN
+	var board_w: float = size.x - BOARD_MARGIN * 2.0
+	var board_h: float = size.y - DETAIL_H - board_y - BOARD_MARGIN
+	var col_w: float = (board_w - GRID_GAP * 2.0) / 3.0
+	var row_h: float = (board_h - GRID_GAP * 2.0) / 3.0
+	for i in range(_panel_order.size()):
+		var panel_id: String = _panel_order[i]
+		var col: int = i % 3
+		var row: int = floori(float(i) / 3.0)
+		var pos := Vector2(board_x + float(col) * (col_w + GRID_GAP), board_y + float(row) * (row_h + GRID_GAP))
+		result[panel_id] = Rect2(pos, Vector2(col_w, row_h))
+	return result
+
+
+func _draw_block_frames(player: int) -> void:
+	for panel_id in _panel_order:
+		if not _panel_rects.has(panel_id):
+			continue
+		var rect: Rect2 = _panel_rects[panel_id]
+		draw_rect(rect, BLOCK_COLOR, true)
+		draw_rect(rect, BLOCK_BORDER, false, 1.0)
+		draw_rect(Rect2(rect.position, Vector2(rect.size.x, 28.0)), Color(0.10, 0.13, 0.16, 0.82), true)
+		var counts: Dictionary = _panel_counts(player, panel_id)
+		var title := "%s  %d/%d" % [
+			str(_panel_names.get(panel_id, panel_id)),
+			int(counts.get("completed", 0)),
+			int(counts.get("total", 0)),
 		]
-		_draw_text(rect.position + Vector2(8, 19), label, 12, Color(0.9, 0.94, 1.0))
+		_draw_text(rect.position + Vector2(12.0, 20.0), title, 13, BLOCK_TITLE_COLOR)
+		if int(counts.get("total", 0)) == 0:
+			_draw_text(rect.position + Vector2(18.0, 58.0), "待规划", 12, Color(0.48, 0.54, 0.62))
 
 
-func _draw_tree(player: int) -> void:
-	var definitions: Array = _get_branch_definitions(_selected_branch)
-	var layout: Dictionary = _make_layout(definitions)
-	var origin := Vector2(SIDEBAR_W + 26.0, HEADER_H + 26.0)
-	for definition in definitions:
+func _build_node_rects() -> void:
+	for definition_variant in _service.get_definitions():
+		var definition: Dictionary = definition_variant
+		var panel_id: String = _definition_panel(definition)
+		if not _panel_rects.has(panel_id):
+			continue
+		var panel_rect: Rect2 = _panel_rects[panel_id]
+		var grid_pos: Vector2i = Vector2i.ZERO
+		if definition.has("position"):
+			grid_pos = definition["position"]
+		var node_pos: Vector2 = panel_rect.position + Vector2(18.0 + float(grid_pos.x) * NODE_STEP.x, 44.0 + float(grid_pos.y) * NODE_STEP.y)
 		var id: String = str(definition["id"])
-		var pos: Vector2 = layout.get(id, Vector2.ZERO)
-		var rect := Rect2(origin + Vector2(pos.x * NODE_GAP_X, pos.y * NODE_GAP_Y), NODE_SIZE)
-		_node_rects[id] = rect
+		_node_rects[id] = Rect2(node_pos, NODE_SIZE)
+		_node_defs[id] = definition
 
-	for definition in definitions:
+
+func _draw_links(player: int) -> void:
+	for definition_variant in _service.get_definitions():
+		var definition: Dictionary = definition_variant
 		var id: String = str(definition["id"])
+		if not _node_rects.has(id):
+			continue
 		var rect: Rect2 = _node_rects[id]
-		for parent_id in definition.get("parents", []):
-			var parent_key: String = str(parent_id)
-			if not _node_rects.has(parent_key):
+		for parent_id_variant in definition.get("parents", []):
+			var parent_id: String = str(parent_id_variant)
+			if not _node_rects.has(parent_id):
 				continue
-			var parent_rect: Rect2 = _node_rects[parent_key]
-			var done: bool = _service.is_completed(player, parent_key)
-			var line_color := LINE_OPEN if done else LINE_LOCKED
-			draw_line(parent_rect.position + Vector2(parent_rect.size.x, parent_rect.size.y * 0.5), rect.position + Vector2(0, rect.size.y * 0.5), line_color, 2.0)
+			var parent_rect: Rect2 = _node_rects[parent_id]
+			var parent_done: bool = _service.is_completed(player, parent_id)
+			var child_open: bool = _service.is_unlocked(player, id)
+			var line_color: Color = LINE_LOCKED
+			if parent_done and child_open:
+				line_color = LINE_OPEN
+			if parent_done and _service.is_completed(player, id):
+				line_color = LINE_DONE
+			var from: Vector2 = parent_rect.position + parent_rect.size * 0.5
+			var to: Vector2 = rect.position + rect.size * 0.5
+			var parent_def: Dictionary = _node_defs.get(parent_id, {})
+			var same_panel: bool = _definition_panel(parent_def) == _definition_panel(definition)
+			if same_panel:
+				draw_line(from, to, line_color, 2.0)
+			else:
+				var cross_color := Color(line_color.r, line_color.g, line_color.b, line_color.a * 0.55)
+				_draw_dashed_line(from, to, cross_color, 1.0, 8.0, 7.0)
 
-	for definition in definitions:
-		_draw_node(player, definition, _node_rects[str(definition["id"])])
+
+func _draw_nodes(player: int) -> void:
+	for definition_variant in _service.get_definitions():
+		var definition: Dictionary = definition_variant
+		var id: String = str(definition["id"])
+		if _node_rects.has(id):
+			_draw_node(player, definition, _node_rects[id])
 
 
 func _draw_node(player: int, definition: Dictionary, rect: Rect2) -> void:
 	var id: String = str(definition["id"])
 	var completed: bool = _service.is_completed(player, id)
 	var unlocked: bool = _service.is_unlocked(player, id)
-	var color := NODE_LOCKED
-	var border := Color(1, 1, 1, 0.18)
+	var fill: Color = NODE_LOCKED
+	var border: Color = Color(1.0, 1.0, 1.0, 0.18)
+	var text_color: Color = Color(0.55, 0.58, 0.62)
 	if completed:
-		color = NODE_DONE
+		fill = NODE_DONE
 		border = NODE_DONE_BORDER
+		text_color = Color(0.92, 1.0, 0.90)
 	elif unlocked:
-		color = NODE_OPEN
+		fill = NODE_OPEN
 		border = NODE_BORDER
+		text_color = Color(0.92, 0.96, 1.0)
 	if id == _selected_id:
 		border = Color(1.0, 0.90, 0.42, 1.0)
-	draw_rect(rect, color, true)
-	draw_rect(rect, border, false, 2.0 if id == _selected_id else 1.0)
-	var title: String = str(definition.get("title", id))
-	if title.length() > 16:
-		title = title.substr(0, 15) + "."
-	_draw_text(rect.position + Vector2(8, 18), title, 12, Color(0.92, 0.96, 1.0) if unlocked else Color(0.55, 0.58, 0.62))
-	var mark := "\u5df2\u5b8c\u6210" if completed else ("\u53ef\u8fbe\u6210" if unlocked else "\u672a\u5f00\u653e")
-	_draw_text(rect.position + Vector2(8, 36), mark, 10, Color(0.70, 1.0, 0.66) if completed else Color(0.62, 0.76, 0.96))
+	draw_rect(rect, fill, true)
+	var border_width: float = 1.0
+	if id == _selected_id:
+		border_width = 2.0
+	draw_rect(rect, border, false, border_width)
+
+	var icon_label: String = _icon_label(str(definition.get("icon_key", "")))
+	_draw_text(rect.position + Vector2(12.0, 29.0), icon_label, 18, text_color)
+
+	var progress: Dictionary = _service.get_progress(player, id)
+	var progress_text: String = "%d/%d" % [int(progress.get("current", 0)), int(progress.get("target", 1))]
+	var progress_color: Color = Color(0.48, 0.52, 0.58)
+	if unlocked:
+		progress_color = Color(0.78, 0.86, 0.96)
+	_draw_text(rect.position + Vector2(3.0, rect.size.y + 13.0), progress_text, 10, progress_color)
+	_draw_text(rect.position + Vector2(-6.0, rect.size.y + 28.0), _short_title(str(definition.get("title", id))), 10, text_color)
 
 
 func _draw_detail(player: int) -> void:
 	var y: float = size.y - DETAIL_H + 22.0
 	if _selected_id.is_empty():
-		_draw_text(Vector2(SIDEBAR_W + 18.0, y), "\u70b9\u51fb\u8282\u70b9\u67e5\u770b\u6761\u4ef6\u548c\u5956\u52b1", 13, Color(0.78, 0.82, 0.88))
-		_draw_text(Vector2(SIDEBAR_W + 18.0, y + 24.0), "\u7eff\u8272=\u5df2\u5b8c\u6210  \u84dd\u8272=\u53ef\u8fbe\u6210  \u7070\u8272=\u672a\u5f00\u653e", 12, Color(0.62, 0.70, 0.82))
+		_draw_text(Vector2(18.0, y), "点击任意节点查看条件、进度、奖励和关联科技。", 13, Color(0.78, 0.82, 0.88))
+		_draw_text(Vector2(18.0, y + 26.0), "每个板块是一个玩法方向；板块内实线表示直接路线，跨板块虚线表示外部前置。", 12, Color(0.62, 0.70, 0.82))
 		return
 	var definition: Dictionary = _service.get_definition(_selected_id)
 	if definition.is_empty():
 		return
-	_draw_text(Vector2(SIDEBAR_W + 18.0, y), str(definition.get("title", _selected_id)), 14, Color(0.96, 0.98, 1.0))
-	var status := "\u5df2\u5b8c\u6210" if _service.is_completed(player, _selected_id) else ("\u53ef\u8fbe\u6210" if _service.is_unlocked(player, _selected_id) else "\u672a\u5f00\u653e")
-	_draw_text(Vector2(SIDEBAR_W + 18.0, y + 22.0), "%s | %s | %s" % [
+	var progress: Dictionary = _service.get_progress(player, _selected_id)
+	var status := "未开放"
+	if _service.is_completed(player, _selected_id):
+		status = "已完成"
+	elif _service.is_unlocked(player, _selected_id):
+		status = "可完成"
+	_draw_text(Vector2(18.0, y), "%s | %s | %d/%d" % [
+		str(definition.get("title", _selected_id)),
 		status,
+		int(progress.get("current", 0)),
+		int(progress.get("target", 1)),
+	], 14, Color(0.96, 0.98, 1.0))
+	_draw_text(Vector2(18.0, y + 24.0), str(definition.get("description", "")), 12, Color(0.76, 0.83, 0.92))
+	_draw_text(Vector2(18.0, y + 46.0), "%s | %s" % [
 		_describe_condition(definition.get("condition", {})),
 		_describe_reward(definition.get("reward", {})),
 	], 12, Color(0.82, 0.88, 0.96))
+	_draw_text(Vector2(18.0, y + 68.0), _describe_unlocks(definition), 11, Color(0.64, 0.70, 0.78))
 	var parents: Array = definition.get("parents", [])
 	if not parents.is_empty():
 		var parent_text := PackedStringArray()
 		for parent in parents:
 			parent_text.append(_get_title_for_id(str(parent)))
-		_draw_text(Vector2(SIDEBAR_W + 18.0, y + 43.0), "\u524d\u7f6e\uff1a" + ", ".join(parent_text), 11, Color(0.64, 0.70, 0.78))
+		_draw_text(Vector2(640.0, y + 68.0), "前置：" + ", ".join(parent_text), 11, Color(0.64, 0.70, 0.78))
 
 
-func _get_branch_definitions(branch: String) -> Array:
-	var result: Array = []
-	if _service == null:
-		return result
-	for definition in _service.get_definitions():
-		var d: Dictionary = definition
-		if str(d.get("branch", "")) == branch:
-			result.append(d)
-	return result
-
-
-func _make_layout(definitions: Array) -> Dictionary:
-	var same_branch_ids := {}
-	for definition in definitions:
-		same_branch_ids[str(definition["id"])] = true
-	var depths: Dictionary = {}
-	for definition in definitions:
-		_assign_depth(str(definition["id"]), definitions, same_branch_ids, depths)
-	var per_depth_count: Dictionary = {}
-	var result: Dictionary = {}
-	for definition in definitions:
-		var id: String = str(definition["id"])
-		var depth: int = int(depths.get(id, 0))
-		var lane: int = int(per_depth_count.get(depth, 0))
-		per_depth_count[depth] = lane + 1
-		result[id] = Vector2(depth, lane)
-	return result
-
-
-func _assign_depth(id: String, definitions: Array, same_branch_ids: Dictionary, depths: Dictionary) -> int:
-	if depths.has(id):
-		return int(depths[id])
-	var definition := {}
-	for item in definitions:
-		var d: Dictionary = item
-		if str(d["id"]) == id:
-			definition = d
-			break
-	var depth := 0
-	for parent_id_variant in definition.get("parents", []):
-		var parent_id: String = str(parent_id_variant)
-		if not same_branch_ids.has(parent_id):
+func _panel_counts(player: int, panel_id: String) -> Dictionary:
+	var total := 0
+	var completed := 0
+	var unlocked := 0
+	for definition_variant in _service.get_definitions():
+		var definition: Dictionary = definition_variant
+		if _definition_panel(definition) != panel_id:
 			continue
-		depth = maxi(depth, _assign_depth(parent_id, definitions, same_branch_ids, depths) + 1)
-	depths[id] = depth
-	return depth
+		total += 1
+		var id: String = str(definition["id"])
+		if _service.is_completed(player, id):
+			completed += 1
+		elif _service.is_unlocked(player, id):
+			unlocked += 1
+	return {
+		"total": total,
+		"completed": completed,
+		"unlocked": unlocked,
+	}
+
+
+func _definition_panel(definition: Dictionary) -> String:
+	if definition.is_empty():
+		return ""
+	if definition.has("panel"):
+		return str(definition["panel"])
+	return str(definition.get("branch", "foundation"))
+
+
+func _icon_label(key: String) -> String:
+	match key:
+		"wood":
+			return "木"
+		"stone":
+			return "石"
+		"food":
+			return "粮"
+		"iron":
+			return "铁"
+		"gold", "gold_ore":
+			return "金"
+		"magic_dust":
+			return "魔"
+		"ancient_wood":
+			return "古"
+		"worker":
+			return "工"
+		"unit":
+			return "兵"
+		"kill":
+			return "战"
+		"dragon":
+			return "龙"
+		"elf":
+			return "精"
+		"dwarf":
+			return "矮"
+		"orc":
+			return "兽"
+		"barracks":
+			return "营"
+		"gold_shaft":
+			return "井"
+		"mint":
+			return "铸"
+		"building":
+			return "建"
+		"resource":
+			return "资"
+	return "成"
+
+
+func _short_title(title: String) -> String:
+	if title.length() <= 6:
+		return title
+	return title.substr(0, 6)
 
 
 func _describe_condition(condition: Dictionary) -> String:
@@ -291,40 +419,53 @@ func _describe_condition(condition: Dictionary) -> String:
 	match kind:
 		"building":
 			if condition.has("production_key"):
-				return "\u5efa\u9020\u4ea7\u51fa " + _resource_name(str(condition["production_key"])) + " \u7684\u5efa\u7b51"
+				return "条件：建造产出 " + _resource_name(str(condition["production_key"])) + " 的建筑"
 			if condition.has("tag"):
-				return "\u5efa\u9020 " + _tag_name(str(condition["tag"])) + " \u5efa\u7b51"
+				return "条件：建造 " + _tag_name(str(condition["tag"])) + " 建筑"
 			if condition.has("special"):
-				return "\u5efa\u9020 " + _special_name(str(condition["special"]))
+				return "条件：建造 " + _special_name(str(condition["special"]))
 			if condition.has("category"):
-				return "\u5efa\u9020\u6307\u5b9a\u7c7b\u578b\u5efa\u7b51"
+				return "条件：建造指定类型建筑"
 			if condition.has("civilization"):
-				return "\u5efa\u9020 " + _civilization_name(str(condition["civilization"])) + " \u9886\u4e3b\u5efa\u7b51"
-			return "\u5efa\u9020\u6307\u5b9a\u5efa\u7b51"
+				return "条件：建造 " + _civilization_name(str(condition["civilization"])) + " 领主建筑"
+			return "条件：建造指定建筑"
 		"building_count":
-			return "\u62e5\u6709 %d \u5ea7\u6307\u5b9a\u5efa\u7b51" % int(condition.get("count", 1))
+			return "条件：拥有 %d 座指定建筑" % int(condition.get("count", 1))
 		"building_garrison":
-			return "\u5de5\u4eba\u5165\u9a7b\u6307\u5b9a\u5efa\u7b51"
+			return "条件：工人入驻指定建筑"
 		"unit_recruited":
-			return "\u62db\u52df\u4e00\u540d\u6218\u6597\u5355\u4f4d"
+			return "条件：招募一名战斗单位"
 		"unit_count":
-			return "\u62e5\u6709 %d \u540d\u6307\u5b9a\u5355\u4f4d" % int(condition.get("count", 1))
+			return "条件：拥有 %d 名指定单位" % int(condition.get("count", 1))
 		"kill":
-			return "\u51fb\u8d25" + _target_name(str(condition.get("target", "target")))
+			return "条件：击败" + _target_name(str(condition.get("target", "target")))
 		"resource_stock", "resource_any_stock":
-			return "\u62e5\u6709\u6307\u5b9a\u8d44\u6e90"
-	return kind
+			return "条件：拥有指定资源"
+	return "条件：" + kind
 
 
 func _describe_reward(reward: Dictionary) -> String:
 	var parts: Array[String] = []
 	var tp: int = int(reward.get("tech_points", 0))
 	if tp > 0:
-		parts.append("\u79d1\u6280\u70b9 +%d" % tp)
+		parts.append("科技点 +%d" % tp)
 	var resources: Dictionary = reward.get("resources", {})
 	for key in resources:
 		parts.append("%s +%d" % [_resource_name(str(key)), int(resources[key])])
-	return "\u5956\u52b1\uff1a" + ", ".join(parts) if not parts.is_empty() else "\u5956\u52b1\uff1a\u65e0"
+	if parts.is_empty():
+		return "奖励：无"
+	return "奖励：" + ", ".join(parts)
+
+
+func _describe_unlocks(definition: Dictionary) -> String:
+	var hints: Array = definition.get("unlocks_hint", [])
+	if hints.is_empty():
+		return "关联科技：无"
+	var names := PackedStringArray()
+	for hint in hints:
+		var key: String = str(hint)
+		names.append(str(_tech_names.get(key, key)))
+	return "关联科技：" + ", ".join(names)
 
 
 func _get_title_for_id(achievement_id: String) -> String:
@@ -341,37 +482,54 @@ func _resource_name(key: String) -> String:
 func _tag_name(tag: String) -> String:
 	match tag:
 		"barracks":
-			return "\u5175\u8425"
+			return "兵营"
 	return tag
 
 
 func _special_name(key: String) -> String:
 	match key:
 		"gold_shaft":
-			return "\u91d1\u77ff\u4e95"
+			return "金矿井"
 		"mint":
-			return "\u91d1\u5e01\u94f8\u9020\u5382"
+			return "金币铸造厂"
 	return key
 
 
 func _civilization_name(key: String) -> String:
 	match key:
 		"elf":
-			return "\u7cbe\u7075"
+			return "精灵"
 		"dwarf":
-			return "\u77ee\u4eba"
+			return "矮人"
 		"orc":
-			return "\u517d\u4eba"
+			return "兽人"
 	return key
 
 
 func _target_name(key: String) -> String:
 	match key:
 		"neutral":
-			return "\u4e2d\u7acb\u5355\u4f4d"
+			return "中立单位"
 		"player":
-			return "\u654c\u65b9\u5355\u4f4d"
+			return "敌方单位"
+		"any":
+			return "任意单位"
 	return key
+
+
+func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, width: float, dash_len: float, gap_len: float) -> void:
+	var delta: Vector2 = to - from
+	var length: float = delta.length()
+	if length <= 0.01:
+		return
+	var dir: Vector2 = delta / length
+	var distance: float = 0.0
+	while distance < length:
+		var start: Vector2 = from + dir * distance
+		var end_distance: float = minf(distance + dash_len, length)
+		var end: Vector2 = from + dir * end_distance
+		draw_line(start, end, color, width)
+		distance += dash_len + gap_len
 
 
 func _draw_text(pos: Vector2, text: String, font_size: int, color: Color) -> void:

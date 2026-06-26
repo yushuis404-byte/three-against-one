@@ -33,6 +33,7 @@ var stage_label: Label = null
 var stage_event_service: StageEventService = null
 var _goblin_market_round := -1
 var action_preview_panel: Control = null
+var unit_skill_bar: Control = null
 var ap_status_label: Label = null
 var achievement_service: AchievementService = null
 var achievement_tree_panel: Control = null
@@ -51,6 +52,10 @@ var wall_blueprint_button: Button = null
 var wall_blueprint_status_label: Label = null
 var zoom_status_label: Label = null
 var _creative_mode_enabled := false
+var _selected_unit_skill_view: Dictionary = {}
+var _wall_preview_valid: bool = false
+var _wall_preview_cells: int = 0
+var _wall_preview_stone_cost: int = 0
 
 
 func _ready() -> void:
@@ -168,6 +173,7 @@ func _setup_game() -> void:
 
 		# 单位信息面板初始化
 	_init_unit_info_panel()
+	_init_unit_skill_bar()
 	_init_action_preview_panel()
 	_init_achievement_tree_panel()
 	_init_achievement_tree_button()
@@ -213,6 +219,9 @@ func _on_fog_updated(player: int) -> void:
 	var territory_mgr = $GameBoard/TerritoryManager2D
 	territory_mgr.recalc_territory(player)
 	resource_manager.queue_redraw()
+	building_manager.queue_redraw()
+	unit_manager.queue_redraw()
+	neutral_unit_manager.queue_redraw()
 
 
 func _on_resource_hovered(text: String) -> void:
@@ -285,9 +294,14 @@ func _on_player_turn_started(player: int) -> void:
 			var mult: float = neutral_unit_manager.get_price_multiplier(player)
 			goblin_market_ui.show_market(player, mult)
 	building_ui.refresh(player)
+	_selected_unit_skill_view = {}
+	_refresh_unit_skill_bar()
 
 
 func _on_round_ended(round: int) -> void:
+	var fog_mgr: Node = $GameBoard/FogOfWar2D
+	if fog_mgr != null and fog_mgr.has_method("tick_magic_fog_round"):
+		fog_mgr.call("tick_magic_fog_round")
 	turn_label.text = "第 %d 回合结束" % round
 	debug_label.text = "结算中..."
 
@@ -298,6 +312,7 @@ func _on_ap_changed(player: int, ap: int) -> void:
 	_update_wall_blueprint_ui(player, "")
 	resource_tracker.update_display(player)
 	building_ui.refresh(player)
+	_refresh_unit_skill_bar()
 
 
 func _init_resource_labels() -> void:
@@ -415,7 +430,7 @@ func _on_final_scoring_started(scores: Array, winner: int) -> void:
 
 func _on_achievement_completed(player: int, _achievement_id: String, title: String) -> void:
 	if player == turn_manager.current_player:
-		debug_label.text = "Achievement: %s | TP %d" % [title, achievement_service.get_tech_points(player)]
+		debug_label.text = "成就达成：%s｜科技点 %d" % [title, achievement_service.get_tech_points(player)]
 
 
 func _init_achievement_tree_panel() -> void:
@@ -605,20 +620,28 @@ func _on_wall_mode_changed(active: bool, message: String) -> void:
 	_update_wall_blueprint_ui(turn_manager.current_player, message)
 	if wall_blueprint_button != null:
 		wall_blueprint_button.button_pressed = active
+	_refresh_unit_skill_bar()
 
 
 func _on_wall_preview_changed(message: String, valid: bool, cells: int, stone_cost: int) -> void:
-	var state_text := "\u53ef\u786e\u8ba4" if valid else "\u672a\u5b8c\u6210"
-	var full_message := message
+	_wall_preview_valid = valid
+	_wall_preview_cells = cells
+	_wall_preview_stone_cost = stone_cost
+	var state_text: String = "\u672a\u5b8c\u6210"
+	if valid:
+		state_text = "\u53ef\u786e\u8ba4"
+	var full_message: String = message
 	if cells > 0:
 		full_message = "\u57ce\u5899\u84dd\u56fe %d\u683c | \u77f3\u6599 %d | %s" % [cells, stone_cost, state_text]
 	_update_wall_blueprint_ui(turn_manager.current_player, full_message)
+	_refresh_unit_skill_bar()
 
 
 func _update_wall_blueprint_ui(player: int, message: String) -> void:
 	if wall_blueprint_button != null:
 		var is_dwarf := player == 1
 		wall_blueprint_button.disabled = not is_dwarf
+		wall_blueprint_button.visible = false
 		wall_blueprint_button.modulate = Color(0.72, 0.86, 1.0, 1.0) if is_dwarf else Color(0.45, 0.45, 0.45, 0.72)
 	if wall_blueprint_status_label == null:
 		return
@@ -626,7 +649,7 @@ func _update_wall_blueprint_ui(player: int, message: String) -> void:
 		wall_blueprint_status_label.text = ""
 		return
 	if message.is_empty():
-		wall_blueprint_status_label.text = "\u57ce\u5899\uff1a\u70b9\u51fb\u6309\u94ae\u6216 W \u8fdb\u5165\u84dd\u56fe\u6a21\u5f0f"
+		wall_blueprint_status_label.text = "\u57ce\u5899\uff1a\u4f7f\u7528\u53f3\u4e0b\u89d2\u6280\u80fd\u6309\u94ae\u8fdb\u5165\u84dd\u56fe\u6a21\u5f0f"
 	else:
 		wall_blueprint_status_label.text = message
 
@@ -775,6 +798,8 @@ func _init_unit_info_panel() -> void:
 
 	unit_manager.unit_selected.connect(panel.show_unit)
 	unit_manager.selection_cleared.connect(panel.hide_panel)
+	unit_manager.unit_selected.connect(_on_unit_selected_for_skill_bar)
+	unit_manager.selection_cleared.connect(_on_unit_selection_cleared_for_skill_bar)
 	if panel.has_signal("form_warband_requested"):
 		panel.form_warband_requested.connect(unit_manager.request_form_warband)
 	if panel.has_signal("confirm_warband_requested"):
@@ -786,8 +811,120 @@ func _init_unit_info_panel() -> void:
 
 	# 中立单位选择信号
 	neutral_unit_manager.neutral_selected.connect(panel.show_unit)
+	neutral_unit_manager.neutral_selected.connect(_on_neutral_selected_for_skill_bar)
 	neutral_unit_manager.selection_cleared.connect(panel.hide_panel)
 	unit_manager.selection_cleared.connect(neutral_unit_manager.clear_selection)
+
+
+func _init_unit_skill_bar() -> void:
+	var panel_script: Script = preload("res://scripts/ui/unit_skill_bar.gd")
+	unit_skill_bar = Control.new()
+	unit_skill_bar.name = "UnitSkillBar"
+	unit_skill_bar.script = panel_script
+	$UI.add_child(unit_skill_bar)
+	if unit_skill_bar.has_signal("skill_requested"):
+		unit_skill_bar.skill_requested.connect(_on_unit_skill_requested)
+	_refresh_unit_skill_bar()
+
+
+func _on_unit_selected_for_skill_bar(unit: Dictionary) -> void:
+	_selected_unit_skill_view = unit
+	_refresh_unit_skill_bar()
+
+
+func _on_unit_selection_cleared_for_skill_bar() -> void:
+	_selected_unit_skill_view = {}
+	_refresh_unit_skill_bar()
+
+
+func _on_neutral_selected_for_skill_bar(_unit: Dictionary) -> void:
+	_selected_unit_skill_view = {}
+	_refresh_unit_skill_bar()
+
+
+func _refresh_unit_skill_bar() -> void:
+	if unit_skill_bar == null:
+		return
+	var skills: Array = []
+	if not _selected_unit_skill_view.is_empty():
+		if unit_manager != null and unit_manager.has_method("get_selected_unit_view"):
+			var refreshed_view: Dictionary = unit_manager.call("get_selected_unit_view")
+			if not refreshed_view.is_empty():
+				_selected_unit_skill_view = refreshed_view
+		var unit_skills: Array = _selected_unit_skill_view.get("skills", [])
+		for skill_variant in unit_skills:
+			skills.append(skill_variant)
+	var wall_skills: Array = _get_wall_skill_actions()
+	for wall_skill in wall_skills:
+		skills.append(wall_skill)
+	if unit_skill_bar.has_method("show_skills"):
+		unit_skill_bar.call("show_skills", skills)
+
+
+func _get_wall_skill_actions() -> Array:
+	var result: Array = []
+	if wall_blueprint_manager == null or turn_manager == null:
+		return result
+	if int(turn_manager.current_player) != 1:
+		return result
+	var active: bool = false
+	if wall_blueprint_manager.has_method("is_wall_mode_active"):
+		active = bool(wall_blueprint_manager.call("is_wall_mode_active"))
+	if active:
+		var confirm_status: String = "选择两个建筑"
+		var confirm_reason: String = "连接两座矮人建筑后才能确认城墙蓝图。"
+		if _wall_preview_valid:
+			confirm_status = "石料 %d" % _wall_preview_stone_cost
+			confirm_reason = "确认 %d 格城墙，消耗 %d 石料。" % [_wall_preview_cells, _wall_preview_stone_cost]
+		result.append({
+			"id": "wall_confirm",
+			"unit_id": -1,
+			"label": "确认城墙",
+			"enabled": _wall_preview_valid,
+			"active": true,
+			"cooldown": 0,
+			"status": confirm_status,
+			"reason": confirm_reason,
+		})
+		result.append({
+			"id": "wall_cancel",
+			"unit_id": -1,
+			"label": "取消城墙",
+			"enabled": true,
+			"active": true,
+			"cooldown": 0,
+			"status": "蓝图中",
+			"reason": "取消当前城墙蓝图。",
+		})
+	else:
+		result.append({
+			"id": "wall_start",
+			"unit_id": -1,
+			"label": "城墙蓝图",
+			"enabled": true,
+			"active": false,
+			"cooldown": 0,
+			"status": "可用",
+			"reason": "选择两座矮人建筑规划城墙。",
+		})
+	return result
+
+
+func _on_unit_skill_requested(action_id: String, unit_id: int) -> void:
+	match action_id:
+		"wall_start":
+			if wall_blueprint_manager != null and wall_blueprint_manager.has_method("start_wall_anchor_selection"):
+				wall_blueprint_manager.call("start_wall_anchor_selection")
+		"wall_confirm":
+			if wall_blueprint_manager != null and wall_blueprint_manager.has_method("confirm_wall_blueprint"):
+				wall_blueprint_manager.call("confirm_wall_blueprint")
+		"wall_cancel":
+			if wall_blueprint_manager != null and wall_blueprint_manager.has_method("cancel_wall_blueprint"):
+				wall_blueprint_manager.call("cancel_wall_blueprint")
+		_:
+			if unit_manager != null and unit_manager.has_method("request_unit_skill"):
+				unit_manager.call("request_unit_skill", action_id, unit_id)
+	_refresh_unit_skill_bar()
 
 
 func _init_action_preview_panel() -> void:

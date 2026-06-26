@@ -96,12 +96,12 @@ const ELF_FOG_REVEAL_CASTER_TEMPLATE_ID := "unit.elf.scout"
 const ELF_FOG_CONCEAL_CASTER_TEMPLATE_ID := "unit.elf.guard"
 const SLINGER_THROW_RANGE := 5
 const SLINGER_THROW_AP_COST := 1
-const FOG_REVEAL_RANGE := 6
 const FOG_REVEAL_RADIUS := 2
 const FOG_REVEAL_AP_COST := 1
 const FOG_CONCEAL_RANGE := 6
 const FOG_CONCEAL_RADIUS := 2
 const FOG_CONCEAL_AP_COST := 1
+const FOG_CONCEAL_DURATION_ROUNDS := 5
 const FOG_REVEAL_COOLDOWN_KEY := "fog_reveal_cooldown_turns"
 const FOG_CONCEAL_COOLDOWN_KEY := "fog_conceal_cooldown_turns"
 const RETREAT_HIDDEN_FROM_FACTION_KEY := "retreat_hidden_from_faction"
@@ -378,14 +378,9 @@ func _draw() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_F:
-			_toggle_fog_reveal_mode()
-			return
-		if event.keycode == KEY_G:
-			_toggle_fog_conceal_mode()
-			return
 		if event.keycode == KEY_ESCAPE and (_fog_reveal_mode or _fog_conceal_mode):
 			_cancel_fog_modes()
+			_emit_selected_unit_view()
 			return
 
 	if not event is InputEventMouseButton:
@@ -547,6 +542,81 @@ func _clear_selection() -> void:
 	queue_redraw()
 
 
+func get_selected_unit_view() -> Dictionary:
+	if _selected_id < 0:
+		return {}
+	var unit: Dictionary = _get_unit_by_id(_selected_id)
+	if unit.is_empty():
+		return {}
+	return _make_unit_view(unit)
+
+
+func request_unit_skill(action_id: String, unit_id: int = -1) -> bool:
+	var selected_unit_id: int = unit_id if unit_id >= 0 else _selected_id
+	match action_id:
+		"fog_reveal":
+			var reveal_ok: bool = _request_fog_reveal_skill(selected_unit_id)
+			_emit_selected_unit_view()
+			return reveal_ok
+		"fog_conceal":
+			var conceal_ok: bool = _request_fog_conceal_skill(selected_unit_id)
+			_emit_selected_unit_view()
+			return conceal_ok
+		"throw_beast":
+			var throw_ok: bool = _request_throw_beast_skill(selected_unit_id)
+			_emit_selected_unit_view()
+			return throw_ok
+		"warband_form":
+			return request_form_warband(selected_unit_id)
+		"warband_confirm":
+			return confirm_warband_selection()
+		"warband_cancel":
+			cancel_warband_selection()
+			return true
+		"warband_disband":
+			return disband_warband(selected_unit_id)
+	return false
+
+
+func _emit_selected_unit_view() -> void:
+	if _selected_id < 0:
+		return
+	var unit: Dictionary = _get_unit_by_id(_selected_id)
+	if unit.is_empty():
+		return
+	unit_selected.emit(_make_unit_view(unit))
+
+
+func _request_fog_reveal_skill(unit_id: int) -> bool:
+	if unit_id != _selected_id:
+		_select_unit(unit_id)
+	if _get_selected_fog_reveal_caster().is_empty():
+		return false
+	_toggle_fog_reveal_mode()
+	return true
+
+
+func _request_fog_conceal_skill(unit_id: int) -> bool:
+	if unit_id != _selected_id:
+		_select_unit(unit_id)
+	if _get_selected_fog_conceal_caster().is_empty():
+		return false
+	_toggle_fog_conceal_mode()
+	return true
+
+
+func _request_throw_beast_skill(unit_id: int) -> bool:
+	if unit_id != _selected_id:
+		_select_unit(unit_id)
+	var slinger: Dictionary = _get_unit_by_id(unit_id)
+	if slinger.is_empty():
+		return false
+	var beast: Dictionary = _get_adjacent_throw_beast(slinger)
+	if beast.is_empty():
+		return false
+	return _try_arm_beast_throw(slinger, beast)
+
+
 func _toggle_fog_reveal_mode() -> void:
 	if _fog_reveal_mode:
 		_cancel_fog_reveal_mode()
@@ -679,10 +749,6 @@ func _update_fog_reveal_preview() -> void:
 	if not _in_bounds(target.x, target.y):
 		_fog_reveal_tiles.clear()
 		return
-	var caster_pos: Vector2i = caster.get("grid_pos", Vector2i.ZERO)
-	if _grid_distance(caster_pos, target) > FOG_REVEAL_RANGE:
-		_fog_reveal_tiles.clear()
-		return
 	_fog_reveal_tiles = _get_tiles_in_manhattan_radius(target, FOG_REVEAL_RADIUS)
 
 
@@ -717,10 +783,6 @@ func _try_reveal_fog_at(target: Vector2i) -> bool:
 	if _is_fog_talent_on_cooldown(caster, FOG_REVEAL_COOLDOWN_KEY):
 		_cancel_fog_reveal_mode()
 		return false
-	var caster_pos: Vector2i = caster.get("grid_pos", Vector2i.ZERO)
-	if _grid_distance(caster_pos, target) > FOG_REVEAL_RANGE:
-		print("[Fog] Reveal target is out of range.")
-		return false
 	if _fog_manager == null or not _fog_manager.has_method("reveal_area"):
 		return false
 	if _turn_manager != null:
@@ -731,6 +793,7 @@ func _try_reveal_fog_at(target: Vector2i) -> bool:
 	_fog_manager.call("reveal_area", int(_turn_manager.current_player), target.x, target.y, FOG_REVEAL_RADIUS)
 	_set_fog_talent_cooldown(caster, FOG_REVEAL_COOLDOWN_KEY)
 	_cancel_fog_reveal_mode()
+	_emit_selected_unit_view()
 	print("[Fog] Windrunner Scout revealed area %s." % str(target))
 	return true
 
@@ -747,19 +810,17 @@ func _try_conceal_fog_at(target: Vector2i) -> bool:
 	if _grid_distance(caster_pos, target) > FOG_CONCEAL_RANGE:
 		print("[Fog] Conceal target is out of range.")
 		return false
-	if _fog_manager == null or not _fog_manager.has_method("conceal_area"):
+	if _fog_manager == null or not _fog_manager.has_method("add_magic_fog"):
 		return false
 	if _turn_manager != null:
 		var ok: bool = _turn_manager.spend_ap(int(_turn_manager.current_player), FOG_CONCEAL_AP_COST)
 		if not ok:
 			print("[Fog] Not enough AP to conceal fog.")
 			return false
-	for player in range(3):
-		if player == 0:
-			continue
-		_fog_manager.call("conceal_area", player, target.x, target.y, FOG_CONCEAL_RADIUS)
+	_fog_manager.call("add_magic_fog", int(_turn_manager.current_player), target.x, target.y, FOG_CONCEAL_RADIUS, FOG_CONCEAL_DURATION_ROUNDS)
 	_set_fog_talent_cooldown(caster, FOG_CONCEAL_COOLDOWN_KEY)
 	_cancel_fog_conceal_mode()
+	_emit_selected_unit_view()
 	print("[Fog] Moonshadow Assassin concealed area %s." % str(target))
 	return true
 
@@ -1114,8 +1175,6 @@ func _make_neutral_attack_preview(attacker: Dictionary, target: Dictionary) -> D
 func _can_ranged_attack(attacker: Dictionary, target: Dictionary) -> bool:
 	if attacker.is_empty() or target.is_empty():
 		return false
-	if bool(attacker.get("has_attacked", false)):
-		return false
 	var data: UnitData = _get_unit_data(attacker)
 	if data.attack_range <= 1:
 		return false
@@ -1372,6 +1431,22 @@ func _try_arm_beast_throw(slinger: Dictionary, beast: Dictionary) -> bool:
 	})
 	queue_redraw()
 	return true
+
+
+func _get_adjacent_throw_beast(slinger: Dictionary) -> Dictionary:
+	if slinger.is_empty():
+		return {}
+	var slinger_pos: Vector2i = slinger.get("grid_pos", Vector2i.ZERO)
+	var faction: int = int(slinger.get("faction", -1))
+	for unit in _units:
+		var candidate: Dictionary = unit
+		if int(candidate.get("faction", -2)) != faction:
+			continue
+		if not _is_orc_beast(candidate):
+			continue
+		if _is_adjacent(slinger_pos, candidate.get("grid_pos", Vector2i.ZERO)):
+			return candidate
+	return {}
 
 
 func _try_throw_beast_to(target: Vector2i) -> bool:
@@ -2212,7 +2287,6 @@ func _begin_tactical_encounter(initiator_id: int, target_id: int) -> bool:
 		"committed_to_engage": false,
 		"sequence_id": _combat_sequence_id,
 	}
-	first_attacker["has_attacked"] = true
 	combat_started.emit()
 	var dead: bool = _apply_unit_attack_damage(first_attacker, decision_unit)
 	if dead:
@@ -2465,10 +2539,6 @@ func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
 		"attacker_id": attacker_id,
 		"defender_id": defender_id,
 	}
-	for u in _units:
-		if int(u.get("id", -1)) == attacker_id:
-			u["has_attacked"] = true
-			break
 	combat_started.emit()
 	_combat_timer = Timer.new()
 	_combat_timer.wait_time = 1.0
@@ -2488,10 +2558,6 @@ func _initiate_ranged_neutral_combat(attacker_id: int, neutral_id: int, neutral_
 		"neutral_id": neutral_id,
 		"neutral_mgr": neutral_mgr,
 	}
-	for u in _units:
-		if int(u.get("id", -1)) == attacker_id:
-			u["has_attacked"] = true
-			break
 	combat_started.emit()
 	_combat_timer = Timer.new()
 	_combat_timer.wait_time = 1.0
@@ -2869,6 +2935,10 @@ func get_unit_atk_value(uid: int) -> int:
 	return _get_unit_attack_value(unit)
 
 
+func get_unit_vision_for_fog(unit: Dictionary) -> int:
+	return _get_unit_vision_value(unit)
+
+
 
 func _get_unit_vision_value(unit: Dictionary) -> int:
 	var data: UnitData = _get_unit_data(unit)
@@ -3078,6 +3148,179 @@ func _get_unit_data(unit: Dictionary) -> UnitData:
 	return UnitData.new("", UnitData.UnitCategory.SPECIAL, 0, 0, 1, 0, 0)
 
 
+func _get_unit_skill_actions(unit: Dictionary) -> Array:
+	var actions: Array = []
+	if unit.is_empty():
+		return actions
+	if _is_fog_reveal_unit(unit):
+		actions.append(_make_fog_skill_action(unit, "fog_reveal", "揭示迷雾", FOG_REVEAL_AP_COST, FOG_REVEAL_COOLDOWN_KEY, _fog_reveal_mode))
+	if _is_fog_conceal_unit(unit):
+		actions.append(_make_fog_skill_action(unit, "fog_conceal", "遮蔽迷雾", FOG_CONCEAL_AP_COST, FOG_CONCEAL_COOLDOWN_KEY, _fog_conceal_mode))
+	if _is_orc_slinger(unit):
+		actions.append(_make_throw_skill_action(unit))
+	if _is_orc_warband_unit(unit) or int(unit.get("warband_id", -1)) >= 0 or _is_warband_selection_active():
+		_append_warband_skill_actions(actions, unit)
+	return actions
+
+
+func _make_fog_skill_action(unit: Dictionary, action_id: String, label: String, ap_cost: int, cooldown_key: String, active: bool) -> Dictionary:
+	var cooldown: int = int(unit.get(cooldown_key, 0))
+	var enabled: bool = true
+	var status: String = "可用"
+	var reason: String = ""
+	if active:
+		if action_id == "fog_reveal":
+			status = "选择任意地图点"
+		else:
+			status = "选择目标中"
+	elif int(unit.get("faction", -1)) != _current_player_id():
+		enabled = false
+		status = "非当前回合"
+		reason = "只能在该单位所属玩家的回合使用。"
+	elif cooldown > 0:
+		enabled = false
+		status = "冷却 %d 回合" % cooldown
+		reason = status
+	elif not _has_ap(ap_cost):
+		enabled = false
+		status = "AP 不足"
+		reason = "需要 %d AP。" % ap_cost
+	return {
+		"id": action_id,
+		"unit_id": int(unit.get("id", -1)),
+		"label": label,
+		"enabled": enabled,
+		"active": active,
+		"cooldown": cooldown,
+		"status": status,
+		"reason": reason,
+	}
+
+
+func _make_throw_skill_action(unit: Dictionary) -> Dictionary:
+	var used: bool = bool(unit.get("has_thrown_beast", false))
+	var has_beast: bool = not _get_adjacent_throw_beast(unit).is_empty()
+	var enabled: bool = true
+	var status: String = "可用"
+	var reason: String = "点击后选择相邻猎齿兽，并在地图上选择落点。"
+	var cooldown: int = 0
+	if int(unit.get("faction", -1)) != _current_player_id():
+		enabled = false
+		status = "非当前回合"
+		reason = "只能在该单位所属玩家的回合使用。"
+	elif used:
+		enabled = false
+		status = "冷却 1 回合"
+		reason = "本回合已经投掷过，下个本方回合恢复。"
+		cooldown = 1
+	elif not has_beast:
+		enabled = false
+		status = "需要相邻猎齿兽"
+		reason = "投掷者旁边必须有己方猎齿兽。"
+	elif not _has_ap(SLINGER_THROW_AP_COST):
+		enabled = false
+		status = "AP 不足"
+		reason = "需要 %d AP。" % SLINGER_THROW_AP_COST
+	return {
+		"id": "throw_beast",
+		"unit_id": int(unit.get("id", -1)),
+		"label": "投掷猎齿兽",
+		"enabled": enabled,
+		"active": _throw_beast_source_id >= 0,
+		"cooldown": cooldown,
+		"status": status,
+		"reason": reason,
+	}
+
+
+func _append_warband_skill_actions(actions: Array, unit: Dictionary) -> void:
+	var unit_id: int = int(unit.get("id", -1))
+	var selecting: bool = _is_warband_selection_active() and unit_id == _warband_selection_leader_id
+	var warband_id: int = int(unit.get("warband_id", -1))
+	if selecting:
+		var selected_count: int = _warband_selection_ids.size()
+		var can_confirm: bool = selected_count >= WARBAND_MIN_MEMBERS and _has_ap(WARBAND_AP_COST)
+		var status: String = "%d/%d" % [selected_count, WARBAND_MIN_MEMBERS]
+		if not _has_ap(WARBAND_AP_COST):
+			status = "AP 不足"
+		actions.append({
+			"id": "warband_confirm",
+			"unit_id": unit_id,
+			"label": "确认战团",
+			"enabled": can_confirm,
+			"active": true,
+			"cooldown": 0,
+			"status": status,
+			"reason": "至少选择 %d 名兽人单位，需要 %d AP。" % [WARBAND_MIN_MEMBERS, WARBAND_AP_COST],
+		})
+		actions.append({
+			"id": "warband_cancel",
+			"unit_id": unit_id,
+			"label": "取消战团",
+			"enabled": true,
+			"active": true,
+			"cooldown": 0,
+			"status": "选择中",
+			"reason": "取消当前战团选择。",
+		})
+		return
+	if warband_id >= 0:
+		actions.append({
+			"id": "warband_disband",
+			"unit_id": unit_id,
+			"label": "解散战团",
+			"enabled": int(unit.get("faction", -1)) == _current_player_id(),
+			"active": false,
+			"cooldown": 0,
+			"status": "已编组",
+			"reason": "解除该单位所在战团。",
+		})
+		return
+	var can_form: bool = _can_unit_join_warband(unit, true) and _get_warband_candidates(unit).size() >= WARBAND_MIN_MEMBERS and _has_ap(WARBAND_AP_COST)
+	var form_status: String = "可用"
+	var form_reason: String = "选择附近兽人单位组成战团，需要 %d AP。" % WARBAND_AP_COST
+	if int(unit.get("faction", -1)) != _current_player_id():
+		can_form = false
+		form_status = "非当前回合"
+	elif not _has_ap(WARBAND_AP_COST):
+		can_form = false
+		form_status = "AP 不足"
+	elif _get_warband_candidates(unit).size() < WARBAND_MIN_MEMBERS:
+		can_form = false
+		form_status = "人数不足"
+		form_reason = "附近可编组兽人不足 %d 名。" % WARBAND_MIN_MEMBERS
+	actions.append({
+		"id": "warband_form",
+		"unit_id": unit_id,
+		"label": "组建战团",
+		"enabled": can_form,
+		"active": false,
+		"cooldown": 0,
+		"status": form_status,
+		"reason": form_reason,
+	})
+
+
+func _is_fog_reveal_unit(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ELF_FOG_REVEAL_CASTER_TEMPLATE_ID
+
+
+func _is_fog_conceal_unit(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ELF_FOG_CONCEAL_CASTER_TEMPLATE_ID
+
+
+func _has_ap(amount: int) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("get_ap"):
+		return true
+	return int(_turn_manager.call("get_ap", _current_player_id())) >= amount
+
+
+func _current_player_id() -> int:
+	if _turn_manager == null:
+		return -1
+	return int(_turn_manager.current_player)
+
+
 func _can_unit_gather(data: UnitData, gather_info: Array) -> bool:
 	if gather_info.is_empty():
 		return false
@@ -3103,6 +3346,7 @@ func _make_unit_view(unit: Dictionary) -> Dictionary:
 	view["warband_ap_text"] = _get_warband_ap_text(member_count)
 	view["warband_selecting"] = selecting
 	view["warband_selected_count"] = _warband_selection_ids.size() if selecting else 0
+	view["skills"] = _get_unit_skill_actions(unit)
 	return view
 
 

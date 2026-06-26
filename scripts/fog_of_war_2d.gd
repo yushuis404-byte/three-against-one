@@ -16,6 +16,14 @@ signal fog_updated(player: int)
 
 var _turn_manager: Node = null
 var _grid_manager: Node = null
+var _unit_manager: Node = null
+var _magic_fog_zones: Array[Dictionary] = []
+var _next_magic_fog_zone_id := 1
+
+const MAGIC_FOG_ALPHA := 0.7
+const MAGIC_FOG_OWNER_FILL := Color(0.2, 0.7, 1.0, 0.14)
+const MAGIC_FOG_OWNER_BORDER := Color(0.55, 0.9, 1.0, 0.78)
+const MAGIC_FOG_OWNER_CENTER := Color(0.45, 0.95, 1.0, 0.9)
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -35,6 +43,7 @@ const FADE_DURATION := 0.3
 
 func _ready() -> void:
 	_grid_manager = get_parent().get_node_or_null("GridManager2D")
+	_unit_manager = get_parent().get_node_or_null("UnitManager2D")
 	_init_all_fog()
 
 
@@ -86,7 +95,6 @@ func _draw() -> void:
 	if fog_grids.is_empty():
 		return
 
-	var fog: Array = fog_grids[current_player]
 	var ts := tile_size + 1.0
 	var half := ts / 2.0
 
@@ -94,7 +102,7 @@ func _draw() -> void:
 		for x in range(grid_cols):
 			if _is_ocean_tile(x, y):
 				continue
-			var raw: float = fog[y][x]
+			var raw: float = _get_effective_fog(current_player, x, y)
 			if raw <= 0.0:
 				continue
 
@@ -106,13 +114,14 @@ func _draw() -> void:
 					var nx: int = x + dx
 					var ny: int = y + dy
 					if nx >= 0 and nx < grid_cols and ny >= 0 and ny < grid_rows:
-						smoothed += fog[ny][nx]
+						smoothed += _get_effective_fog(current_player, nx, ny)
 						count += 1
 			smoothed /= count
 
 			var pos := _grid_to_world(x, y)
 			var rect := Rect2(pos.x - half, pos.y - half, ts, ts)
 			draw_rect(rect, Color(0, 0, 0, smoothed))
+	_draw_magic_fog_owner_markers()
 
 
 # ========== 公共 API ==========
@@ -168,6 +177,49 @@ func conceal_area(player: int, cx: int, cy: int, radius: int) -> void:
 		fog_updated.emit(player)
 
 
+func add_magic_fog(owner: int, cx: int, cy: int, radius: int, duration_rounds: int) -> void:
+	if not _in_bounds(cx, cy):
+		return
+	var zone: Dictionary = {
+		"id": _next_magic_fog_zone_id,
+		"owner": owner,
+		"center": Vector2i(cx, cy),
+		"radius": maxi(0, radius),
+		"remaining_rounds": maxi(1, duration_rounds),
+	}
+	_next_magic_fog_zone_id += 1
+	_magic_fog_zones.append(zone)
+	queue_redraw()
+	_emit_magic_fog_visibility_changed()
+
+
+func tick_magic_fog_round() -> void:
+	if _magic_fog_zones.is_empty():
+		return
+	var kept: Array[Dictionary] = []
+	var expired := false
+	for zone_variant in _magic_fog_zones:
+		var zone: Dictionary = zone_variant
+		var remaining: int = int(zone.get("remaining_rounds", 0)) - 1
+		if remaining > 0:
+			zone["remaining_rounds"] = remaining
+			kept.append(zone)
+		else:
+			expired = true
+	_magic_fog_zones = kept
+	queue_redraw()
+	if expired:
+		_emit_magic_fog_visibility_changed()
+
+
+func has_magic_fog_at(owner: int, x: int, y: int) -> bool:
+	for zone_variant in _magic_fog_zones:
+		var zone: Dictionary = zone_variant
+		if int(zone.get("owner", -1)) == owner and _is_tile_in_magic_fog_zone(zone, x, y):
+			return true
+	return false
+
+
 func explore_area(player: int, cx: int, cy: int, radius: int) -> void:
 	## 依现有设计：无未探索态，故本函数仅保留接口
 	pass
@@ -177,13 +229,13 @@ func is_explored(player: int, x: int, y: int) -> bool:
 	## 供 TerritoryManager 查询该格是否已被探索
 	if x < 0 or x >= grid_cols or y < 0 or y >= grid_rows:
 		return false
-	return fog_grids[player][y][x] <= 0.0
+	return _get_effective_fog(player, x, y) <= 0.0
 
 
 func get_fog(player: int, x: int, y: int) -> float:
 	if x < 0 or x >= grid_cols or y < 0 or y >= grid_rows:
 		return 1.0
-	return fog_grids[player][y][x]
+	return _get_effective_fog(player, x, y)
 
 
 # ========== 工具 ==========
@@ -194,6 +246,95 @@ func _in_bounds(x: int, y: int) -> bool:
 
 func _manhattan_dist(x1: int, y1: int, x2: int, y2: int) -> int:
 	return abs(x1 - x2) + abs(y1 - y2)
+
+
+func _get_effective_fog(player: int, x: int, y: int) -> float:
+	var base_fog: float = float(fog_grids[player][y][x])
+	if _is_magic_fog_blocking(player, x, y):
+		return maxf(base_fog, MAGIC_FOG_ALPHA)
+	return base_fog
+
+
+func _is_magic_fog_blocking(player: int, x: int, y: int) -> bool:
+	for zone_variant in _magic_fog_zones:
+		var zone: Dictionary = zone_variant
+		if int(zone.get("owner", -1)) == player:
+			continue
+		if not _is_tile_in_magic_fog_zone(zone, x, y):
+			continue
+		if _player_has_inside_zone_vision(player, zone, x, y):
+			continue
+		return true
+	return false
+
+
+func _player_has_inside_zone_vision(player: int, zone: Dictionary, x: int, y: int) -> bool:
+	if _unit_manager == null and is_inside_tree():
+		_unit_manager = get_parent().get_node_or_null("UnitManager2D")
+	if _unit_manager == null or not _unit_manager.has_method("get_all_units"):
+		return false
+	var units: Array = _unit_manager.call("get_all_units")
+	for unit_variant in units:
+		var unit: Dictionary = unit_variant
+		if int(unit.get("faction", -1)) != player:
+			continue
+		var pos: Vector2i = unit.get("grid_pos", Vector2i(-1, -1))
+		if pos.x < 0 or not _is_tile_in_magic_fog_zone(zone, pos.x, pos.y):
+			continue
+		var vision: int = _get_unit_vision_for_magic_fog(unit)
+		if _manhattan_dist(pos.x, pos.y, x, y) <= vision:
+			return true
+	return false
+
+
+func _get_unit_vision_for_magic_fog(unit: Dictionary) -> int:
+	if _unit_manager != null and _unit_manager.has_method("get_unit_vision_for_fog"):
+		return maxi(0, int(_unit_manager.call("get_unit_vision_for_fog", unit)))
+	if unit.has("data"):
+		var data: UnitData = unit["data"]
+		return maxi(0, data.vision)
+	return 1
+
+
+func _is_tile_in_magic_fog_zone(zone: Dictionary, x: int, y: int) -> bool:
+	var center: Vector2i = zone.get("center", Vector2i(-1, -1))
+	var radius: int = int(zone.get("radius", 0))
+	return _in_bounds(x, y) and _manhattan_dist(x, y, center.x, center.y) <= radius
+
+
+func _draw_magic_fog_owner_markers() -> void:
+	if _magic_fog_zones.is_empty():
+		return
+	var font: Font = ThemeDB.fallback_font
+	var label_size := 13
+	var ts := tile_size + 1.0
+	var half := ts / 2.0
+	for zone_variant in _magic_fog_zones:
+		var zone: Dictionary = zone_variant
+		if int(zone.get("owner", -1)) != current_player:
+			continue
+		var center: Vector2i = zone.get("center", Vector2i(-1, -1))
+		var radius: int = int(zone.get("radius", 0))
+		for y in range(center.y - radius, center.y + radius + 1):
+			for x in range(center.x - radius, center.x + radius + 1):
+				if not _is_tile_in_magic_fog_zone(zone, x, y) or _is_ocean_tile(x, y):
+					continue
+				var pos := _grid_to_world(x, y)
+				var rect := Rect2(pos.x - half, pos.y - half, ts, ts)
+				draw_rect(rect.grow(-3.0), MAGIC_FOG_OWNER_FILL, true)
+				draw_rect(rect.grow(-3.0), MAGIC_FOG_OWNER_BORDER, false, 1.2)
+		if not _in_bounds(center.x, center.y):
+			continue
+		var center_world := _grid_to_world(center.x, center.y)
+		draw_circle(center_world, 6.0, MAGIC_FOG_OWNER_CENTER)
+		var label := "%d回合" % int(zone.get("remaining_rounds", 0))
+		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_size)
+		draw_string(font, center_world + Vector2(-text_size.x / 2.0, -12.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_size, MAGIC_FOG_OWNER_BORDER)
+
+
+func _emit_magic_fog_visibility_changed() -> void:
+	for player in range(3):
+		fog_updated.emit(player)
 
 
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:

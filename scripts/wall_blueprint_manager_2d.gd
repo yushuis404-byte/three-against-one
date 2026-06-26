@@ -199,16 +199,6 @@ func get_wall_segment_at(cell: Vector2i) -> Dictionary:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_W and _current_player() == DWARF_PLAYER:
-			start_wall_anchor_selection()
-			get_viewport().set_input_as_handled()
-			return
-		if event.keycode == KEY_ENTER and _anchor_mode:
-			confirm_wall_blueprint()
-			get_viewport().set_input_as_handled()
-			return
-
 	if not _anchor_mode:
 		return
 
@@ -282,7 +272,7 @@ func _update_preview_to_cell(cell: Vector2i) -> void:
 func _validate_preview() -> bool:
 	if _preview_cells.is_empty():
 		return false
-	var player := _current_player()
+	var player: int = _current_player()
 	for cell in _preview_cells:
 		if not _in_bounds(cell):
 			return false
@@ -291,9 +281,9 @@ func _validate_preview() -> bool:
 		if _grid_manager != null and _grid_manager.has_method("is_passable"):
 			if not bool(_grid_manager.call("is_passable", cell.x, cell.y)):
 				return false
-		var building := _get_building_at(cell)
+		var building: Dictionary = _get_building_at(cell)
 		if not building.is_empty():
-			var bid := int(building.get("id", -1))
+			var bid: int = int(building.get("id", -1))
 			if bid != int(_start_building.get("id", -1)) and bid != int(_end_building.get("id", -1)):
 				return false
 	if _resource_tracker != null and _resource_tracker.has_method("get_resource"):
@@ -302,9 +292,11 @@ func _validate_preview() -> bool:
 
 
 func _update_preview_message() -> void:
-	var cost := get_preview_stone_cost()
-	var state := "\u53ef\u786e\u8ba4" if _preview_valid else "\u65e0\u6548"
-	_preview_message = "\u57ce\u5899\u84dd\u56fe: %d \u683c | \u77f3\u6599 %d | %s | Enter \u786e\u8ba4 / \u53f3\u952e\u53d6\u6d88" % [_preview_cells.size(), cost, state]
+	var cost: int = get_preview_stone_cost()
+	var state: String = "\u65e0\u6548"
+	if _preview_valid:
+		state = "\u53ef\u786e\u8ba4"
+	_preview_message = "\u57ce\u5899\u84dd\u56fe: %d \u683c | \u77f3\u6599 %d | %s | \u53f3\u4e0b\u89d2\u6309\u94ae\u786e\u8ba4 / \u53f3\u952e\u53d6\u6d88" % [_preview_cells.size(), cost, state]
 	wall_hovered.emit(_preview_message)
 	_emit_preview_changed()
 
@@ -320,13 +312,13 @@ func _update_wall_hover(cell: Vector2i) -> void:
 	if not _is_cell_visible_to_current_player(cell):
 		wall_hovered.emit("")
 		return
-	var segment := get_wall_segment_at(cell)
+	var segment: Dictionary = get_wall_segment_at(cell)
 	if segment.is_empty():
 		return
 	var level: int = int(segment.get("level", 1))
 	var hp: int = int(segment.get("hp", 0))
 	var hp_max: int = int(segment.get("hp_max", 0))
-	var text := "\u77ee\u4eba\u57ce\u5899 Lv%d HP:%d/%d" % [level, hp, hp_max]
+	var text: String = "\u77ee\u4eba\u57ce\u5899 Lv%d HP:%d/%d" % [level, hp, hp_max]
 	if level < 2:
 		text += " | \u53ef\u7528 1 \u94c1\u52a0\u56fa"
 	wall_hovered.emit(text)
@@ -340,8 +332,8 @@ func _draw_confirmed_walls() -> void:
 			var cell: Vector2i = segment_dict.get("cell", Vector2i(-1, -1))
 			if not _is_cell_visible_to_current_player(cell):
 				continue
-			var color := Color(0.42, 0.43, 0.44, 0.88)
-			var border := Color(0.76, 0.78, 0.80, 0.95)
+			var color: Color = Color(0.42, 0.43, 0.44, 0.88)
+			var border: Color = Color(0.76, 0.78, 0.80, 0.95)
 			if int(segment_dict.get("level", 1)) >= 2:
 				color = Color(0.48, 0.52, 0.56, 0.95)
 				border = Color(0.82, 0.88, 0.95, 1.0)
@@ -355,10 +347,13 @@ func _draw_preview() -> void:
 		return
 	for i in range(_preview_cells.size()):
 		var cell: Vector2i = _preview_cells[i]
-		var direction := _segment_dir_for_index(i, _preview_cells, _preview_start_cell, _preview_end_cell)
-		var segment := {"cell": cell, "dir": direction}
-		var color := Color(0.2, 0.62, 1.0, 0.20) if _preview_valid else Color(1.0, 0.18, 0.16, 0.16)
-		var border := Color(0.45, 0.82, 1.0, 0.92) if _preview_valid else Color(1.0, 0.32, 0.26, 0.86)
+		var direction: Vector2i = _segment_dir_for_index(i, _preview_cells, _preview_start_cell, _preview_end_cell)
+		var segment: Dictionary = {"cell": cell, "dir": direction}
+		var color: Color = Color(1.0, 0.18, 0.16, 0.16)
+		var border: Color = Color(1.0, 0.32, 0.26, 0.86)
+		if _preview_valid:
+			color = Color(0.2, 0.62, 1.0, 0.20)
+			border = Color(0.45, 0.82, 1.0, 0.92)
 		_draw_wall_segment(segment, color, border, false)
 		_draw_blueprint_center_line(segment, border)
 
@@ -366,10 +361,12 @@ func _draw_preview() -> void:
 func _draw_wall_segment(segment: Dictionary, fill: Color, border: Color, filled: bool) -> void:
 	var cell: Vector2i = segment.get("cell", Vector2i.ZERO)
 	var direction: Vector2i = segment.get("dir", Vector2i.RIGHT)
-	var center := _grid_to_world(cell.x, cell.y)
-	var angle := atan2(float(direction.y), float(direction.x))
-	var length := WALL_DIAGONAL_LENGTH if direction.x != 0 and direction.y != 0 else WALL_STRAIGHT_LENGTH
-	var rect := Rect2(Vector2(-length * 0.5, -WALL_THICKNESS * 0.5), Vector2(length, WALL_THICKNESS))
+	var center: Vector2 = _grid_to_world(cell.x, cell.y)
+	var angle: float = atan2(float(direction.y), float(direction.x))
+	var length: float = WALL_STRAIGHT_LENGTH
+	if direction.x != 0 and direction.y != 0:
+		length = WALL_DIAGONAL_LENGTH
+	var rect: Rect2 = Rect2(Vector2(-length * 0.5, -WALL_THICKNESS * 0.5), Vector2(length, WALL_THICKNESS))
 	draw_set_transform(center, angle, Vector2.ONE)
 	draw_rect(rect, fill, filled)
 	draw_rect(rect, border, false, 1.5)
@@ -379,10 +376,12 @@ func _draw_wall_segment(segment: Dictionary, fill: Color, border: Color, filled:
 func _draw_wall_shadow(segment: Dictionary) -> void:
 	var cell: Vector2i = segment.get("cell", Vector2i.ZERO)
 	var direction: Vector2i = segment.get("dir", Vector2i.RIGHT)
-	var center := _grid_to_world(cell.x, cell.y) + Vector2(2.0, 3.0)
-	var angle := atan2(float(direction.y), float(direction.x))
-	var length := WALL_DIAGONAL_LENGTH if direction.x != 0 and direction.y != 0 else WALL_STRAIGHT_LENGTH
-	var rect := Rect2(Vector2(-length * 0.5, -WALL_THICKNESS * 0.5), Vector2(length, WALL_THICKNESS))
+	var center: Vector2 = _grid_to_world(cell.x, cell.y) + Vector2(2.0, 3.0)
+	var angle: float = atan2(float(direction.y), float(direction.x))
+	var length: float = WALL_STRAIGHT_LENGTH
+	if direction.x != 0 and direction.y != 0:
+		length = WALL_DIAGONAL_LENGTH
+	var rect: Rect2 = Rect2(Vector2(-length * 0.5, -WALL_THICKNESS * 0.5), Vector2(length, WALL_THICKNESS))
 	draw_set_transform(center, angle, Vector2.ONE)
 	draw_rect(rect, Color(0.0, 0.0, 0.0, 0.25), true)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -391,10 +390,12 @@ func _draw_wall_shadow(segment: Dictionary) -> void:
 func _draw_wall_caps(segment: Dictionary, color: Color) -> void:
 	var cell: Vector2i = segment.get("cell", Vector2i.ZERO)
 	var direction: Vector2i = segment.get("dir", Vector2i.RIGHT)
-	var center := _grid_to_world(cell.x, cell.y)
-	var angle := atan2(float(direction.y), float(direction.x))
-	var length := WALL_DIAGONAL_LENGTH if direction.x != 0 and direction.y != 0 else WALL_STRAIGHT_LENGTH
-	var cap_size := Vector2(3.0, WALL_THICKNESS + 2.0)
+	var center: Vector2 = _grid_to_world(cell.x, cell.y)
+	var angle: float = atan2(float(direction.y), float(direction.x))
+	var length: float = WALL_STRAIGHT_LENGTH
+	if direction.x != 0 and direction.y != 0:
+		length = WALL_DIAGONAL_LENGTH
+	var cap_size: Vector2 = Vector2(3.0, WALL_THICKNESS + 2.0)
 	draw_set_transform(center, angle, Vector2.ONE)
 	draw_rect(Rect2(Vector2(-length * 0.5 - 1.0, -cap_size.y * 0.5), cap_size), color, true)
 	draw_rect(Rect2(Vector2(length * 0.5 - 2.0, -cap_size.y * 0.5), cap_size), color, true)
@@ -404,11 +405,13 @@ func _draw_wall_caps(segment: Dictionary, color: Color) -> void:
 func _draw_blueprint_center_line(segment: Dictionary, color: Color) -> void:
 	var cell: Vector2i = segment.get("cell", Vector2i.ZERO)
 	var direction: Vector2i = segment.get("dir", Vector2i.RIGHT)
-	var center := _grid_to_world(cell.x, cell.y)
-	var dir := Vector2(float(direction.x), float(direction.y)).normalized()
+	var center: Vector2 = _grid_to_world(cell.x, cell.y)
+	var dir: Vector2 = Vector2(float(direction.x), float(direction.y)).normalized()
 	if dir == Vector2.ZERO:
 		dir = Vector2.RIGHT
-	var length := WALL_DIAGONAL_LENGTH if direction.x != 0 and direction.y != 0 else WALL_STRAIGHT_LENGTH
+	var length: float = WALL_STRAIGHT_LENGTH
+	if direction.x != 0 and direction.y != 0:
+		length = WALL_DIAGONAL_LENGTH
 	draw_line(center - dir * length * 0.5, center + dir * length * 0.5, Color(color.r, color.g, color.b, 0.42), 1.0, true)
 
 
