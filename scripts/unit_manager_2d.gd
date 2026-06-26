@@ -246,6 +246,31 @@ func get_unit_by_id(uid: int) -> Dictionary:
 	return _get_unit_by_id(uid)
 
 
+func apply_building_damage(unit_id: int, attacker_faction: int, damage: int) -> bool:
+	var final_damage: int = maxi(0, damage)
+	for i in range(_units.size() - 1, -1, -1):
+		var unit: Dictionary = _units[i]
+		if int(unit.get("id", -1)) != unit_id:
+			continue
+		unit["hp"] = int(unit.get("hp", 0)) - final_damage
+		_play_hit_effect(unit_id, unit.get("grid_pos", Vector2i.ZERO), final_damage)
+		if int(unit.get("hp", 0)) <= 0:
+			unit_killed.emit(attacker_faction, int(unit.get("faction", -1)), unit.duplicate())
+			_move_visuals.erase(unit_id)
+			_hurt_visuals.erase(unit_id)
+			_attack_visuals.erase(unit_id)
+			_death_visuals.erase(unit_id)
+			_unit_facing_flip.erase(unit_id)
+			_pending_attack_after_move.erase(unit_id)
+			_units.remove_at(i)
+			queue_redraw()
+			return true
+		_units[i] = unit
+		queue_redraw()
+		return false
+	return false
+
+
 func _is_unit_visible_to_current_player(unit: Dictionary) -> bool:
 	if _turn_manager == null:
 		return true

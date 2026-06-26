@@ -33,6 +33,10 @@ var unique_effect_id: String = ""
 var lord_requirement: String = ""
 var civilization_tag: String = ""
 var effect_radius: int = 0
+var defense_attack_range: int = 0
+var defense_attack_damage: int = 0
+var defense_attack_cooldown: float = 0.0
+var defense_attack_aoe_radius: int = 0
 var is_special_building: bool = false  # 特殊建筑标记（如金矿矿井需金矿资源点+驻兵产出）
 var needs_resource_point: bool = false
 var storage_level: int = 0
@@ -264,7 +268,74 @@ static func watch_tower() -> BuildingData:
 	b.lord_requirement = "lord.dwarf.stone_warden"
 	b.civilization_tag = "dwarf"
 	b.tags = ["defense", "watch_tower", "vision", "blocks_movement", "dwarf"]
+	_configure_defense_attack(b, 3, 1, 2.0, 0)
 	return b
+
+static func ballista_tower() -> BuildingData:
+	var b := BuildingData.new(
+		"\u5f29\u70ae\u5854", BuildingCategory.SCOUT, Vector2i(1, 1),
+		0, 20, 35, 10, 0,
+		14, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		4, "\u77ee\u4eba\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb32\uff0c8\u79d2\u653b\u51fb\u4e00\u6b21"
+	)
+	b.tech_tier = 2
+	b.effect_radius = 4
+	b.lord_requirement = "lord.dwarf.stone_warden"
+	b.civilization_tag = "dwarf"
+	b.garrison_capacity = 1
+	b.tags = ["defense", "ballista_tower", "ranged_tower", "blocks_movement", "dwarf"]
+	_configure_defense_attack(b, 4, 2, 8.0, 0)
+	return b
+
+static func heavy_ballista_tower() -> BuildingData:
+	var b := BuildingData.new(
+		"\u9ad8\u7ea7\u5f29\u70ae", BuildingCategory.SCOUT, Vector2i(1, 1),
+		0, 30, 55, 20, 0,
+		18, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		3, "\u77ee\u4eba\u9ad8\u7ea7\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb33\uff0c8\u79d2\u653b\u51fb\u4e00\u6b21"
+	)
+	b.tech_tier = 3
+	b.effect_radius = 4
+	b.lord_requirement = "lord.dwarf.stone_warden"
+	b.civilization_tag = "dwarf"
+	b.garrison_capacity = 2
+	b.tags = ["defense", "heavy_ballista", "ranged_tower", "blocks_movement", "dwarf"]
+	_configure_defense_attack(b, 4, 3, 8.0, 0)
+	return b
+
+static func stone_cannon_tower() -> BuildingData:
+	var b := BuildingData.new(
+		"\u788e\u77f3\u70ae\u53f0", BuildingCategory.SCOUT, Vector2i(1, 1),
+		0, 15, 45, 8, 0,
+		12, {},
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
+		 TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
+		 TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
+		 TerrainData.Terrain.RUINS],
+		4, "\u77ee\u4eba\u8303\u56f4\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb31\uff0c12\u79d2\u653b\u51fb\u4e00\u6b21\uff0c\u547d\u4e2d\u76ee\u6807\u5468\u56f41\u683c"
+	)
+	b.tech_tier = 2
+	b.effect_radius = 4
+	b.lord_requirement = "lord.dwarf.stone_warden"
+	b.civilization_tag = "dwarf"
+	b.garrison_capacity = 2
+	b.tags = ["defense", "stone_cannon", "aoe_tower", "blocks_movement", "dwarf"]
+	_configure_defense_attack(b, 4, 1, 12.0, 1)
+	return b
+
+static func _configure_defense_attack(b: BuildingData, attack_range: int, damage: int, cooldown: float, aoe_radius: int) -> void:
+	b.defense_attack_range = attack_range
+	b.defense_attack_damage = damage
+	b.defense_attack_cooldown = cooldown
+	b.defense_attack_aoe_radius = aoe_radius
 
 static func outpost() -> BuildingData:
 	var b := BuildingData.new(
@@ -471,7 +542,7 @@ static func get_templates() -> Dictionary:
 		BuildingCategory.ECONOMY: [infra_lumber_camp(), infra_quarry(), infra_farm()],
 		BuildingCategory.STORAGE: [infra_warehouse()],
 		BuildingCategory.EXPANSION: [outpost()],
-		BuildingCategory.SCOUT: [scout_post(), watch_tower()],
+		BuildingCategory.SCOUT: [scout_post(), watch_tower(), ballista_tower(), heavy_ballista_tower(), stone_cannon_tower()],
 		BuildingCategory.RECRUITMENT: [recruit_camp(), barracks_lv1()],
 		BuildingCategory.INDUSTRY: [t1_mine(), forge()],
 		BuildingCategory.GOLD_CHAIN: [gold_mine_shaft(), mint()],

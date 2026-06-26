@@ -42,6 +42,9 @@ var _modifier_names: Dictionary = {
 var _unlock_names: Dictionary = {
 	"building.wind_ancient_tree": "\u98ce\u8bed\u53e4\u6811",
 	"building.watch_tower": "\u77ad\u671b\u5854",
+	"building.ballista_tower": "\u5f29\u70ae\u5854",
+	"building.heavy_ballista": "\u9ad8\u7ea7\u5f29\u70ae",
+	"building.stone_cannon": "\u788e\u77f3\u70ae\u53f0",
 	"building.forge": "\u7194\u7089",
 	"building.blood_fang_den": "\u8840\u7259\u5de2\u7a74",
 	"recipe.mithril.basic": "\u79d8\u94f6\u57fa\u7840\u5de5\u827a",

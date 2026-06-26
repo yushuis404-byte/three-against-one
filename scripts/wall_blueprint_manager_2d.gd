@@ -23,6 +23,7 @@ var _turn_manager: Node = null
 var _building_manager: Node = null
 var _resource_tracker: Node = null
 var _grid_manager: Node = null
+var _fog_manager: Node = null
 
 var _walls: Array[Dictionary] = []
 var _next_wall_id := 1
@@ -43,6 +44,11 @@ func _ready() -> void:
 	_building_manager = get_parent().get_node_or_null("BuildingManager2D")
 	_resource_tracker = get_parent().get_node_or_null("ResourceTracker")
 	_turn_manager = get_parent().get_node_or_null("TurnManager2D")
+	_fog_manager = get_parent().get_node_or_null("FogOfWar2D")
+	if _fog_manager != null and _fog_manager.has_signal("fog_updated"):
+		var callback := Callable(self, "_on_fog_updated")
+		if not _fog_manager.fog_updated.is_connected(callback):
+			_fog_manager.fog_updated.connect(_on_fog_updated)
 
 
 func set_turn_manager(turn_manager: Node) -> void:
@@ -55,6 +61,10 @@ func set_resource_tracker(resource_tracker: Node) -> void:
 
 func set_building_manager(building_manager: Node) -> void:
 	_building_manager = building_manager
+
+
+func _on_fog_updated(_player: int) -> void:
+	queue_redraw()
 
 
 func get_all_walls() -> Array:
@@ -307,6 +317,9 @@ func _update_wall_hover(cell: Vector2i) -> void:
 	if cell == _last_hovered_wall_cell:
 		return
 	_last_hovered_wall_cell = cell
+	if not _is_cell_visible_to_current_player(cell):
+		wall_hovered.emit("")
+		return
 	var segment := get_wall_segment_at(cell)
 	if segment.is_empty():
 		return
@@ -324,6 +337,9 @@ func _draw_confirmed_walls() -> void:
 		var segments: Array = wall.get("segments", [])
 		for segment in segments:
 			var segment_dict: Dictionary = segment
+			var cell: Vector2i = segment_dict.get("cell", Vector2i(-1, -1))
+			if not _is_cell_visible_to_current_player(cell):
+				continue
 			var color := Color(0.42, 0.43, 0.44, 0.88)
 			var border := Color(0.76, 0.78, 0.80, 0.95)
 			if int(segment_dict.get("level", 1)) >= 2:
@@ -457,6 +473,17 @@ func _current_player() -> int:
 	if _turn_manager != null:
 		return int(_turn_manager.current_player)
 	return -1
+
+
+func _is_cell_visible_to_current_player(cell: Vector2i) -> bool:
+	if not _in_bounds(cell):
+		return false
+	if _fog_manager == null or not _fog_manager.has_method("get_fog"):
+		return true
+	var player := _current_player()
+	if player < 0:
+		return true
+	return float(_fog_manager.call("get_fog", player, cell.x, cell.y)) <= 0.0
 
 
 func _in_bounds(cell: Vector2i) -> bool:

@@ -446,6 +446,36 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	watch_tower.max_per_faction = 6
 	watch_tower.tags = ["defense", "watch_tower", "vision", "blocks_movement", "dwarf"]
 
+	var ballista_tower = BuildingTemplateScript.new()
+	ballista_tower.id = "building.ballista_tower"
+	ballista_tower.display_name = "\u5f29\u70ae\u5854"
+	ballista_tower.description = "\u77ee\u4eba\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb32\uff0c8\u79d2\u653b\u51fb\u4e00\u6b21\u3002"
+	ballista_tower.role = BuildingTemplateScript.BuildingRole.SCOUT
+	ballista_tower.hp_max = 14
+	ballista_tower.build_cost = [_amount("wood", 20), _amount("stone", 35), _amount("iron", 10)]
+	ballista_tower.max_per_faction = 4
+	ballista_tower.tags = ["defense", "ballista_tower", "blocks_movement", "dwarf"]
+
+	var heavy_ballista = BuildingTemplateScript.new()
+	heavy_ballista.id = "building.heavy_ballista"
+	heavy_ballista.display_name = "\u9ad8\u7ea7\u5f29\u70ae"
+	heavy_ballista.description = "\u77ee\u4eba\u9ad8\u7ea7\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb33\uff0c8\u79d2\u653b\u51fb\u4e00\u6b21\u3002"
+	heavy_ballista.role = BuildingTemplateScript.BuildingRole.SCOUT
+	heavy_ballista.hp_max = 18
+	heavy_ballista.build_cost = [_amount("wood", 30), _amount("stone", 55), _amount("iron", 20)]
+	heavy_ballista.max_per_faction = 3
+	heavy_ballista.tags = ["defense", "heavy_ballista", "blocks_movement", "dwarf"]
+
+	var stone_cannon = BuildingTemplateScript.new()
+	stone_cannon.id = "building.stone_cannon"
+	stone_cannon.display_name = "\u788e\u77f3\u70ae\u53f0"
+	stone_cannon.description = "\u77ee\u4eba\u8303\u56f4\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb31\uff0c12\u79d2\u653b\u51fb\u4e00\u6b21\u3002"
+	stone_cannon.role = BuildingTemplateScript.BuildingRole.SCOUT
+	stone_cannon.hp_max = 12
+	stone_cannon.build_cost = [_amount("wood", 15), _amount("stone", 45), _amount("iron", 8)]
+	stone_cannon.max_per_faction = 4
+	stone_cannon.tags = ["defense", "stone_cannon", "blocks_movement", "dwarf"]
+
 	var forge = BuildingTemplateScript.new()
 	forge.id = "building.forge"
 	forge.display_name = "\u7194\u7089"
@@ -507,6 +537,9 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 		barracks.id: barracks,
 		lumber_camp.id: lumber_camp,
 		watch_tower.id: watch_tower,
+		ballista_tower.id: ballista_tower,
+		heavy_ballista.id: heavy_ballista,
+		stone_cannon.id: stone_cannon,
 		forge.id: forge,
 		wind_ancient_tree.id: wind_ancient_tree,
 		gold_mine.id: gold_mine,
@@ -538,7 +571,7 @@ func make_lord_templates() -> Dictionary:
 		["lord", "dwarf", "space", "starter"]
 	)
 	dwarf_lord.description = "\u77ee\u4eba\u8def\u7ebf\u521d\u59cb\u9886\u4e3b\uff1a\u5f3a\u5316\u5efa\u7b51\u3001\u9632\u7ebf\u548c\u7a7a\u95f4\u63a7\u5236\u3002"
-	dwarf_lord.unlock_building_ids = ["building.watch_tower", "building.forge"]
+	dwarf_lord.unlock_building_ids = ["building.watch_tower", "building.ballista_tower", "building.heavy_ballista", "building.stone_cannon", "building.forge"]
 	dwarf_lord.unlock_recipe_ids = ["recipe.mithril.basic"]
 	dwarf_lord.passive_modifiers = {
 		"building_hp_bonus": 2,

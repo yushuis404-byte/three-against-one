@@ -1,5 +1,5 @@
 extends Node2D
-## 建筑管理器 — 放置、绘制、回合产出、交互
+## 建筑管理器 - 放置、绘制、回合产出、交互
 ##
 ## 使用 building_grid[y][x] 记录每格所属 building_id（多格建筑多格同 id）
 ## 绘制在迷雾之下但领土之上，单位之下
@@ -15,11 +15,12 @@ var grid_rows := 56
 var tile_size := 32.0
 var grid_center := Vector2(49.5, 27.5)
 
-var building_grid: Array = []         # [y][x] → building_id 或 -1
+var building_grid: Array = []         # [y][x] -> building_id 或 -1
 var _buildings: Array = []            # Array[Dictionary]
 var _next_id := 1
 var _selected_id := -1
 var _hovered_id := -1
+var _demolition_control_building_id := -1
 
 var _grid_manager: Node = null
 var _turn_manager: Node = null
@@ -34,7 +35,8 @@ var _recruitment_service = RecruitmentServiceScript.new()
 var _upgrade_service = BuildingUpgradeServiceScript.new()
 var _building_network_service = BuildingNetworkServiceScript.new()
 
-var _just_garrisoned: Dictionary = {}  # building_id → true, 本帧刚驻兵
+var _just_garrisoned: Dictionary = {}  # building_id -> true，本帧刚驻兵
+var _tower_cooldowns: Dictionary = {}
 
 # 放置模式
 var _placement_active := false
@@ -65,6 +67,11 @@ const ELF_CAPITAL_TEXTURE_SCALE := 1.45
 const REPAIR_AP_COST := 1
 const REPAIR_STONE_COST := 1
 const BASE_REPAIR_AMOUNT := 2
+const DEMOLISH_OVERLAY_COLOR := Color(1.0, 0.05, 0.02, 0.32)
+const DEMOLISH_BORDER_COLOR := Color(1.0, 0.18, 0.12, 0.9)
+const DEMOLISH_ICON_SIZE := 20.0
+const DEMOLISH_CONTROL_SIZE := 14.0
+const DEMOLITION_REFUND_RATE := 0.5
 
 
 func _ready() -> void:
@@ -149,12 +156,14 @@ func _on_player_turn_started(player: int) -> void:
 	_reveal_town_hall_vision(player)
 	_reveal_watch_tower_vision(player)
 	_process_recruit_queues(player)
+	_process_pending_demolitions(player)
 	_process_garrison_repairs(player)
 	queue_redraw()
 
 
 func _process(_delta: float) -> void:
 	_just_garrisoned.clear()
+	_process_defense_towers(_delta)
 
 
 func reveal_all_town_hall_vision() -> void:
@@ -190,10 +199,10 @@ func _reveal_watch_tower_vision(player: int) -> void:
 			_fog_mgr.reveal_area(player, center.x, center.y, 5)
 
 
-# ========== Building 数据 API ==========
+# ========== Building 鏁版嵁 API ==========
 
 func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
-	## 在 origin（建筑左下角原点）放置建筑，成功返回 true
+	## 在 origin（建筑左上角原点）放置建筑，成功返回 true
 	if not _can_place(data, faction, origin):
 		return false
 
@@ -214,6 +223,7 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		"hp_max": hp_max,
 		"base_hp_max": data.hp_max,
 		"level": maxi(1, data.storage_level),
+		"pending_demolition": false,
 		"garrison": [],
 		"recruit_queue": [],
 	})
@@ -405,10 +415,43 @@ func repair_building(building_id: int) -> bool:
 	return true
 
 
+func mark_building_for_demolition(building_id: int) -> bool:
+	var index: int = _get_building_index_by_id(building_id)
+	if index < 0:
+		return false
+	var building: Dictionary = _buildings[index]
+	var data: BuildingData = building["data"]
+	if data.category == BuildingData.BuildingCategory.CORE:
+		return false
+	if _turn_manager != null and int(building.get("faction", -1)) != _turn_manager.current_player:
+		return false
+	building["pending_demolition"] = true
+	_buildings[index] = building
+	queue_redraw()
+	return true
+
+
+func cancel_building_demolition(building_id: int) -> bool:
+	var index: int = _get_building_index_by_id(building_id)
+	if index < 0:
+		return false
+	var building: Dictionary = _buildings[index]
+	if _turn_manager != null and int(building.get("faction", -1)) != _turn_manager.current_player:
+		return false
+	if not bool(building.get("pending_demolition", false)):
+		return false
+	building["pending_demolition"] = false
+	_buildings[index] = building
+	queue_redraw()
+	return true
+
+
 func _process_garrison_repairs(player: int) -> void:
 	for i in range(_buildings.size()):
 		var building: Dictionary = _buildings[i]
 		if int(building.get("faction", -1)) != player:
+			continue
+		if bool(building.get("pending_demolition", false)):
 			continue
 		var repair_amount: int = _garrison_service.get_repair_per_round(building)
 		if repair_amount <= 0:
@@ -420,6 +463,196 @@ func _process_garrison_repairs(player: int) -> void:
 		building["hp"] = mini(hp_max, current_hp + repair_amount)
 		_buildings[i] = building
 		_show_building_heal_text(building, int(building["hp"]) - current_hp)
+
+
+func _process_pending_demolitions(player: int) -> void:
+	for i in range(_buildings.size() - 1, -1, -1):
+		var building: Dictionary = _buildings[i]
+		if int(building.get("faction", -1)) != player:
+			continue
+		if not bool(building.get("pending_demolition", false)):
+			continue
+		if not _garrison_service.has_worker_garrison(building):
+			continue
+		_complete_demolition_at_index(i)
+
+
+func _complete_demolition_at_index(index: int) -> void:
+	if index < 0 or index >= _buildings.size():
+		return
+	var building: Dictionary = _buildings[index]
+	var faction: int = int(building.get("faction", -1))
+	var refund: Dictionary = _get_demolition_refund(building)
+	_refund_demolition_resources(faction, refund)
+	if not refund.is_empty():
+		_show_resource_text(building, refund, Color(1.0, 0.35, 0.25))
+	_release_demolition_garrison(building)
+	_destroy_building_at_index(index)
+
+
+func _get_demolition_refund(building: Dictionary) -> Dictionary:
+	var data: BuildingData = building["data"]
+	var raw_costs := {
+		"gold": data.cost_gold,
+		"wood": data.cost_wood,
+		"stone": data.cost_stone,
+		"iron": data.cost_iron,
+		"food": data.cost_food,
+	}
+	var refund: Dictionary = {}
+	for key in raw_costs:
+		var amount: int = int(raw_costs[key])
+		if amount <= 0:
+			continue
+		var refund_amount: int = int(floor(float(amount) * DEMOLITION_REFUND_RATE))
+		if refund_amount > 0:
+			refund[str(key)] = refund_amount
+	return refund
+
+
+func _refund_demolition_resources(faction: int, refund: Dictionary) -> void:
+	if _resource_tracker == null:
+		return
+	for key in refund:
+		_resource_tracker.add_resource(faction, str(key), int(refund[key]))
+	if _resource_tracker.has_method("update_display"):
+		_resource_tracker.update_display(faction)
+
+
+func _release_demolition_garrison(building: Dictionary) -> void:
+	var garrison: Array = building.get("garrison", [])
+	if garrison.is_empty():
+		return
+	var unit_mgr = get_parent().get_node_or_null("UnitManager2D")
+	if unit_mgr == null or not unit_mgr.has_method("add_unit"):
+		return
+	var faction: int = int(building.get("faction", -1))
+	var spawn_pos: Vector2i = _find_ungarrison_pos(building)
+	if spawn_pos.x < 0:
+		var origin: Vector2i = building["origin"]
+		spawn_pos = origin
+	for unit in garrison:
+		var unit_dict: Dictionary = unit
+		if unit_dict.is_empty() or not unit_dict.has("data"):
+			continue
+		unit_mgr.add_unit(faction, unit_dict["data"], spawn_pos, int(unit_dict.get("hp", -1)))
+
+
+func _process_defense_towers(delta: float) -> void:
+	if _buildings.is_empty():
+		return
+	for building in _buildings:
+		var data: BuildingData = building["data"]
+		if data.defense_attack_range <= 0 or data.defense_attack_damage <= 0 or data.defense_attack_cooldown <= 0.0:
+			continue
+		if bool(building.get("pending_demolition", false)):
+			continue
+		var building_id: int = int(building.get("id", -1))
+		var cooldown: float = maxf(0.0, float(_tower_cooldowns.get(building_id, 0.0)) - delta)
+		if cooldown > 0.0:
+			_tower_cooldowns[building_id] = cooldown
+			continue
+		if _try_fire_defense_tower(building):
+			_tower_cooldowns[building_id] = data.defense_attack_cooldown
+		else:
+			_tower_cooldowns[building_id] = 0.1
+
+
+func _try_fire_defense_tower(building: Dictionary) -> bool:
+	var target: Dictionary = _find_defense_tower_target(building)
+	if target.is_empty():
+		return false
+	var data: BuildingData = building["data"]
+	var damage: int = data.defense_attack_damage
+	var faction: int = int(building.get("faction", -1))
+	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	if data.defense_attack_aoe_radius > 0:
+		_apply_defense_tower_aoe(faction, target_pos, damage, data.defense_attack_aoe_radius)
+	else:
+		_apply_defense_tower_damage(faction, target, damage)
+	_show_tower_attack_text(building, target_pos, damage)
+	return true
+
+
+func _find_defense_tower_target(building: Dictionary) -> Dictionary:
+	var data: BuildingData = building["data"]
+	var faction: int = int(building.get("faction", -1))
+	var center: Vector2i = _get_building_center(building)
+	var range: int = data.defense_attack_range
+	var best: Dictionary = {}
+	var best_distance := 999999
+
+	var unit_mgr = get_parent().get_node_or_null("UnitManager2D")
+	if unit_mgr != null and unit_mgr.has_method("get_all_units"):
+		var units: Array = unit_mgr.get_all_units()
+		for unit in units:
+			var unit_dict: Dictionary = unit
+			if int(unit_dict.get("faction", -1)) == faction:
+				continue
+			var pos: Vector2i = unit_dict.get("grid_pos", Vector2i.ZERO)
+			var distance: int = _grid_distance(center, pos)
+			if distance <= range and distance < best_distance:
+				best_distance = distance
+				best = {"kind": "unit", "id": int(unit_dict.get("id", -1)), "grid_pos": pos}
+
+	var neutral_mgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+	if neutral_mgr != null and neutral_mgr.has_method("get_all_neutral_units"):
+		var neutral_units: Array = neutral_mgr.get_all_neutral_units()
+		for neutral_unit in neutral_units:
+			var neutral_dict: Dictionary = neutral_unit
+			var neutral_pos: Vector2i = neutral_dict.get("grid_pos", Vector2i.ZERO)
+			var neutral_distance: int = _grid_distance(center, neutral_pos)
+			if neutral_distance <= range and neutral_distance < best_distance:
+				best_distance = neutral_distance
+				best = {"kind": "neutral", "id": int(neutral_dict.get("id", -1)), "grid_pos": neutral_pos}
+
+	return best
+
+
+func _apply_defense_tower_aoe(faction: int, center: Vector2i, damage: int, radius: int) -> void:
+	var unit_mgr = get_parent().get_node_or_null("UnitManager2D")
+	if unit_mgr != null and unit_mgr.has_method("get_all_units"):
+		var units: Array = unit_mgr.get_all_units()
+		for unit in units:
+			var unit_dict: Dictionary = unit
+			if int(unit_dict.get("faction", -1)) == faction:
+				continue
+			var pos: Vector2i = unit_dict.get("grid_pos", Vector2i.ZERO)
+			if _grid_distance(center, pos) <= radius:
+				_apply_defense_tower_damage(faction, {"kind": "unit", "id": int(unit_dict.get("id", -1)), "grid_pos": pos}, damage)
+
+	var neutral_mgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+	if neutral_mgr != null and neutral_mgr.has_method("get_all_neutral_units"):
+		var neutral_units: Array = neutral_mgr.get_all_neutral_units()
+		for neutral_unit in neutral_units:
+			var neutral_dict: Dictionary = neutral_unit
+			var neutral_pos: Vector2i = neutral_dict.get("grid_pos", Vector2i.ZERO)
+			if _grid_distance(center, neutral_pos) <= radius:
+				_apply_defense_tower_damage(faction, {"kind": "neutral", "id": int(neutral_dict.get("id", -1)), "grid_pos": neutral_pos}, damage)
+
+
+func _apply_defense_tower_damage(faction: int, target: Dictionary, damage: int) -> void:
+	var kind: String = str(target.get("kind", ""))
+	var target_id: int = int(target.get("id", -1))
+	if target_id < 0:
+		return
+	if kind == "unit":
+		var unit_mgr = get_parent().get_node_or_null("UnitManager2D")
+		if unit_mgr != null and unit_mgr.has_method("apply_building_damage"):
+			unit_mgr.apply_building_damage(target_id, faction, damage)
+	elif kind == "neutral":
+		var neutral_mgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+		if neutral_mgr != null and neutral_mgr.has_method("apply_ranged_damage"):
+			neutral_mgr.apply_ranged_damage(target_id, faction, damage)
+
+
+func _show_tower_attack_text(building: Dictionary, target_pos: Vector2i, damage: int) -> void:
+	var _target: Vector2 = _grid_to_world(target_pos.x, target_pos.y)
+	_show_floating_text(building, "-%d" % damage, Color(1.0, 0.25, 0.12))
+
+
+func _grid_distance(a: Vector2i, b: Vector2i) -> int:
+	return abs(a.x - b.x) + abs(a.y - b.y)
 
 
 func show_building_resource_text(building_id: int, resources: Dictionary) -> void:
@@ -511,7 +744,7 @@ func _draw_buildings() -> void:
 		var fp: Vector2i = data.footprint
 		var is_selected: bool = b["id"] == _selected_id
 
-		# 迷雾检查：所有占用格都在迷雾中 → 不绘制
+		# 迷雾检查：所有占用格都在迷雾中 -> 不绘制
 		if _fog_mgr and _fog_mgr.has_method("get_fog"):
 			var all_fogged := true
 			var tiles := _get_footprint_tiles(origin, fp)
@@ -556,6 +789,11 @@ func _draw_buildings() -> void:
 			)
 			draw_texture_rect(ELF_CAPITAL_TEXTURE, tex_rect, false)
 
+		if bool(b.get("pending_demolition", false)):
+			_draw_demolition_marker(top_left, Vector2(w, h))
+		if int(b.get("id", -1)) == _demolition_control_building_id:
+			_draw_demolition_control(b, top_left, Vector2(w, h))
+
 		# 建筑名称文字
 		var font: Font = ThemeDB.fallback_font
 		var fsize: int = 13 if data.category == BuildingData.BuildingCategory.CORE else 11
@@ -571,9 +809,9 @@ func _draw_buildings() -> void:
 		draw_string(font, Vector2(label_pos.x + 1, label_pos.y + 1), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(0, 0, 0, 0.6))
 		draw_string(font, label_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
-		# 主城特殊标记：顶部显示城堡图标 ★
+		# 主城特殊标记：顶部显示主城文本
 		if data.category == BuildingData.BuildingCategory.CORE:
-			var star_text := "★ 主城 ★"
+			var star_text := "* 主城 *"
 			var star_size := font.get_string_size(star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
 			var star_pos := Vector2(
 				top_left.x + w / 2.0 - star_size.x / 2.0,
@@ -609,6 +847,108 @@ func _draw_buildings() -> void:
 				var plus_size := font.get_string_size(plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8)
 				var plus_pos := Vector2(dots_start_x + 4 * dot_spacing + 2, top_left.y - 10 + 3)
 				draw_string(font, plus_pos, plus_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color.WHITE)
+
+
+func _draw_demolition_marker(top_left: Vector2, size: Vector2) -> void:
+	var body_rect := Rect2(top_left, size)
+	draw_rect(body_rect, DEMOLISH_OVERLAY_COLOR, true)
+	draw_rect(body_rect, DEMOLISH_BORDER_COLOR, false, 2.0)
+
+	var icon_size: float = maxf(10.0, minf(size.x, size.y) / 3.0)
+	var center := top_left + size * 0.5
+	_draw_hammer_icon(center, icon_size)
+
+
+func _draw_hammer_icon(center: Vector2, icon_size: float) -> void:
+	var icon_color := Color(1.0, 0.12, 0.08, 1.0)
+	var shadow_color := Color(0.0, 0.0, 0.0, 0.55)
+	var scale_factor: float = icon_size / 24.0
+
+	draw_set_transform(center + Vector2(1.0, 1.0), deg_to_rad(42.0), Vector2.ONE)
+	draw_rect(Rect2(Vector2(-2.0, -6.0) * scale_factor, Vector2(4.0, 15.0) * scale_factor), shadow_color, true)
+	draw_rect(Rect2(Vector2(-8.0, -10.0) * scale_factor, Vector2(16.0, 5.0) * scale_factor), shadow_color, true)
+	draw_set_transform(center, deg_to_rad(42.0), Vector2.ONE)
+	draw_rect(Rect2(Vector2(-2.0, -6.0) * scale_factor, Vector2(4.0, 15.0) * scale_factor), icon_color, true)
+	draw_rect(Rect2(Vector2(-8.0, -10.0) * scale_factor, Vector2(16.0, 5.0) * scale_factor), icon_color, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_demolition_control(building: Dictionary, top_left: Vector2, size: Vector2) -> void:
+	var rect: Rect2 = _get_demolition_control_rect(building, top_left, size)
+	var is_pending: bool = bool(building.get("pending_demolition", false))
+	var bg_color := Color(0.95, 0.06, 0.04, 0.96)
+	if is_pending:
+		bg_color = Color(0.95, 0.22, 0.08, 0.96)
+	draw_rect(rect, bg_color, true)
+	draw_rect(rect, Color(0.1, 0.0, 0.0, 0.9), false, 1.0)
+
+	var font: Font = ThemeDB.fallback_font
+	var symbol := "-" if is_pending else "X"
+	var font_size := 13 if is_pending else 12
+	var text_size := font.get_string_size(symbol, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var text_pos := Vector2(
+		rect.position.x + rect.size.x / 2.0 - text_size.x / 2.0,
+		rect.position.y + rect.size.y / 2.0 + font_size * 0.35
+	)
+	draw_string(font, text_pos, symbol, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+
+
+func _get_demolition_control_rect(_building: Dictionary, top_left: Vector2, size: Vector2) -> Rect2:
+	var rect_pos := Vector2(
+		top_left.x + size.x - DEMOLISH_CONTROL_SIZE * 0.55,
+		top_left.y - DEMOLISH_CONTROL_SIZE * 0.45
+	)
+	return Rect2(rect_pos, Vector2(DEMOLISH_CONTROL_SIZE, DEMOLISH_CONTROL_SIZE))
+
+
+func _get_demolition_control_rect_for_building(building: Dictionary) -> Rect2:
+	if building.is_empty():
+		return Rect2()
+	var data: BuildingData = building["data"]
+	var origin: Vector2i = building["origin"]
+	var fp: Vector2i = data.footprint
+	var world_origin := _grid_to_world(origin.x, origin.y)
+	var top_left := Vector2(world_origin.x - tile_size * 0.5, world_origin.y - tile_size * 0.5)
+	var size := Vector2(fp.x * tile_size, fp.y * tile_size)
+	return _get_demolition_control_rect(building, top_left, size)
+
+
+func _can_show_demolition_control(building: Dictionary) -> bool:
+	if building.is_empty():
+		return false
+	var data: BuildingData = building["data"]
+	if data.category == BuildingData.BuildingCategory.CORE:
+		return false
+	if _turn_manager != null and int(building.get("faction", -1)) != _turn_manager.current_player:
+		return false
+	return true
+
+
+func _toggle_demolition_control(building: Dictionary) -> void:
+	if not _can_show_demolition_control(building):
+		_demolition_control_building_id = -1
+		return
+	var building_id: int = int(building.get("id", -1))
+	if _demolition_control_building_id == building_id:
+		_demolition_control_building_id = -1
+	else:
+		_demolition_control_building_id = building_id
+	queue_redraw()
+
+
+func _activate_demolition_control(building_id: int) -> bool:
+	var building: Dictionary = _get_building_by_id(building_id)
+	if not _can_show_demolition_control(building):
+		return false
+	var changed := false
+	if bool(building.get("pending_demolition", false)):
+		changed = cancel_building_demolition(building_id)
+	else:
+		changed = mark_building_for_demolition(building_id)
+	if changed:
+		_demolition_control_building_id = -1
+		queue_redraw()
+	return changed
 
 
 func _draw_effect_ranges() -> void:
@@ -772,7 +1112,7 @@ func _on_round_ended(round_number: int) -> void:
 			var gcount := garr.size()
 			if gcount > 0:
 				var faction_name := GameCatalog.faction_name(int(b["faction"]))
-				print("[建筑] %s 金币铸造厂: 驻兵 %d → 金币 +%d（消耗金矿石）" % [faction_name, gcount, gcount * 2])
+				print("[Building] %s mint: garrison %d => gold +%d" % [faction_name, gcount, gcount * 2])
 				_show_production_text(b, {"gold": gcount * 2}, 0, Color(1.0, 0.84, 0.0))
 			continue
 
@@ -804,7 +1144,7 @@ func _on_round_ended(round_number: int) -> void:
 
 
 func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int, custom_color: Color = Color(0.5, 1.0, 0.5)) -> void:
-	## 在建筑上方创建飘浮产量文字，如 "木材 +1" "石料 +2"
+	## 在建筑上方创建飘浮产量文字，如“木材 +1”“石料 +2”
 	if prod.is_empty():
 		return
 	var lines: PackedStringArray = []
@@ -864,7 +1204,6 @@ func _get_building_world_center(building: Dictionary) -> Vector2:
 # ========== 交互 ==========
 
 func _unhandled_input(event: InputEvent) -> void:
-	# 放置模式优先处理
 	if _placement_active:
 		_handle_placement_input(event)
 		return
@@ -880,14 +1219,30 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var mouse_event: InputEventMouseButton = event
 		var cursor := get_global_mouse_position()
+		if _demolition_control_building_id >= 0:
+			var control_building: Dictionary = _get_building_by_id(_demolition_control_building_id)
+			if not control_building.is_empty():
+				var control_rect: Rect2 = _get_demolition_control_rect_for_building(control_building)
+				if control_rect.has_point(cursor):
+					_activate_demolition_control(_demolition_control_building_id)
+					return
+
 		var gpos := _world_to_grid(cursor)
 		if gpos.x < 0 or gpos.x >= grid_cols or gpos.y < 0 or gpos.y >= grid_rows:
+			_demolition_control_building_id = -1
 			_clear_selection()
+			queue_redraw()
 			return
+
 		var building := get_building_at(gpos)
 		if not building.is_empty():
-			# 检查撤出驻兵：点击己方有驻兵的建筑 → 撤出一个
+			if mouse_event.double_click:
+				_toggle_demolition_control(building)
+				_select_building(int(building["id"]))
+				return
+
 			var garr: Array = building.get("garrison", [])
 			var building_data: BuildingData = building["data"]
 			if not garr.is_empty() and building_data.upgrade_rules.is_empty() and _turn_manager and not _just_garrisoned.has(building["id"]):
@@ -900,13 +1255,16 @@ func _unhandled_input(event: InputEvent) -> void:
 							var unit_mgr = get_parent().get_node("UnitManager2D")
 							if unit_mgr and unit_mgr.has_method("add_unit"):
 								unit_mgr.add_unit(cp, unit_dict["data"], spawn_pos, unit_dict.get("hp", -1))
-						return  # 撤出后不切换选择
+						return
+
 			if _selected_id == building["id"]:
 				_clear_selection()
 			else:
 				_select_building(building["id"])
 		else:
+			_demolition_control_building_id = -1
 			_clear_selection()
+			queue_redraw()
 
 	if event is InputEventMouseMotion:
 		var cursor := get_global_mouse_position()
@@ -923,35 +1281,38 @@ func _unhandled_input(event: InputEvent) -> void:
 			if int(building.get("level", 1)) > 1 and data.max_level > 1:
 				building_name = "%s Lv%d" % [data.name, int(building.get("level", 1))]
 			var hover_text := "%s - %s (HP:%d/%d)" % [fname, building_name, building["hp"], _get_building_hp_max_from_instance(building)]
+			if bool(building.get("pending_demolition", false)):
+				hover_text += " - 待拆除"
 			if BuildingRules.is_defense_building(data):
-				hover_text += " - \u9632\u5fa1\u5efa\u7b51"
+				hover_text += " - 防御建筑"
 			if BuildingRules.is_forge(data):
-				hover_text += " - \u914d\u65b9:2\u94c1+1\u77f3=>1\u7cbe\u94a2; 2\u94c1+1\u9b54\u5c18=>1\u79d8\u94f6"
+				hover_text += " - 配方:2铁+1石=>1精钢; 2铁+1魔尘=>1秘银"
 			if data.effect_radius > 0:
 				hover_text += " - Range:%d" % data.effect_radius
+			if data.defense_attack_range > 0:
+				hover_text += " - Tower:%d格/%d伤/%.1fs" % [data.defense_attack_range, data.defense_attack_damage, data.defense_attack_cooldown]
 			hover_text += " - %s" % data.get_garrison_rule_text()
 			var network_info: Dictionary = get_building_network_info(int(building["id"]))
 			if _should_draw_network_range(building):
 				var linked_count: int = int(network_info.get("linked_count", 0))
 				var network_bonus: int = int(network_info.get("production_bonus", 0))
 				if linked_count > 0:
-					hover_text += " - \u5efa\u7b51\u7f51\u7edc:%d" % linked_count
+					hover_text += " - 建筑网络:%d" % linked_count
 					if network_bonus > 0:
-						hover_text += " \u4ea7\u51fa+%d" % network_bonus
+						hover_text += " 产出+%d" % network_bonus
 				else:
-					hover_text += " - \u5efa\u7b51\u7f51\u7edc:\u672a\u8fde\u63a5"
+					hover_text += " - 建筑网络:未连接"
 			var garr: Array = building.get("garrison", [])
 			if not garr.is_empty():
 				hover_text += " - Garrison:%d/%d" % [garr.size(), max_garrison(building)]
 			if _turn_manager != null:
 				if int(building.get("faction", -1)) == _turn_manager.current_player and int(building.get("hp", 0)) < _get_building_hp_max_from_instance(building):
-					hover_text += " - H\u4fee\u590d:%d\u77f3\u6599+%dAP" % [REPAIR_STONE_COST, REPAIR_AP_COST]
+					hover_text += " - H修复:%d石料+%dAP" % [REPAIR_STONE_COST, REPAIR_AP_COST]
 				elif int(building.get("faction", -1)) != _turn_manager.current_player:
-					hover_text += " - \u53ef\u653b\u51fb"
+					hover_text += " - 可攻击"
 			building_hovered.emit(hover_text)
 		else:
 			_set_hovered_building(-1)
-
 
 func _handle_placement_input(event: InputEvent) -> void:
 	## 放置模式下处理鼠标移动（预览）+ 左键（建造）+ 右键（取消）
@@ -985,6 +1346,7 @@ func _select_building(bid: int) -> void:
 
 func _clear_selection() -> void:
 	_selected_id = -1
+	_demolition_control_building_id = -1
 	recruit_panel_closed.emit()
 	queue_redraw()
 
@@ -1051,7 +1413,7 @@ func _check_placement_valid(pos: Vector2i) -> bool:
 
 
 func _do_placement(pos: Vector2i) -> void:
-	## 执行建造：扣资源 → 扣 AP → 放置建筑
+	## 执行建造：扣资源 -> 扣 AP -> 放置建筑
 	if not _placement_data:
 		return
 
@@ -1211,6 +1573,8 @@ func _destroy_building_at_index(index: int, attacker_faction: int = -1) -> void:
 		_selected_id = -1
 	if int(building.get("id", -1)) == _hovered_id:
 		_hovered_id = -1
+	if int(building.get("id", -1)) == _demolition_control_building_id:
+		_demolition_control_building_id = -1
 	var faction: int = int(building.get("faction", -1))
 	if BuildingRules.is_outpost(data) and _territory_mgr and _territory_mgr.has_method("remove_town_hall"):
 		var source := Vector2i(origin.x + data.footprint.x / 2, origin.y + data.footprint.y / 2)
