@@ -44,6 +44,8 @@ var _in_combat := false
 var _combat_timer: Timer = null
 var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
 var _combat_sequence_id: int = 0
+var _building_attack_timer: Timer = null
+var _building_attack_data: Dictionary = {}
 var _combat_choice_panel: Panel = null
 var _combat_choice_label: Label = null
 var _combat_retreat_button: Button = null
@@ -86,6 +88,7 @@ const ATTACK_APPROACH_BLOCKED_COLOR := Color(1.0, 0.35, 0.18, 0.42)
 const UNIT_RADIUS := 8.0
 const SPAWN_SEARCH_RADIUS := 8
 const MOVE_VISUAL_DURATION := 1.0
+const UNIT_ATTACK_INTERVAL := 1.0
 const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
 const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
 const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
@@ -1188,7 +1191,18 @@ func _apply_unit_attack_damage(attacker: Dictionary, defender: Dictionary) -> bo
 func _try_attack_building(attacker: Dictionary, building: Dictionary) -> bool:
 	if attacker.is_empty() or building.is_empty():
 		return false
-	if bool(attacker.get("has_attacked", false)):
+	if _in_combat:
+		return false
+	if int(building.get("faction", -1)) == int(attacker.get("faction", -2)):
+		return false
+	if not _can_unit_attack_building(attacker, building):
+		return false
+	_start_building_attack(attacker, building)
+	return true
+
+
+func _can_unit_attack_building(attacker: Dictionary, building: Dictionary) -> bool:
+	if attacker.is_empty() or building.is_empty():
 		return false
 	if int(building.get("faction", -1)) == int(attacker.get("faction", -2)):
 		return false
@@ -1199,21 +1213,99 @@ func _try_attack_building(attacker: Dictionary, building: Dictionary) -> bool:
 	var distance: int = _distance_to_building(from, building)
 	if distance < 0 or distance > data.attack_range:
 		return false
-	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
-	if bmgr == null or not bmgr.has_method("damage_building"):
-		return false
+	return _get_building_attack_damage(attacker) > 0
+
+
+func _get_building_attack_damage(attacker: Dictionary) -> int:
+	if attacker.is_empty():
+		return 0
+	var data: UnitData = _get_unit_data(attacker)
 	var damage: int = _get_unit_attack_value(attacker)
 	if data.category == UnitData.UnitCategory.SIEGE or "building_breaker" in data.tags:
 		damage += 2
-	if damage <= 0:
-		return false
-	attacker["has_attacked"] = true
-	bmgr.call("damage_building", int(building.get("id", -1)), damage, int(attacker.get("faction", -1)))
-	var selected: Dictionary = _get_unit_by_id(int(attacker.get("id", -1)))
-	if not selected.is_empty():
-		unit_selected.emit(_make_unit_view(selected))
+	return maxi(0, damage)
+
+
+func _start_building_attack(attacker: Dictionary, building: Dictionary) -> void:
+	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+	if bmgr == null or not bmgr.has_method("damage_building") or not bmgr.has_method("get_building_by_id"):
+		return
+	_in_combat = true
+	_combat_sequence_id += 1
+	_combat_data = {}
+	_building_attack_data = {
+		"attacker_id": int(attacker.get("id", -1)),
+		"building_id": int(building.get("id", -1)),
+		"attacker_faction": int(attacker.get("faction", -1)),
+		"sequence_id": _combat_sequence_id,
+	}
+	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
+	_throw_beast_source_id = -1
+	_emit_action_preview({})
+	combat_started.emit()
+	_ensure_building_attack_timer()
+	_perform_building_attack_tick()
 	queue_redraw()
-	return true
+
+
+func _ensure_building_attack_timer() -> void:
+	if _building_attack_timer != null:
+		return
+	_building_attack_timer = Timer.new()
+	_building_attack_timer.one_shot = true
+	_building_attack_timer.wait_time = UNIT_ATTACK_INTERVAL
+	_building_attack_timer.timeout.connect(_on_building_attack_timer_timeout)
+	add_child(_building_attack_timer)
+
+
+func _on_building_attack_timer_timeout() -> void:
+	_perform_building_attack_tick()
+
+
+func _perform_building_attack_tick() -> void:
+	if not _in_combat or _building_attack_data.is_empty():
+		return
+	var sequence_id: int = int(_building_attack_data.get("sequence_id", -1))
+	if sequence_id != _combat_sequence_id:
+		_finish_building_attack_state()
+		return
+	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+	if bmgr == null or not bmgr.has_method("damage_building") or not bmgr.has_method("get_building_by_id"):
+		_finish_building_attack_state()
+		return
+	var attacker: Dictionary = _get_unit_by_id(int(_building_attack_data.get("attacker_id", -1)))
+	var building: Dictionary = bmgr.call("get_building_by_id", int(_building_attack_data.get("building_id", -1)))
+	if attacker.is_empty() or building.is_empty() or not _can_unit_attack_building(attacker, building):
+		_finish_building_attack_state()
+		return
+	var damage: int = _get_building_attack_damage(attacker)
+	var result: Dictionary = bmgr.call("damage_building", int(building.get("id", -1)), damage, int(attacker.get("faction", -1)))
+	var refreshed: Dictionary = _get_unit_by_id(int(attacker.get("id", -1)))
+	if not refreshed.is_empty():
+		unit_selected.emit(_make_unit_view(refreshed))
+	if bool(result.get("destroyed", false)):
+		_finish_building_attack_state()
+		queue_redraw()
+		return
+	_schedule_next_building_attack_tick()
+	queue_redraw()
+
+
+func _schedule_next_building_attack_tick() -> void:
+	_ensure_building_attack_timer()
+	if _building_attack_timer == null:
+		return
+	_building_attack_timer.wait_time = UNIT_ATTACK_INTERVAL
+	_building_attack_timer.start()
+
+
+func _finish_building_attack_state() -> void:
+	if _building_attack_timer != null:
+		_building_attack_timer.stop()
+	_building_attack_data = {}
+	_finish_combat_state()
 
 
 func _distance_to_building(from: Vector2i, building: Dictionary) -> int:
@@ -2627,16 +2719,19 @@ func _finish_death_visual(unit_id: int) -> void:
 	_death_visuals.erase(unit_id)
 	_shake_offsets.erase(unit_id)
 	_unit_facing_flip.erase(unit_id)
-	if _in_combat and _combat_data.is_empty():
+	if _in_combat and _combat_data.is_empty() and _building_attack_data.is_empty():
 		_finish_combat_state()
 	queue_redraw()
 
 
 func _finish_combat_state() -> void:
 	_hide_combat_choice_panel()
+	if _building_attack_timer != null:
+		_building_attack_timer.stop()
 	_in_combat = false
 	_combat_sequence_id += 1
 	_combat_data = {}
+	_building_attack_data = {}
 	combat_ended.emit()
 	_clear_selection()
 

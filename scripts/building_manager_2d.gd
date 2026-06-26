@@ -271,6 +271,10 @@ func get_building_at(grid_pos: Vector2i) -> Dictionary:
 	return {}
 
 
+func get_building_by_id(building_id: int) -> Dictionary:
+	return _get_building_by_id(building_id)
+
+
 func is_tile_occupied(gx: int, gy: int) -> bool:
 	if gx < 0 or gx >= grid_cols or gy < 0 or gy >= grid_rows:
 		return true  # out of bounds = occupied
