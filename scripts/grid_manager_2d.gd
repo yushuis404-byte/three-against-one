@@ -7,6 +7,7 @@ extends Node2D
 @onready var resource_mgr: Node2D = $"../ResourceManager2D"
 
 const GRASS_TEXTURE: Texture2D = preload("res://assets/texture/grass.png")
+const LAND_BASE_TEXTURE_PATH := "res://assets/texture/map/land_base.png"
 const WATER_MIDDLE_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/Water_Middle.png"
 const WATER_CORNER_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_corner2.png"
 const WATER_CORNER_UP_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_corner_up.png"
@@ -176,6 +177,29 @@ var editor_brush_clif: int = CLIF_MIDDLE_RIGHT:
 			_clear_editor_undo_stack()
 			queue_redraw()
 
+@export_group("Land Base Texture")
+@export var land_base_enabled := true:
+	set(value):
+		land_base_enabled = value
+		queue_redraw()
+@export var land_base_texture: Texture2D = null:
+	set(value):
+		land_base_texture = value
+		_land_base_texture = value if value != null else _load_image_texture(LAND_BASE_TEXTURE_PATH, "Land base")
+		queue_redraw()
+@export_range(0.5, 1.5, 0.001) var land_base_scale := 1.0:
+	set(value):
+		land_base_scale = maxf(0.01, value)
+		queue_redraw()
+@export var land_base_offset := Vector2.ZERO:
+	set(value):
+		land_base_offset = value
+		queue_redraw()
+@export_range(0.0, 1.0, 0.01) var land_base_opacity := 1.0:
+	set(value):
+		land_base_opacity = clampf(value, 0.0, 1.0)
+		queue_redraw()
+
 enum ZoneTag {
 	UNASSIGNED,
 	MOUNTAIN_NEST,
@@ -195,6 +219,7 @@ enum ZoneTag {
 var terrain_grid: Array = []
 var zone_grid: Array = []
 var clif_grid: Array = []
+var _land_base_texture: Texture2D = null
 var _water_middle_texture: Texture2D = null
 var _water_corner_texture: Texture2D = null
 var _water_corner_up_texture: Texture2D = null
@@ -220,6 +245,7 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	print("[Grid2D] 生成 v12 开放世界地图 (100x56)...")
+	_land_base_texture = land_base_texture if land_base_texture != null else _load_image_texture(LAND_BASE_TEXTURE_PATH, "Land base")
 	_water_middle_texture = _load_image_texture(WATER_MIDDLE_PATH, "Water middle")
 	_water_corner_texture = _load_image_texture(WATER_CORNER_PATH, "Water corner")
 	_water_corner_up_texture = _load_image_texture(WATER_CORNER_UP_PATH, "Water corner up")
@@ -1003,7 +1029,7 @@ func _draw() -> void:
 	if terrain_grid.is_empty():
 		return
 
-	var ts := TILE_SIZE - 0.5
+	var ts := TILE_SIZE
 	var half := ts / 2.0
 
 	for y in range(GRID_ROWS):
@@ -1018,6 +1044,8 @@ func _draw() -> void:
 			var rect := Rect2(world_pos.x - half, world_pos.y - half, ts, ts)
 			if t == TerrainData.Terrain.WATER:
 				_draw_water_tile(x, y, rect)
+			elif _draw_land_base_tile(x, y, rect):
+				pass
 			elif t == TerrainData.Terrain.GLADE_ELF:
 				draw_texture_rect(GRASS_TEXTURE, rect, false)
 			else:
@@ -1034,10 +1062,56 @@ func _draw() -> void:
 		_draw_spawn_markers()
 
 
+func _draw_land_base_tile(x: int, y: int, rect: Rect2) -> bool:
+	if land_base_scale <= 0.0:
+		land_base_scale = 1.0
+	if land_base_opacity < 0.0:
+		land_base_opacity = 1.0
+	if not land_base_enabled or _land_base_texture == null or land_base_opacity <= 0.0:
+		return false
+	var texture_size := Vector2(
+		float(_land_base_texture.get_width()),
+		float(_land_base_texture.get_height())
+	)
+	if texture_size.x <= 0.0 or texture_size.y <= 0.0:
+		return false
+	var source_bounds := _get_land_base_source_bounds(texture_size)
+	var land_x := clampi(x - LAND_OFFSET_X, 0, GRID_SIZE - 1)
+	var land_y := clampi(y, 0, GRID_SIZE - 1)
+	var src := _get_land_base_tile_source_rect(source_bounds, land_x, land_y)
+	draw_texture_rect_region(_land_base_texture, rect, src, Color(1.0, 1.0, 1.0, land_base_opacity))
+	return true
+
+
+func _get_land_base_source_bounds(texture_size: Vector2) -> Rect2:
+	var target_ratio := 1.0
+	var source_ratio := texture_size.x / texture_size.y
+	if source_ratio > target_ratio:
+		var crop_width := texture_size.y * target_ratio
+		return Rect2((texture_size.x - crop_width) * 0.5, 0.0, crop_width, texture_size.y)
+	var crop_height := texture_size.x / target_ratio
+	return Rect2(0.0, (texture_size.y - crop_height) * 0.5, texture_size.x, crop_height)
+
+
+func _get_land_base_tile_source_rect(source_bounds: Rect2, land_x: int, land_y: int) -> Rect2:
+	var safe_scale := maxf(0.01, land_base_scale)
+	var half_grid := float(GRID_SIZE) * 0.5
+	var sample_x := ((float(land_x) + 0.5 - half_grid - land_base_offset.x) / safe_scale) + half_grid
+	var sample_y := ((float(land_y) + 0.5 - half_grid - land_base_offset.y) / safe_scale) + half_grid
+	var src_size := source_bounds.size / (float(GRID_SIZE) * safe_scale)
+	var src_pos := Vector2(
+		source_bounds.position.x + (sample_x / float(GRID_SIZE)) * source_bounds.size.x - src_size.x * 0.5,
+		source_bounds.position.y + (sample_y / float(GRID_SIZE)) * source_bounds.size.y - src_size.y * 0.5
+	)
+	src_pos.x = clampf(src_pos.x, source_bounds.position.x, source_bounds.position.x + source_bounds.size.x - src_size.x)
+	src_pos.y = clampf(src_pos.y, source_bounds.position.y, source_bounds.position.y + source_bounds.size.y - src_size.y)
+	return Rect2(src_pos, src_size)
+
+
 func _draw_clif_layer() -> void:
 	if clif_grid.is_empty():
 		return
-	var ts := TILE_SIZE - 0.5
+	var ts := TILE_SIZE
 	var half := ts / 2.0
 	for y in range(GRID_ROWS):
 		for x in range(GRID_COLS):

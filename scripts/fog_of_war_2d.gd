@@ -87,7 +87,7 @@ func _draw() -> void:
 		return
 
 	var fog: Array = fog_grids[current_player]
-	var ts := tile_size - 2.0
+	var ts := tile_size + 1.0
 	var half := ts / 2.0
 
 	for y in range(grid_rows):

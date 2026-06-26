@@ -49,12 +49,17 @@ var civilization_route_button: Button = null
 var creative_mode_button: Button = null
 var wall_blueprint_button: Button = null
 var wall_blueprint_status_label: Label = null
+var zoom_status_label: Label = null
 var _creative_mode_enabled := false
 
 
 func _ready() -> void:
 	print("[Main] 项目启动 - Three Against One (2.5D)")
 	_setup_game()
+
+
+func _process(_delta: float) -> void:
+	_update_zoom_status_label()
 
 
 func _setup_game() -> void:
@@ -118,6 +123,7 @@ func _setup_game() -> void:
 	turn_manager.round_ended.connect(_on_round_ended)
 	turn_manager.ap_changed.connect(_on_ap_changed)
 	_init_ap_status_label()
+	_init_zoom_status_label()
 	_init_stage_event_service()
 
 	# 单位系统初始化
@@ -726,6 +732,30 @@ func _update_ap_status_label(player: int) -> void:
 		turn_manager.get_ap(player),
 		turn_manager.AP_MAX,
 	]
+
+
+func _init_zoom_status_label() -> void:
+	zoom_status_label = Label.new()
+	zoom_status_label.name = "ZoomStatusLabel"
+	zoom_status_label.position = Vector2(16.0, 92.0)
+	zoom_status_label.size = Vector2(160.0, 28.0)
+	zoom_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	zoom_status_label.z_index = 95
+	zoom_status_label.add_theme_font_size_override("font_size", 16)
+	zoom_status_label.add_theme_color_override("font_color", Color(0.86, 0.92, 1.0))
+	zoom_status_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	zoom_status_label.add_theme_constant_override("shadow_offset_x", 1)
+	zoom_status_label.add_theme_constant_override("shadow_offset_y", 1)
+	$UI.add_child(zoom_status_label)
+	_update_zoom_status_label()
+
+
+func _update_zoom_status_label() -> void:
+	if zoom_status_label == null or camera == null:
+		return
+	var zoom_percent := int(roundf(camera.zoom.x * 100.0))
+	zoom_status_label.text = "Zoom: %d%%" % zoom_percent
+
 
 func _make_label_settings(color: Color) -> LabelSettings:
 	var s := LabelSettings.new()
