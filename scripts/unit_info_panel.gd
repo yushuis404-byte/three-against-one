@@ -219,11 +219,7 @@ func show_unit(unit: Dictionary) -> void:
 
 	# 状态
 	var moved: bool = unit.get("has_moved", false)
-	var attacked: bool = unit.get("has_attacked", false)
-	if attacked:
-		_status_label.text = "已攻击"
-		_status_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
-	elif moved:
+	if moved:
 		_status_label.text = "已移动"
 		_status_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2))
 	else:
@@ -278,6 +274,12 @@ func hide_panel() -> void:
 func _update_warband_button(unit: Dictionary) -> void:
 	if _warband_button == null:
 		return
+	_warband_button.visible = false
+	_warband_confirm_button.visible = false
+	_warband_cancel_button.visible = false
+	_warband_disband_button.visible = false
+	_warband_cost_label.visible = false
+	return
 	var can_form: bool = bool(unit.get("can_form_warband", false))
 	var is_member: bool = int(unit.get("warband_id", -1)) >= 0
 	var is_selecting: bool = bool(unit.get("warband_selecting", false))
@@ -329,9 +331,9 @@ func _make_unit_hint(data: UnitData) -> String:
 	if data.atk > 0 and "elf" in data.tags:
 		defense_text += "\u5148\u624b\uff1a\u76ee\u6807\u5728\u81ea\u8eab\u89c6\u91ce\u5185\uff0c\u4e14\u81ea\u8eab\u4e0d\u5728\u76ee\u6807\u89c6\u91ce\u5185\u65f6\uff0c\u8ffd\u52a0\u534a\u4f24\u8fde\u51fb\u3002"
 	if data.template_id == "unit.elf.scout":
-		defense_text += "F \u952e\uff1a\u98ce\u884c\u65a5\u5019\u5929\u8d4b\uff0c\u6d88\u8017 1 AP \u63ed\u793a\u4e00\u7247\u533a\u57df\uff0c\u6bcf\u56de\u5408 1 \u6b21\uff0c\u72ec\u7acb\u51b7\u5374\u3002"
+		defense_text += "\u53f3\u4e0b\u89d2\u6280\u80fd\uff1a\u98ce\u884c\u65a5\u5019\u5929\u8d4b\uff0c\u6d88\u8017 1 AP \u63ed\u793a\u4e00\u7247\u533a\u57df\uff0c\u6bcf\u56de\u5408 1 \u6b21\uff0c\u72ec\u7acb\u51b7\u5374\u3002"
 	if data.template_id == "unit.elf.guard":
-		defense_text += "G \u952e\uff1a\u6708\u5f71\u523a\u5ba2\u5929\u8d4b\uff0c\u6d88\u8017 1 AP \u8ba9\u654c\u65b9\u7684\u4e00\u7247\u533a\u57df\u91cd\u65b0\u9677\u5165\u8ff7\u96fe\uff0c\u6bcf\u56de\u5408 1 \u6b21\uff0c\u72ec\u7acb\u51b7\u5374\u3002"
+		defense_text += "\u53f3\u4e0b\u89d2\u6280\u80fd\uff1a\u6708\u5f71\u523a\u5ba2\u5929\u8d4b\uff0c\u6d88\u8017 1 AP \u8ba9\u654c\u65b9\u7684\u4e00\u7247\u533a\u57df\u91cd\u65b0\u9677\u5165\u8ff7\u96fe\uff0c\u6bcf\u56de\u5408 1 \u6b21\uff0c\u72ec\u7acb\u51b7\u5374\u3002"
 	if data.template_id == "unit.orc.slinger":
 		return defense_text + "\u767d\u8272\u5706\u70b9=\u79fb\u52a8\uff1b\u7ea2\u8272\u65b9\u683c=\u653b\u51fb\u5c04\u7a0b\uff0c\u70b9\u654c\u4eba\u8fdc\u7a0b\u653b\u51fb\u3002\u70b9\u76f8\u90bb\u730e\u9f7f\u517d\u540e\uff0c\u9752\u8272\u5706\u70b9=\u6295\u63b7\u843d\u70b9\u3002"
 	if data.attack_range > 1:
