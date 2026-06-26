@@ -4,8 +4,8 @@ extends Camera2D
 
 const PAN_BUTTON := KEY_SPACE
 const ZOOM_SPEED := 0.08
-const ZOOM_MIN := Vector2(0.5, 0.5)
-const ZOOM_MAX := Vector2(2.5, 2.5)
+const ZOOM_MIN := Vector2(0.7, 0.7)
+const ZOOM_MAX := Vector2(1.5, 1.5)
 const ZOOM_DEFAULT := Vector2(1.0, 1.0)
 const PAN_SPEED := 1.0
 const SMOOTH_SPEED := 12.0

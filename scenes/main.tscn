@@ -51,6 +51,7 @@ editor_brush_preview = SubResource("ImageTexture_jscy8")
 editor_log_paint_cells = true
 land_base_scale = 0.8180000000000001
 land_base_offset = Vector2(0.995, 0.57)
+land_base_source_inset = 1.5
 
 [node name="ResourceManager2D" type="Node2D" parent="GameBoard" unique_id=402605533]
 script = ExtResource("4_res")
