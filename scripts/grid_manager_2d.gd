@@ -6,8 +6,13 @@ extends Node2D
 
 @onready var resource_mgr: Node2D = $"../ResourceManager2D"
 
-const GRASS_TEXTURE: Texture2D = preload("res://assets/texture/grass.png")
 const LAND_BASE_TEXTURE_PATH := "res://assets/texture/map/land_base.png"
+const BUILDING_TEXTURE_FIT_CONFIG_PATH := "res://data/building_texture_fit.json"
+const EDITOR_FIT_ELF_CAPITAL_PATH := "res://assets/texture/Elven Capital.png"
+const EDITOR_FIT_DWARF_CAPITAL_PATH := "res://assets/texture/Dwarf Capital.png"
+const EDITOR_FIT_ORC_CAPITAL_PATH := "res://assets/texture/Orc Capital.png"
+const EDITOR_FIT_GOLD_MINE_PATH := "res://assets/texture/Gold mine.png"
+const EDITOR_FIT_STONE_PATH := "res://assets/texture/stone.png"
 const WATER_MIDDLE_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/Water_Middle.png"
 const WATER_CORNER_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_corner2.png"
 const WATER_CORNER_UP_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_corner_up.png"
@@ -177,6 +182,53 @@ var editor_brush_clif: int = CLIF_MIDDLE_RIGHT:
 			_clear_editor_undo_stack()
 			queue_redraw()
 
+@export_group("Building Texture Fit")
+@export var editor_fit_enabled := false:
+	set(value):
+		editor_fit_enabled = value
+		if Engine.is_editor_hint():
+			_update_editor_fit_texture()
+			queue_redraw()
+@export_enum("Elf Capital", "Dwarf Capital", "Orc Capital", "Gold Mine", "Stone")
+var editor_fit_preset: int = 0:
+	set(value):
+		editor_fit_preset = value
+		if Engine.is_editor_hint():
+			_apply_editor_fit_preset_defaults()
+			_update_editor_fit_texture()
+			queue_redraw()
+@export var editor_fit_texture: Texture2D = null:
+	set(value):
+		editor_fit_texture = value
+		_editor_fit_texture = value
+		if Engine.is_editor_hint():
+			queue_redraw()
+@export var editor_fit_preview_cell := Vector2i(35, 13):
+	set(value):
+		editor_fit_preview_cell = value
+		if Engine.is_editor_hint():
+			queue_redraw()
+@export var editor_fit_footprint := Vector2i(2, 2):
+	set(value):
+		editor_fit_footprint = Vector2i(maxi(1, value.x), maxi(1, value.y))
+		if Engine.is_editor_hint():
+			queue_redraw()
+@export_range(0.1, 3.0, 0.01) var editor_fit_texture_scale := 0.87:
+	set(value):
+		editor_fit_texture_scale = maxf(0.01, value)
+		if Engine.is_editor_hint():
+			queue_redraw()
+@export var editor_fit_offset_tiles := Vector2.ZERO:
+	set(value):
+		editor_fit_offset_tiles = value
+		if Engine.is_editor_hint():
+			queue_redraw()
+@export var editor_fit_save_apply := false:
+	set(value):
+		editor_fit_save_apply = false
+		if value and Engine.is_editor_hint():
+			_save_editor_building_fit_config()
+
 @export_group("Land Base Texture")
 @export var land_base_enabled := true:
 	set(value):
@@ -237,6 +289,7 @@ var _water_outcorner_down_texture: Texture2D = null
 var _water_outcorner_up_double_texture: Texture2D = null
 var _water_u_bottom_texture: Texture2D = null
 var _water_u_left_texture: Texture2D = null
+var _editor_fit_texture: Texture2D = null
 var _editor_preview_refresh_frames := 0
 var _editor_undo_stack: Array[Dictionary] = []
 var _editor_paint_stroke_active := false
@@ -267,6 +320,7 @@ func _ready() -> void:
 		set_process_input(editor_paint_enabled)
 		set_process(true)
 		_update_editor_brush_preview()
+		_update_editor_fit_texture()
 		if editor_map_visible:
 			_ensure_editor_terrain()
 			queue_redraw()
@@ -301,6 +355,9 @@ func _refresh_editor_preview() -> void:
 
 func _load_image_texture(path: String, label: String) -> Texture2D:
 	var image_path: String = ProjectSettings.globalize_path(path)
+	if not FileAccess.file_exists(path):
+		push_warning("[Grid2D] %s texture missing: %s" % [label, image_path])
+		return null
 	var image: Image = Image.load_from_file(image_path)
 	if image == null or image.is_empty():
 		push_warning("[Grid2D] %s texture load failed: %s" % [label, image_path])
@@ -320,11 +377,107 @@ func _update_editor_brush_preview() -> void:
 	match editor_brush_terrain:
 		TerrainData.Terrain.WATER:
 			editor_brush_preview = _load_image_texture(WATER_MIDDLE_PATH, "Brush water preview")
-		TerrainData.Terrain.GLADE_ELF:
-			editor_brush_preview = GRASS_TEXTURE
 		_:
 			editor_brush_preview = _make_color_preview(TerrainData.get_color(editor_brush_terrain as TerrainData.Terrain))
 	notify_property_list_changed()
+
+
+func _apply_editor_fit_preset_defaults() -> void:
+	match editor_fit_preset:
+		0:
+			editor_fit_preview_cell = Vector2i(35, 13)
+			editor_fit_footprint = Vector2i(2, 2)
+			editor_fit_texture_scale = 0.87
+			editor_fit_offset_tiles = Vector2.ZERO
+		1:
+			editor_fit_preview_cell = Vector2i(35, 43)
+			editor_fit_footprint = Vector2i(2, 2)
+			editor_fit_texture_scale = 1.0
+			editor_fit_offset_tiles = Vector2.ZERO
+		2:
+			editor_fit_preview_cell = Vector2i(62, 35)
+			editor_fit_footprint = Vector2i(2, 2)
+			editor_fit_texture_scale = 1.0
+			editor_fit_offset_tiles = Vector2.ZERO
+		_:
+			editor_fit_footprint = Vector2i(1, 1)
+			editor_fit_texture_scale = 1.0
+			editor_fit_offset_tiles = Vector2.ZERO
+
+
+func _update_editor_fit_texture() -> void:
+	if editor_fit_texture != null:
+		_editor_fit_texture = editor_fit_texture
+		return
+	var path := _get_editor_fit_texture_path()
+	if path.is_empty():
+		_editor_fit_texture = null
+		return
+	_editor_fit_texture = _load_image_texture(path, "Building texture fit")
+
+
+func _get_editor_fit_texture_path() -> String:
+	match editor_fit_preset:
+		0:
+			return EDITOR_FIT_ELF_CAPITAL_PATH
+		1:
+			return EDITOR_FIT_DWARF_CAPITAL_PATH
+		2:
+			return EDITOR_FIT_ORC_CAPITAL_PATH
+		3:
+			return EDITOR_FIT_GOLD_MINE_PATH
+		4:
+			return EDITOR_FIT_STONE_PATH
+	return ""
+
+
+func _get_editor_fit_config_key() -> String:
+	match editor_fit_preset:
+		0:
+			return "elf_capital"
+		1:
+			return "dwarf_capital"
+		2:
+			return "orc_capital"
+		3:
+			return "gold_mine"
+		4:
+			return "stone"
+	return "custom"
+
+
+func _save_editor_building_fit_config() -> void:
+	var config := _load_building_fit_config()
+	var key := _get_editor_fit_config_key()
+	config[key] = {
+		"texture": _get_editor_fit_texture_path(),
+		"footprint": [editor_fit_footprint.x, editor_fit_footprint.y],
+		"scale": editor_fit_texture_scale,
+		"offset": [editor_fit_offset_tiles.x, editor_fit_offset_tiles.y],
+		"preview_cell": [editor_fit_preview_cell.x, editor_fit_preview_cell.y],
+	}
+	var json_text := JSON.stringify(config, "\t")
+	var file := FileAccess.open(BUILDING_TEXTURE_FIT_CONFIG_PATH, FileAccess.WRITE)
+	if file == null:
+		push_warning("[Grid2D] Failed to save building texture fit config: %s" % BUILDING_TEXTURE_FIT_CONFIG_PATH)
+		return
+	file.store_string(json_text)
+	file.close()
+	print("[Grid2D] Saved building texture fit config: %s" % BUILDING_TEXTURE_FIT_CONFIG_PATH)
+
+
+func _load_building_fit_config() -> Dictionary:
+	if not FileAccess.file_exists(BUILDING_TEXTURE_FIT_CONFIG_PATH):
+		return {}
+	var file := FileAccess.open(BUILDING_TEXTURE_FIT_CONFIG_PATH, FileAccess.READ)
+	if file == null:
+		return {}
+	var text := file.get_as_text()
+	file.close()
+	var parsed: Variant = JSON.parse_string(text)
+	if parsed is Dictionary:
+		return parsed
+	return {}
 
 
 func _get_clif_brush_texture(clif_type: int) -> Texture2D:
@@ -1052,8 +1205,6 @@ func _draw() -> void:
 				_draw_water_tile(x, y, rect)
 			elif drew_land_base:
 				pass
-			elif t == TerrainData.Terrain.GLADE_ELF:
-				draw_texture_rect(GRASS_TEXTURE, rect, false)
 			else:
 				draw_rect(rect, color)
 
@@ -1063,6 +1214,8 @@ func _draw() -> void:
 				draw_rect(glow, Color(1.0, 0.2, 0.05, 0.35), false, 2.0)
 
 	_draw_clif_layer()
+	if Engine.is_editor_hint():
+		_draw_editor_building_texture_fit()
 
 	if SHOW_SPAWN_MARKERS:
 		_draw_spawn_markers()
@@ -1098,6 +1251,45 @@ func _get_land_base_source_bounds(texture_size: Vector2) -> Rect2:
 		return Rect2((texture_size.x - crop_width) * 0.5, 0.0, crop_width, texture_size.y)
 	var crop_height := texture_size.x / target_ratio
 	return Rect2(0.0, (texture_size.y - crop_height) * 0.5, texture_size.x, crop_height)
+
+
+func _draw_editor_building_texture_fit() -> void:
+	if not editor_fit_enabled:
+		return
+	if _editor_fit_texture == null:
+		_update_editor_fit_texture()
+	if _editor_fit_texture == null:
+		return
+	var origin := editor_fit_preview_cell
+	var fp := Vector2i(maxi(1, editor_fit_footprint.x), maxi(1, editor_fit_footprint.y))
+	var world_origin := grid_to_world(origin.x, origin.y)
+	var top_left := Vector2(world_origin.x - TILE_SIZE * 0.5, world_origin.y - TILE_SIZE * 0.5)
+	var footprint_size := Vector2(float(fp.x) * TILE_SIZE, float(fp.y) * TILE_SIZE)
+	var footprint_rect := Rect2(top_left, footprint_size)
+	_draw_editor_fit_reference_grid(footprint_rect)
+	draw_rect(footprint_rect, Color(0.25, 0.58, 1.0, 0.18), true)
+	draw_rect(footprint_rect, Color(0.48, 0.78, 1.0, 0.95), false, 2.0)
+	var center := footprint_rect.get_center()
+	draw_line(Vector2(center.x, footprint_rect.position.y - TILE_SIZE), Vector2(center.x, footprint_rect.end.y + TILE_SIZE), Color(1.0, 0.92, 0.38, 0.85), 1.0)
+	draw_line(Vector2(footprint_rect.position.x - TILE_SIZE, center.y), Vector2(footprint_rect.end.x + TILE_SIZE, center.y), Color(1.0, 0.92, 0.38, 0.85), 1.0)
+	var tex_size := footprint_size * editor_fit_texture_scale
+	var tex_rect := Rect2(center - tex_size * 0.5 + editor_fit_offset_tiles * TILE_SIZE, tex_size)
+	draw_texture_rect(_editor_fit_texture, tex_rect, false)
+	draw_rect(tex_rect, Color(1.0, 1.0, 1.0, 0.7), false, 1.0)
+
+
+func _draw_editor_fit_reference_grid(footprint_rect: Rect2) -> void:
+	var rect := footprint_rect.grow(TILE_SIZE * 2.0)
+	var start_x := floori((rect.position.x - grid_to_world(0, 0).x) / TILE_SIZE) - 2
+	var end_x := ceili((rect.end.x - grid_to_world(0, 0).x) / TILE_SIZE) + 2
+	var start_y := floori((rect.position.y - grid_to_world(0, 0).y) / TILE_SIZE) - 2
+	var end_y := ceili((rect.end.y - grid_to_world(0, 0).y) / TILE_SIZE) + 2
+	for gx in range(start_x, end_x + 1):
+		var x := grid_to_world(gx, 0).x - TILE_SIZE * 0.5
+		draw_line(Vector2(x, rect.position.y), Vector2(x, rect.end.y), Color(0.78, 0.86, 1.0, 0.28), 1.0)
+	for gy in range(start_y, end_y + 1):
+		var y := grid_to_world(0, gy).y - TILE_SIZE * 0.5
+		draw_line(Vector2(rect.position.x, y), Vector2(rect.end.x, y), Color(0.78, 0.86, 1.0, 0.28), 1.0)
 
 
 func _draw_clif_layer() -> void:

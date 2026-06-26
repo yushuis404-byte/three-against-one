@@ -19,6 +19,8 @@ var _grid_manager: Node = null
 var _unit_manager: Node = null
 var _magic_fog_zones: Array[Dictionary] = []
 var _next_magic_fog_zone_id := 1
+var _fog_image: Image = null
+var _fog_texture: ImageTexture = null
 
 const MAGIC_FOG_ALPHA := 0.7
 const MAGIC_FOG_OWNER_FILL := Color(0.2, 0.7, 1.0, 0.14)
@@ -60,10 +62,12 @@ func _init_all_fog() -> void:
 
 func _process(delta: float) -> void:
 	var changed_players: Dictionary = {}
+	var animation_updated := false
 	for player in range(3):
 		var fading: Dictionary = _fading_out[player]
 		var still_fading: Dictionary = {}
 		for pos_key in fading:
+			animation_updated = true
 			var elapsed: float = fading[pos_key] + delta
 			var t := clampf(elapsed / FADE_DURATION, 0.0, 1.0)
 			var val := 0.7 * (1.0 - t)
@@ -76,8 +80,9 @@ func _process(delta: float) -> void:
 				still_fading[pos_key] = elapsed
 		_fading_out[player] = still_fading
 
-	if not changed_players.is_empty():
+	if animation_updated:
 		queue_redraw()
+	if not changed_players.is_empty():
 		for p in changed_players:
 			fog_updated.emit(p)
 
@@ -95,15 +100,28 @@ func _draw() -> void:
 	if fog_grids.is_empty():
 		return
 
-	var ts := tile_size + 1.0
-	var half := ts / 2.0
+	_update_fog_texture()
+	if _fog_texture == null:
+		return
+
+	var top_left := _grid_to_world(0, 0) - Vector2(tile_size * 0.5, tile_size * 0.5)
+	var rect := Rect2(top_left, Vector2(float(grid_cols) * tile_size, float(grid_rows) * tile_size))
+	draw_texture_rect(_fog_texture, rect, false)
+	_draw_magic_fog_owner_markers()
+
+
+func _update_fog_texture() -> void:
+	if _fog_image == null or _fog_image.get_width() != grid_cols or _fog_image.get_height() != grid_rows:
+		_fog_image = Image.create(grid_cols, grid_rows, false, Image.FORMAT_RGBA8)
 
 	for y in range(grid_rows):
 		for x in range(grid_cols):
 			if _is_ocean_tile(x, y):
+				_fog_image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
 			var raw: float = _get_effective_fog(current_player, x, y)
 			if raw <= 0.0:
+				_fog_image.set_pixel(x, y, Color(0, 0, 0, 0))
 				continue
 
 			# 3x3 邻域平均 → 边缘自然渐变
@@ -118,10 +136,12 @@ func _draw() -> void:
 						count += 1
 			smoothed /= count
 
-			var pos := _grid_to_world(x, y)
-			var rect := Rect2(pos.x - half, pos.y - half, ts, ts)
-			draw_rect(rect, Color(0, 0, 0, smoothed))
-	_draw_magic_fog_owner_markers()
+			_fog_image.set_pixel(x, y, Color(0, 0, 0, smoothed))
+
+	if _fog_texture == null:
+		_fog_texture = ImageTexture.create_from_image(_fog_image)
+	else:
+		_fog_texture.update(_fog_image)
 
 
 # ========== 公共 API ==========

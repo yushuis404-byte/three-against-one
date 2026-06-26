@@ -9,6 +9,9 @@ const RecruitmentServiceScript := preload("res://scripts/services/recruitment_se
 const BuildingUpgradeServiceScript := preload("res://scripts/services/building_upgrade_service.gd")
 const BuildingNetworkServiceScript := preload("res://scripts/services/building_network_service.gd")
 const ELF_CAPITAL_TEXTURE: Texture2D = preload("res://assets/texture/Elven Capital.png")
+const DWARF_CAPITAL_TEXTURE: Texture2D = preload("res://assets/texture/Dwarf Capital.png")
+const ORC_CAPITAL_TEXTURE: Texture2D = preload("res://assets/texture/Orc Capital.png")
+const BUILDING_TEXTURE_FIT_CONFIG_PATH := "res://data/building_texture_fit.json"
 
 var grid_cols := 100
 var grid_rows := 56
@@ -37,6 +40,7 @@ var _building_network_service = BuildingNetworkServiceScript.new()
 
 var _just_garrisoned: Dictionary = {}  # building_id -> true，本帧刚驻兵
 var _tower_cooldowns: Dictionary = {}
+var _building_texture_fit_config: Dictionary = {}
 
 # 放置模式
 var _placement_active := false
@@ -63,7 +67,9 @@ const EFFECT_RANGE_BORDER_COLOR := Color(0.6, 0.9, 1.0, 0.35)
 const NETWORK_RANGE_COLOR := Color(0.95, 0.72, 0.28, 0.14)
 const NETWORK_RANGE_BORDER_COLOR := Color(1.0, 0.85, 0.42, 0.35)
 const NETWORK_LINK_COLOR := Color(1.0, 0.82, 0.28, 0.75)
-const ELF_CAPITAL_TEXTURE_SCALE := 1.45
+const ELF_CAPITAL_TEXTURE_SCALE := 0.87
+const DWARF_CAPITAL_TEXTURE_SCALE := 1.0
+const ORC_CAPITAL_TEXTURE_SCALE := 1.0
 const REPAIR_AP_COST := 1
 const REPAIR_STONE_COST := 1
 const BASE_REPAIR_AMOUNT := 2
@@ -76,6 +82,7 @@ const DEMOLITION_REFUND_RATE := 0.5
 
 func _ready() -> void:
 	_init_grid()
+	_load_building_texture_fit_config()
 	_grid_manager = get_parent().get_node("GridManager2D")
 	_territory_mgr = get_parent().get_node("TerritoryManager2D")
 	_fog_mgr = get_parent().get_node("FogOfWar2D")
@@ -782,16 +789,20 @@ func _draw_buildings() -> void:
 		var color: Color = GameCatalog.faction_color(faction)
 		color.a = BUILDING_ALPHA
 		draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
-		if _should_draw_elven_capital_texture(data, faction):
-			var tex_w: float = w * ELF_CAPITAL_TEXTURE_SCALE
-			var tex_h: float = h * ELF_CAPITAL_TEXTURE_SCALE
+		var capital_texture := _get_capital_texture(data, faction)
+		if capital_texture != null:
+			var fit := _get_building_texture_fit(_get_capital_fit_key(faction), _get_capital_default_scale(faction))
+			var texture_scale: float = float(fit.get("scale", _get_capital_default_scale(faction)))
+			var offset_tiles: Vector2 = fit.get("offset", Vector2.ZERO)
+			var tex_w: float = w * texture_scale
+			var tex_h: float = h * texture_scale
 			var tex_rect := Rect2(
-				top_left.x + w / 2.0 - tex_w / 2.0,
-				top_left.y + h / 2.0 - tex_h / 2.0,
+				top_left.x + w / 2.0 - tex_w / 2.0 + offset_tiles.x * tile_size,
+				top_left.y + h / 2.0 - tex_h / 2.0 + offset_tiles.y * tile_size,
 				tex_w,
 				tex_h
 			)
-			draw_texture_rect(ELF_CAPITAL_TEXTURE, tex_rect, false)
+			draw_texture_rect(capital_texture, tex_rect, false)
 
 		if bool(b.get("pending_demolition", false)):
 			_draw_demolition_marker(top_left, Vector2(w, h))
@@ -802,6 +813,8 @@ func _draw_buildings() -> void:
 		var font: Font = ThemeDB.fallback_font
 		var fsize: int = 13 if data.category == BuildingData.BuildingCategory.CORE else 11
 		var label: String = data.name
+		if data.category == BuildingData.BuildingCategory.CORE:
+			label = ""
 		if int(b.get("level", 1)) > 1 and data.max_level > 1:
 			label = "%s Lv%d" % [data.name, int(b.get("level", 1))]
 		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
@@ -814,7 +827,7 @@ func _draw_buildings() -> void:
 		draw_string(font, label_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
 		# 主城特殊标记：顶部显示主城文本
-		if data.category == BuildingData.BuildingCategory.CORE:
+		if false and data.category == BuildingData.BuildingCategory.CORE:
 			var star_text := "* 主城 *"
 			var star_size := font.get_string_size(star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
 			var star_pos := Vector2(
@@ -1082,8 +1095,75 @@ func _get_technology_modifier_int(player: int, key: String) -> int:
 	return 0
 
 
-func _should_draw_elven_capital_texture(data: BuildingData, faction: int) -> bool:
-	return faction == 0 and data.category == BuildingData.BuildingCategory.CORE
+func _load_building_texture_fit_config() -> void:
+	_building_texture_fit_config = {}
+	if not FileAccess.file_exists(BUILDING_TEXTURE_FIT_CONFIG_PATH):
+		return
+	var file := FileAccess.open(BUILDING_TEXTURE_FIT_CONFIG_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var text := file.get_as_text()
+	file.close()
+	var parsed: Variant = JSON.parse_string(text)
+	if parsed is Dictionary:
+		_building_texture_fit_config = parsed
+
+
+func _get_building_texture_fit(key: String, default_scale: float) -> Dictionary:
+	var result := {
+		"scale": default_scale,
+		"offset": Vector2.ZERO,
+	}
+	if not _building_texture_fit_config.has(key):
+		return result
+	var fit_variant: Variant = _building_texture_fit_config[key]
+	if not fit_variant is Dictionary:
+		return result
+	var fit: Dictionary = fit_variant
+	if fit.has("scale"):
+		result["scale"] = float(fit.get("scale", default_scale))
+	if fit.has("offset"):
+		var offset_variant: Variant = fit["offset"]
+		if offset_variant is Array:
+			var offset_array: Array = offset_variant
+			if offset_array.size() >= 2:
+				result["offset"] = Vector2(float(offset_array[0]), float(offset_array[1]))
+	return result
+
+
+func _get_capital_texture(data: BuildingData, faction: int) -> Texture2D:
+	if data.category != BuildingData.BuildingCategory.CORE:
+		return null
+	match faction:
+		0:
+			return ELF_CAPITAL_TEXTURE
+		1:
+			return DWARF_CAPITAL_TEXTURE
+		2:
+			return ORC_CAPITAL_TEXTURE
+	return null
+
+
+func _get_capital_fit_key(faction: int) -> String:
+	match faction:
+		0:
+			return "elf_capital"
+		1:
+			return "dwarf_capital"
+		2:
+			return "orc_capital"
+	return "capital"
+
+
+func _get_capital_default_scale(faction: int) -> float:
+	match faction:
+		0:
+			return ELF_CAPITAL_TEXTURE_SCALE
+		1:
+			return DWARF_CAPITAL_TEXTURE_SCALE
+		2:
+			return ORC_CAPITAL_TEXTURE_SCALE
+	return 1.0
 
 
 func _draw_placement_ghost() -> void:

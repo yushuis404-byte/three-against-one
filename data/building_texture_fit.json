@@ -1,0 +1,66 @@
+{
+	"dwarf_capital": {
+		"footprint": [
+			2.0,
+			2.0
+		],
+		"offset": [
+			0.0,
+			-0.109999999403954
+		],
+		"preview_cell": [
+			35.0,
+			43.0
+		],
+		"scale": 1.11,
+		"texture": "res://assets/texture/Dwarf Capital.png"
+	},
+	"elf_capital": {
+		"footprint": [
+			2.0,
+			2.0
+		],
+		"offset": [
+			0.0,
+			-0.0399999991059303
+		],
+		"preview_cell": [
+			35.0,
+			13.0
+		],
+		"scale": 1.04,
+		"texture": "res://assets/texture/Elven Capital.png"
+	},
+	"orc_capital": {
+		"footprint": [
+			2.0,
+			2.0
+		],
+		"offset": [
+			0.0,
+			-0.115000002086163
+		],
+		"preview_cell": [
+			62.0,
+			35.0
+		],
+		"scale": 1.14,
+		"texture": "res://assets/texture/Orc Capital.png"
+	},
+	"stone": {
+		"footprint": [
+			1,
+			1
+		],
+		"offset": [
+			0.0350000001490116,
+			-0.0649999976158142
+		],
+		"preview_cell": [
+			35,
+			43
+		],
+		"scale": 1.4,
+		"texture": "res://assets/texture/stone.png"
+	}
+}

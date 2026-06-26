@@ -5,7 +5,7 @@ const ORC_BLOOD_AXE_WALK_TEXTURE: Texture2D = preload("res://assets/texture/char
 const ORC_BLOOD_AXE_HURT_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Hurt.png")
 const ORC_BLOOD_AXE_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Attack01.png")
 const ORC_BLOOD_AXE_DEATH_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Death.png")
-const ORC_HUNTING_BEAST_TEXTURE: Texture2D = preload("res://assets/units/orc/Hunting-Toothed Beast/Hunting-Beast.png")
+const ORC_HUNTING_BEAST_TEXTURE: Texture2D = preload("res://assets/texture/character/Hunter-Beast/Hunter-tooth Beast.png")
 ## 单位管理器 — 放置、绘制、选择、移动、战斗
 ##
 ## 单位绘制在迷雾之下（原型简化），阵营色圆圈 + 中文名 + HP
@@ -122,10 +122,18 @@ const ORC_BLOOD_AXE_IDLE_FRAME_SECONDS := 0.18
 const ORC_BLOOD_AXE_HURT_DURATION := 0.28
 const ORC_BLOOD_AXE_ATTACK_DURATION := 0.36
 const ORC_BLOOD_AXE_DEATH_DURATION := 0.48
-const ORC_HUNTING_BEAST_FRAMES := 10
-const ORC_HUNTING_BEAST_FRAME_SIZE := Vector2(183, 176)
-const ORC_HUNTING_BEAST_DRAW_SIZE := Vector2(18.4, 17.6)
+const ORC_HUNTING_BEAST_FRAMES := 6
+const ORC_HUNTING_BEAST_FRAME_SIZE := Vector2(629.0 / 6.0, 55.0)
+const ORC_HUNTING_BEAST_DRAW_SIZE := Vector2(48.0, 25.2)
 const ORC_HUNTING_BEAST_FRAME_SECONDS := 0.12
+const ORC_HUNTING_BEAST_FRAME_OFFSETS := [
+	Vector2(5.9, 0.0),
+	Vector2(3.9, 0.0),
+	Vector2(1.3, 0.0),
+	Vector2(-1.2, 0.0),
+	Vector2(-3.7, 0.0),
+	Vector2(-5.8, 0.0),
+]
 
 
 func _ready() -> void:
@@ -1712,7 +1720,8 @@ func _draw_orc_hunting_beast(unit: Dictionary, draw_pos: Vector2) -> void:
 		var t: float = float(visual.get("t", 0.0))
 		frame = clampi(int(floor(t * float(ORC_HUNTING_BEAST_FRAMES))), 0, ORC_HUNTING_BEAST_FRAMES - 1)
 	var src := Rect2(Vector2(ORC_HUNTING_BEAST_FRAME_SIZE.x * frame, 0.0), ORC_HUNTING_BEAST_FRAME_SIZE)
-	var dst := Rect2(-ORC_HUNTING_BEAST_DRAW_SIZE * 0.5, ORC_HUNTING_BEAST_DRAW_SIZE)
+	var frame_offset: Vector2 = ORC_HUNTING_BEAST_FRAME_OFFSETS[frame]
+	var dst := Rect2(-ORC_HUNTING_BEAST_DRAW_SIZE * 0.5 + frame_offset, ORC_HUNTING_BEAST_DRAW_SIZE)
 	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
 	if is_moving:
 		var move_visual: Dictionary = _move_visuals.get(uid, {})

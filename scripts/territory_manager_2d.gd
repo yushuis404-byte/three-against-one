@@ -22,6 +22,7 @@ const BORDER_COLORS := [
 	Color(0.80, 0.25, 0.15),   # 2 Orc red
 ]
 const BORDER_WIDTH := 2.5
+const SHOW_TERRITORY_BORDERS := false
 
 
 func _ready() -> void:
@@ -105,6 +106,8 @@ func recalc_territory(player: int) -> void:
 # ========== 边界线绘制 ==========
 
 func _draw() -> void:
+	if not SHOW_TERRITORY_BORDERS:
+		return
 	if owner_grid.is_empty():
 		return
 
