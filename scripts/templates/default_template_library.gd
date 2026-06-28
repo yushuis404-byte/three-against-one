@@ -341,6 +341,32 @@ func make_unit_templates() -> Dictionary:
 	wyvern_toxic.can_gather = false
 	wyvern_toxic.can_garrison = false
 
+	var ancient_dragon = _unit_basic(
+		"neutral.dragon.ancient",
+		"古龙",
+		UnitTemplateScript.UnitRole.GUARD,
+		1, 5, 28, 4,
+		["neutral", "dragon", "ancient_dragon", "lair_guardian"]
+	)
+	ancient_dragon.ai_behavior = "ancient_dragon"
+	ancient_dragon.aggro_range = 3
+	ancient_dragon.can_attack_units = true
+	ancient_dragon.can_gather = false
+	ancient_dragon.can_garrison = false
+
+	var progenitor_dragon = _unit_basic(
+		"neutral.dragon.progenitor",
+		"史祖龙",
+		UnitTemplateScript.UnitRole.ELITE,
+		0, 8, 70, 6,
+		["neutral", "dragon", "ancient_dragon", "progenitor", "boss"]
+	)
+	progenitor_dragon.ai_behavior = "progenitor_dragon"
+	progenitor_dragon.aggro_range = 0
+	progenitor_dragon.can_attack_units = true
+	progenitor_dragon.can_gather = false
+	progenitor_dragon.can_garrison = false
+
 	var trader = _unit_basic(
 		"neutral.trader.wander",
 		"流浪商队",
@@ -394,6 +420,8 @@ func make_unit_templates() -> Dictionary:
 		wyvern_fire.id: wyvern_fire,
 		wyvern_frost.id: wyvern_frost,
 		wyvern_toxic.id: wyvern_toxic,
+		ancient_dragon.id: ancient_dragon,
+		progenitor_dragon.id: progenitor_dragon,
 		trader.id: trader,
 		goblin_revenge.id: goblin_revenge,
 	}

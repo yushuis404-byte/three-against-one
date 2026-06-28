@@ -8,6 +8,7 @@ const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_pane
 const VictoryServiceScript = preload("res://scripts/services/victory_service.gd")
 const ScoreRulePanelScript = preload("res://scripts/ui/score_rule_panel.gd")
 const CivilizationRoutePanelScript = preload("res://scripts/ui/civilization_route_panel.gd")
+const DragonPortalManagerScript = preload("res://scripts/dragon_portal_manager_2d.gd")
 ## 主场景控制器 — 2.5D 三人竞技棋
 
 @onready var camera: Camera2D = $GameCamera
@@ -49,6 +50,7 @@ var civilization_route_panel: Control = null
 var civilization_route_button: Button = null
 var creative_mode_button: Button = null
 var wall_blueprint_button: Button = null
+var dragon_portal_manager: Node2D = null
 var wall_blueprint_status_label: Label = null
 var zoom_status_label: Label = null
 var _creative_mode_enabled := false
@@ -136,6 +138,7 @@ func _setup_game() -> void:
 	if unit_manager.has_method("set_civilization_rules"):
 		unit_manager.set_civilization_rules(civilization_rules)
 	unit_manager.place_initial_units()
+	_init_dragon_portal_manager()
 
 	# 中立生物系统初始化
 	neutral_unit_manager.set_turn_manager(turn_manager)
@@ -189,6 +192,18 @@ func _setup_game() -> void:
 	turn_manager.start_game()
 
 
+func _init_dragon_portal_manager() -> void:
+	if dragon_portal_manager != null:
+		return
+	dragon_portal_manager = DragonPortalManagerScript.new()
+	dragon_portal_manager.name = "DragonPortalManager2D"
+	$GameBoard.add_child(dragon_portal_manager)
+	if dragon_portal_manager.has_method("set_turn_manager"):
+		dragon_portal_manager.call("set_turn_manager", turn_manager)
+	if dragon_portal_manager.has_signal("portal_hovered"):
+		dragon_portal_manager.portal_hovered.connect(_on_resource_hovered)
+
+
 func _hide_civilization_debug_panel() -> void:
 	var panel: CanvasItem = $UI.get_node_or_null("CivilizationDebugPanel") as CanvasItem
 	if panel != null:
@@ -222,6 +237,8 @@ func _on_fog_updated(player: int) -> void:
 	building_manager.queue_redraw()
 	unit_manager.queue_redraw()
 	neutral_unit_manager.queue_redraw()
+	if dragon_portal_manager != null:
+		dragon_portal_manager.queue_redraw()
 
 
 func _on_resource_hovered(text: String) -> void:
@@ -391,7 +408,7 @@ func _init_technology_service() -> void:
 	technology_service = TechnologyServiceScript.new()
 	technology_service.name = "TechnologyService"
 	$GameBoard.add_child(technology_service)
-	technology_service.setup(achievement_service, civilization_rules)
+	technology_service.setup(achievement_service, civilization_rules, resource_tracker)
 	if building_manager != null and building_manager.has_method("set_technology_service"):
 		building_manager.set_technology_service(technology_service)
 	if resource_tracker != null and resource_tracker.has_method("set_technology_service"):

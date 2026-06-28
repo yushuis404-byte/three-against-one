@@ -30,6 +30,7 @@ static func get_definitions() -> Array:
 		_def("tech.dragon.wyvern_fire_research", "\u706b\u7130\u4e9a\u9f99\u7814\u7a76", "dragon", 1, ["tech.dragon.nest_survey"], ["military.dragon_blood.fire"], [], _effects({"fire_wyvern_equipment": 1})),
 		_def("tech.dragon.wyvern_frost_research", "\u51b0\u971c\u4e9a\u9f99\u7814\u7a76", "dragon", 1, ["tech.dragon.nest_survey"], ["military.dragon_blood.frost"], [], _effects({"frost_wyvern_equipment": 1})),
 		_def("tech.dragon.wyvern_toxic_research", "\u6bd2\u6db2\u4e9a\u9f99\u7814\u7a76", "dragon", 1, ["tech.dragon.nest_survey"], ["military.dragon_blood.toxic"], [], _effects({"toxic_wyvern_equipment": 1})),
+		_def_resource_any("tech.dragon.miasma_shield", "迷障护盾", "dragon", 1, ["tech.dragon.nest_survey"], ["tech.dragon.wyvern_fire_research", "tech.dragon.wyvern_frost_research", "tech.dragon.wyvern_toxic_research"], [], [], _effects({"miasma_immunity": 1}), [{"fire_dragon_blood": 1}, {"frost_dragon_blood": 1}, {"toxic_dragon_blood": 1}]),
 		_def("tech.dragon.fire_blade", "\u706b\u7130\u6d82\u5203", "dragon", 2, ["tech.dragon.wyvern_fire_research", "tech.common.recruitment_rules"], [], [], _effects({"melee_attack_bonus": 1})),
 		_def("tech.dragon.frost_scale", "\u51b0\u9cde\u62a4\u5177", "dragon", 2, ["tech.dragon.wyvern_frost_research", "tech.common.metal_parts"], [], [], _effects({"damage_reduction_bonus": 1})),
 		_def("tech.dragon.corrosive_weapons", "\u8150\u8680\u6b66\u5668", "dragon", 2, ["tech.dragon.wyvern_toxic_research", "tech.common.recruitment_rules"], [], [], _effects({"scout_poison_weaken_turns": 3})),
@@ -92,6 +93,22 @@ static func _def_any(
 		effects: Dictionary) -> Dictionary:
 	var result: Dictionary = _def(id, title, family, cost, parent_techs, required_achievements, required_lords, effects)
 	result["required_any_techs"] = required_any_techs
+	return result
+
+
+static func _def_resource_any(
+		id: String,
+		title: String,
+		family: String,
+		cost: int,
+		parent_techs: Array,
+		required_any_techs: Array,
+		required_achievements: Array,
+		required_lords: Array,
+		effects: Dictionary,
+		resource_cost_any: Array) -> Dictionary:
+	var result: Dictionary = _def_any(id, title, family, cost, parent_techs, required_any_techs, required_achievements, required_lords, effects)
+	result["resource_cost_any"] = resource_cost_any
 	return result
 
 

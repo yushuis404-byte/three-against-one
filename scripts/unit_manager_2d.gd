@@ -26,6 +26,7 @@ var grid_center := Vector2(49.5, 27.5)
 var _units: Array = []       # Array[Dictionary]
 var _next_id := 1
 var _selected_id := -1
+var _selected_unit_ids: Array[int] = []
 var _reachable_tiles: Array = []  # 当前选中单位的可达格列表
 var _attack_range_tiles: Array[Vector2i] = []
 var _throw_range_tiles: Array[Vector2i] = []
@@ -66,12 +67,19 @@ var _current_action_preview: Dictionary = {}
 var _next_warband_id: int = 1
 var _warband_selection_leader_id: int = -1
 var _warband_selection_ids: Array[int] = []
+var _selection_drag_active: bool = false
+var _selection_drag_start: Vector2 = Vector2.ZERO
+var _selection_drag_current: Vector2 = Vector2.ZERO
+var _selection_drag_moved: bool = false
 
 # 战斗视觉效果
 var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
 var _shake_offsets: Dictionary = {}  # unit_id -> Vector2（受击偏移）
 
 const SELECT_COLOR := Color(1.0, 1.0, 1.0, 0.8)
+const MULTI_SELECT_COLOR := Color(0.25, 0.72, 1.0, 0.75)
+const SELECTION_BOX_FILL := Color(0.22, 0.58, 1.0, 0.14)
+const SELECTION_BOX_BORDER := Color(0.62, 0.86, 1.0, 0.92)
 const REACHABLE_COLOR := Color(1.0, 1.0, 1.0, 0.25)
 const ATTACK_RANGE_COLOR := Color(1.0, 0.18, 0.12, 0.24)
 const THROW_RANGE_COLOR := Color(0.1, 0.82, 1.0, 0.25)
@@ -87,6 +95,8 @@ const ATTACK_APPROACH_OK_COLOR := Color(0.2, 1.0, 0.35, 0.38)
 const ATTACK_APPROACH_BLOCKED_COLOR := Color(1.0, 0.35, 0.18, 0.42)
 const UNIT_RADIUS := 8.0
 const SPAWN_SEARCH_RADIUS := 8
+const TELEPORT_SEARCH_RADIUS := 12
+const SELECTION_DRAG_THRESHOLD := 10.0
 const MOVE_VISUAL_DURATION := 1.0
 const UNIT_ATTACK_INTERVAL := 1.0
 const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
@@ -102,10 +112,15 @@ const FOG_CONCEAL_RANGE := 6
 const FOG_CONCEAL_RADIUS := 2
 const FOG_CONCEAL_AP_COST := 1
 const FOG_CONCEAL_DURATION_ROUNDS := 5
+const DRAGON_LAIR_MIASMA_DAMAGE := 1
+const ZONE_MOUNTAIN_NEST := 1
+const ZONE_MOUNTAIN_BODY := 2
+const ZONE_MOUNTAIN_PATH := 3
 const FOG_REVEAL_COOLDOWN_KEY := "fog_reveal_cooldown_turns"
 const FOG_CONCEAL_COOLDOWN_KEY := "fog_conceal_cooldown_turns"
 const RETREAT_HIDDEN_FROM_FACTION_KEY := "retreat_hidden_from_faction"
 const RETREAT_UNSELECTABLE_BY_UNIT_KEY := "retreat_unselectable_by_unit_id"
+const INSIDE_DRAGON_LAIR_KEY := "inside_dragon_lair"
 const WARBAND_RADIUS := 3
 const WARBAND_MIN_MEMBERS := 3
 const WARBAND_MAX_MEMBERS := 8
@@ -333,6 +348,7 @@ func _draw() -> void:
 
 	_draw_action_preview_highlight()
 	_draw_warband_highlights()
+	_draw_selection_box()
 
 	for u in _units:
 		if not _is_unit_visible_to_current_player(u):
@@ -342,12 +358,16 @@ func _draw() -> void:
 		var data: UnitData = _get_unit_data(u)
 		var hp: int = u["hp"]
 		var uid: int = u["id"]
-		var is_selected := uid == _selected_id
+		var is_selected := uid == _selected_id or uid in _selected_unit_ids
+		var is_primary_selected := uid == _selected_id
 		var draw_pos: Vector2 = world_pos + _shake_offsets.get(uid, Vector2.ZERO)
 		var uses_orc_sprite: bool = _uses_orc_sprite(u)
 
 		if is_selected:
-			draw_circle(draw_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
+			var ring_color: Color = SELECT_COLOR
+			if not is_primary_selected:
+				ring_color = MULTI_SELECT_COLOR
+			draw_circle(draw_pos, UNIT_RADIUS + 3.0, ring_color)
 
 		if _is_orc_blood_axe(u):
 			_draw_orc_blood_axe(u, draw_pos)
@@ -384,6 +404,14 @@ func _draw() -> void:
 
 # ========== 交互 ==========
 
+func _draw_selection_box() -> void:
+	if not _selection_drag_active or not _selection_drag_moved:
+		return
+	var rect := Rect2(_selection_drag_start, _selection_drag_current - _selection_drag_start).abs()
+	draw_rect(rect, SELECTION_BOX_FILL, true)
+	draw_rect(rect, SELECTION_BOX_BORDER, false, 1.5)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE and (_fog_reveal_mode or _fog_conceal_mode):
@@ -391,9 +419,39 @@ func _unhandled_input(event: InputEvent) -> void:
 			_emit_selected_unit_view()
 			return
 
+	if event is InputEventMouseMotion:
+		if _selection_drag_active:
+			_selection_drag_current = get_global_mouse_position()
+			_selection_drag_moved = _selection_drag_start.distance_to(_selection_drag_current) >= SELECTION_DRAG_THRESHOLD
+			queue_redraw()
+		return
+
 	if not event is InputEventMouseButton:
 		return
-	if event.button_index != MOUSE_BUTTON_LEFT or not event.pressed:
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if Input.is_key_pressed(KEY_SPACE):
+		return
+	if event.pressed:
+		if not _is_unit_input_locked() and _can_start_box_selection():
+			_selection_drag_active = true
+			_selection_drag_start = get_global_mouse_position()
+			_selection_drag_current = _selection_drag_start
+			_selection_drag_moved = false
+			var press_grid := _world_to_grid(_selection_drag_start)
+			var press_unit := get_visible_unit_at(press_grid)
+			var is_reachable_click: bool = _selected_id >= 0 and press_grid in _reachable_tiles
+			if press_unit.is_empty() and not is_reachable_click:
+				return
+			_selection_drag_active = false
+	else:
+		if _selection_drag_active:
+			_selection_drag_current = get_global_mouse_position()
+			_selection_drag_moved = _selection_drag_start.distance_to(_selection_drag_current) >= SELECTION_DRAG_THRESHOLD
+			var handled_drag: bool = _finish_box_selection(event.shift_pressed)
+			if not handled_drag:
+				_clear_selection()
+			return
 		return
 
 	# 战斗中锁定所有操作（含中立战斗）
@@ -510,7 +568,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _turn_manager:
 			current_player = _turn_manager.current_player
 		if unit["faction"] == current_player:
-			_select_unit(unit["id"])
+			_select_unit(unit["id"], event.shift_pressed)
 			return
 
 	# 检查是否点击了中立单位（选择查看数值）
@@ -525,21 +583,124 @@ func _unhandled_input(event: InputEvent) -> void:
 	_clear_selection()
 
 
-func _select_unit(uid: int) -> void:
-	_clear_selection()
-	_selected_id = uid
-	for u in _units:
-		if u["id"] == uid:
-			_reachable_tiles = _calc_reachable(u)
-			_attack_range_tiles = _calc_attack_range_tiles(u)
-			_throw_range_tiles = []
-			unit_selected.emit(_make_unit_view(u))
-			break
+func _is_unit_input_locked() -> bool:
+	if _in_combat:
+		return true
+	if not _move_visuals.is_empty():
+		return true
+	var numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+	if numgr and numgr.has_method("is_in_combat") and numgr.is_in_combat():
+		return true
+	return false
+
+
+func _can_start_box_selection() -> bool:
+	if _fog_conceal_mode or _fog_reveal_mode:
+		return false
+	if _is_warband_selection_active():
+		return false
+	if _throw_beast_source_id >= 0:
+		return false
+	return true
+
+
+func _finish_box_selection(append_selection: bool) -> bool:
+	var was_dragging: bool = _selection_drag_moved
+	var rect := Rect2(_selection_drag_start, _selection_drag_current - _selection_drag_start).abs()
+	_selection_drag_active = false
+	_selection_drag_moved = false
+	queue_redraw()
+	if not was_dragging:
+		return false
+	_select_units_in_world_rect(rect, append_selection)
+	return true
+
+
+func _select_unit(uid: int, append_selection: bool = false) -> void:
+	if not append_selection:
+		_selected_unit_ids.clear()
+	if append_selection and uid in _selected_unit_ids:
+		_selected_unit_ids.erase(uid)
+		_selected_id = -1
+		if not _selected_unit_ids.is_empty():
+			_selected_id = _selected_unit_ids[0]
+	else:
+		if not (uid in _selected_unit_ids):
+			_selected_unit_ids.append(uid)
+		_selected_id = uid
+	if _selected_id < 0:
+		_clear_selection()
+		return
+	_refresh_primary_selection()
+
+
+func _select_units_in_world_rect(rect: Rect2, append_selection: bool) -> void:
+	var ids: Array[int] = []
+	if append_selection:
+		ids = get_selected_unit_ids()
+	var current_player := 0
+	if _turn_manager:
+		current_player = int(_turn_manager.current_player)
+	for unit in _units:
+		if int(unit.get("faction", -1)) != current_player:
+			continue
+		var unit_id: int = int(unit.get("id", -1))
+		if unit_id in ids:
+			continue
+		var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+		var world_pos := _grid_to_world(pos.x, pos.y)
+		if rect.has_point(world_pos):
+			ids.append(unit_id)
+	if ids.is_empty():
+		if not append_selection:
+			_clear_selection()
+		return
+	_set_selected_unit_ids(ids)
+
+
+func _set_selected_unit_ids(ids: Array[int]) -> void:
+	_selected_unit_ids.clear()
+	var current_player := 0
+	if _turn_manager:
+		current_player = int(_turn_manager.current_player)
+	for unit_id in ids:
+		var unit: Dictionary = _get_unit_by_id(unit_id)
+		if unit.is_empty():
+			continue
+		if int(unit.get("faction", -1)) != current_player:
+			continue
+		if not (unit_id in _selected_unit_ids):
+			_selected_unit_ids.append(unit_id)
+	if _selected_unit_ids.is_empty():
+		_clear_selection()
+		return
+	_selected_id = _selected_unit_ids[0]
+	_refresh_primary_selection()
+
+
+func _refresh_primary_selection() -> void:
+	if _selected_id < 0:
+		_clear_selection()
+		return
+	var unit: Dictionary = _get_unit_by_id(_selected_id)
+	if unit.is_empty():
+		_clear_selection()
+		return
+	_reachable_tiles = _calc_reachable(unit)
+	_attack_range_tiles = _calc_attack_range_tiles(unit)
+	_throw_range_tiles = []
+	_throw_beast_source_id = -1
+	_cancel_fog_modes()
+	_emit_action_preview({})
+	unit_selected.emit(_make_unit_view(unit))
 	queue_redraw()
 
 
 func _clear_selection() -> void:
 	_selected_id = -1
+	_selected_unit_ids.clear()
+	_selection_drag_active = false
+	_selection_drag_moved = false
 	_reachable_tiles = []
 	_attack_range_tiles = []
 	_throw_range_tiles = []
@@ -1127,7 +1288,7 @@ func _make_attack_preview(attacker: Dictionary, target: Dictionary) -> Dictionar
 		preview["reason"] = "没有可用的接敌格"
 		return preview
 
-	var steps: int = _calc_path_length(from, approach_tile)
+	var steps: int = _calc_path_length_for_unit(attacker, from, approach_tile)
 	var ap_cost: int = _get_movement_ap_cost(attacker, steps)
 	preview["approach_pos"] = approach_tile
 	preview["ap_cost"] = ap_cost
@@ -1478,6 +1639,7 @@ func _try_throw_beast_to(target: Vector2i) -> bool:
 	var from: Vector2i = beast.get("grid_pos", Vector2i.ZERO)
 	beast["grid_pos"] = landing
 	beast["has_moved"] = true
+	_update_dragon_lair_location_after_move(beast, from, landing)
 	slinger["has_thrown_beast"] = true
 	_start_move_visual(int(beast.get("id", -1)), from, landing)
 	if _fog_manager and _turn_manager:
@@ -1518,7 +1680,7 @@ func _move_selected_to(target: Vector2i) -> void:
 				_move_warband_to(u, target)
 				return
 			var from: Vector2i = u["grid_pos"]
-			var steps := _calc_path_length(from, target)
+			var steps := _calc_path_length_for_unit(u, from, target)
 			var ap_cost: int = _get_movement_ap_cost(u, steps)
 			if steps <= 0:
 				break
@@ -1532,6 +1694,7 @@ func _move_selected_to(target: Vector2i) -> void:
 
 			u["grid_pos"] = target
 			u["has_moved"] = true
+			_update_dragon_lair_location_after_move(u, from, target)
 			_start_move_visual(u["id"], from, target)
 
 			# 移动后揭示视野
@@ -1572,7 +1735,7 @@ func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
 	var approach_tile: Vector2i = _find_attack_approach_tile(attacker, target)
 	if approach_tile.x < 0:
 		return false
-	var steps: int = _calc_path_length(from, approach_tile)
+	var steps: int = _calc_path_length_for_unit(attacker, from, approach_tile)
 	if steps <= 0:
 		return false
 	var ap_cost: int = _get_movement_ap_cost(attacker, steps)
@@ -1585,6 +1748,7 @@ func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
 		if u["id"] == attacker_id:
 			u["grid_pos"] = approach_tile
 			u["has_moved"] = true
+			_update_dragon_lair_location_after_move(u, from, approach_tile)
 			_pending_attack_after_move[attacker_id] = int(target.get("id", -1))
 			_start_move_visual(attacker_id, from, approach_tile)
 			var data: UnitData = _get_unit_data(u)
@@ -1990,7 +2154,7 @@ func _calc_reachable(unit: Dictionary) -> Array:
 				continue
 			if visited.has(nkey):
 				continue
-			if not _is_tile_passable(nx, ny):
+			if not _is_tile_passable_for_unit(unit, nx, ny):
 				continue
 			if not _is_tile_empty(nx, ny):
 				# 检查是否可驻兵建筑（资源建筑、同阵营、有容量）
@@ -2082,7 +2246,7 @@ func _is_warband_formation_valid(warband_id: int, leader_from: Vector2i, leader_
 		var target: Vector2i = old_pos + delta
 		if not _in_bounds(target.x, target.y):
 			return false
-		if not _is_tile_passable(target.x, target.y):
+		if not _is_tile_passable_for_unit(member, target.x, target.y):
 			return false
 		if occupied_targets.has(target):
 			return false
@@ -2165,6 +2329,43 @@ func _calc_path_length(from: Vector2i, to: Vector2i) -> int:
 
 # ========== 回合集成 ==========
 
+func _calc_path_length_for_unit(unit: Dictionary, from: Vector2i, to: Vector2i) -> int:
+	if from == to:
+		return 0
+
+	var visited := {}
+	var queue: Array = [from]
+	var dist := { from: 0 }
+	visited[from] = true
+
+	var dirs := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+
+	while queue.size() > 0:
+		var pos: Vector2i = queue.pop_front()
+		var d: int = dist[pos]
+
+		for dir in dirs:
+			var nx: int = pos.x + dir.x
+			var ny: int = pos.y + dir.y
+			var nkey := Vector2i(nx, ny)
+
+			if not _in_bounds(nx, ny):
+				continue
+			if visited.has(nkey):
+				continue
+			if not _is_tile_passable_for_unit(unit, nx, ny):
+				continue
+
+			if nkey == to:
+				return d + 1
+
+			visited[nkey] = true
+			dist[nkey] = d + 1
+			queue.append(nkey)
+
+	return -1
+
+
 func _on_player_turn_started(player: int) -> void:
 	# 重置该玩家单位的移动/攻击状态
 	_clear_player_warbands(player)
@@ -2178,7 +2379,54 @@ func _on_player_turn_started(player: int) -> void:
 			_tick_fog_talent_cooldowns(u)
 			_tick_unit_statuses(u)
 
+	_apply_dragon_lair_miasma(player)
 	_clear_selection()
+
+
+func _apply_dragon_lair_miasma(player: int) -> void:
+	if _has_miasma_immunity(player):
+		return
+	for i in range(_units.size() - 1, -1, -1):
+		var unit: Dictionary = _units[i]
+		if int(unit.get("faction", -1)) != player:
+			continue
+		var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+		if not _is_dragon_lair_miasma_tile(pos):
+			continue
+		unit["hp"] = int(unit.get("hp", 0)) - DRAGON_LAIR_MIASMA_DAMAGE
+		_show_damage_text(pos, DRAGON_LAIR_MIASMA_DAMAGE)
+		if int(unit.get("hp", 0)) <= 0:
+			_remove_unit_from_miasma(i)
+		else:
+			_units[i] = unit
+	queue_redraw()
+
+
+func _has_miasma_immunity(player: int) -> bool:
+	return _get_technology_modifier_for_player(player, "miasma_immunity") > 0
+
+
+func _is_dragon_lair_miasma_tile(pos: Vector2i) -> bool:
+	if _grid_manager == null or not _grid_manager.has_method("get_zone_at"):
+		return false
+	var zone: int = int(_grid_manager.call("get_zone_at", pos.x, pos.y))
+	return zone == ZONE_MOUNTAIN_NEST or zone == ZONE_MOUNTAIN_BODY or zone == ZONE_MOUNTAIN_PATH
+
+
+func _remove_unit_from_miasma(unit_index: int) -> void:
+	if unit_index < 0 or unit_index >= _units.size():
+		return
+	var unit: Dictionary = _units[unit_index]
+	var uid: int = int(unit.get("id", -1))
+	_move_visuals.erase(uid)
+	_hurt_visuals.erase(uid)
+	_attack_visuals.erase(uid)
+	_death_visuals.erase(uid)
+	_unit_facing_flip.erase(uid)
+	_pending_attack_after_move.erase(uid)
+	if _selected_id == uid:
+		_selected_id = -1
+	_units.remove_at(unit_index)
 
 
 func _on_player_turn_ended(player: int) -> void:
@@ -2195,7 +2443,7 @@ func _garrison_unit_to(building_id: int, target: Vector2i) -> void:
 	for u in _units:
 		if u["id"] == _selected_id:
 			var from: Vector2i = u["grid_pos"]
-			var steps := _calc_path_length(from, target)
+			var steps := _calc_path_length_for_unit(u, from, target)
 			if steps <= 0:
 				return
 
@@ -2240,6 +2488,7 @@ func _move_warband_to(selected_unit: Dictionary, target: Vector2i) -> void:
 		var member_to: Vector2i = member_from + delta
 		member["grid_pos"] = member_to
 		member["has_moved"] = true
+		_update_dragon_lair_location_after_move(member, member_from, member_to)
 		_start_move_visual(int(member.get("id", -1)), member_from, member_to)
 		if _fog_manager and _turn_manager:
 			_fog_manager.reveal_area(_turn_manager.current_player, member_to.x, member_to.y, _get_unit_vision_value(member))
@@ -2502,6 +2751,7 @@ func _move_unit_without_ap(unit: Dictionary, target: Vector2i) -> void:
 	var from: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
 	unit["grid_pos"] = target
 	unit["has_moved"] = true
+	_update_dragon_lair_location_after_move(unit, from, target)
 	_start_move_visual(int(unit.get("id", -1)), from, target)
 	if _fog_manager:
 		var faction: int = int(unit.get("faction", -1))
@@ -3074,6 +3324,12 @@ func _get_technology_modifier_for_unit(unit: Dictionary, modifier_key: String) -
 	var faction: int = int(unit.get("faction", -1))
 	if faction < 0:
 		return 0
+	return _get_technology_modifier_for_player(faction, modifier_key)
+
+
+func _get_technology_modifier_for_player(faction: int, modifier_key: String) -> int:
+	if faction < 0:
+		return 0
 	if _technology_service == null and is_inside_tree():
 		_technology_service = get_parent().get_node_or_null("TechnologyService")
 	if _technology_service != null and _technology_service.has_method("get_modifier"):
@@ -3123,6 +3379,114 @@ func get_selected_id() -> int:
 
 
 # ========== 工具 ==========
+
+func get_selected_unit_ids() -> Array[int]:
+	var ids: Array[int] = []
+	for unit_id in _selected_unit_ids:
+		if _get_unit_by_id(unit_id).is_empty():
+			continue
+		ids.append(unit_id)
+	if ids.is_empty() and _selected_id >= 0 and not _get_unit_by_id(_selected_id).is_empty():
+		ids.append(_selected_id)
+	return ids
+
+
+func get_selected_units_near_cells(unit_ids: Array, cells: Array, max_distance: int, max_units: int = 0) -> Array[int]:
+	var candidates: Array[Dictionary] = []
+	var current_player := 0
+	if _turn_manager:
+		current_player = int(_turn_manager.current_player)
+	for id_variant in unit_ids:
+		var unit_id: int = int(id_variant)
+		var unit: Dictionary = _get_unit_by_id(unit_id)
+		if unit.is_empty():
+			continue
+		if int(unit.get("faction", -1)) != current_player:
+			continue
+		var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+		var distance: int = _distance_to_cells(pos, cells)
+		if distance <= max_distance:
+			candidates.append({
+				"id": unit_id,
+				"distance": distance,
+			})
+	candidates.sort_custom(Callable(self, "_sort_by_distance"))
+	var result: Array[int] = []
+	var limit: int = candidates.size()
+	if max_units > 0:
+		limit = mini(limit, max_units)
+	for i in range(limit):
+		var candidate: Dictionary = candidates[i]
+		result.append(int(candidate.get("id", -1)))
+	return result
+
+
+func teleport_units_to_nearest_empty(unit_ids: Array, target_anchor: Vector2i) -> Dictionary:
+	var moving_ids: Array[int] = []
+	for id_variant in unit_ids:
+		var unit_id: int = int(id_variant)
+		if unit_id in moving_ids:
+			continue
+		if _get_unit_by_id(unit_id).is_empty():
+			continue
+		moving_ids.append(unit_id)
+	if moving_ids.is_empty():
+		return {"success": false, "reason": "no_units"}
+
+	var reserved: Array[Vector2i] = []
+	var targets: Dictionary = {}
+	for unit_id in moving_ids:
+		var target: Vector2i = _find_teleport_destination(target_anchor, reserved, moving_ids)
+		if target.x < 0:
+			return {"success": false, "reason": "not_enough_space"}
+		reserved.append(target)
+		targets[unit_id] = target
+
+	for unit_id in moving_ids:
+		var unit: Dictionary = _get_unit_by_id(unit_id)
+		if unit.is_empty():
+			continue
+		var target_pos: Vector2i = targets[unit_id]
+		unit["grid_pos"] = target_pos
+		unit["has_moved"] = true
+		_sync_dragon_lair_location_state(unit)
+		var faction: int = int(unit.get("faction", -1))
+		if _fog_manager != null and faction >= 0:
+			_fog_manager.reveal_area(faction, target_pos.x, target_pos.y, _get_unit_vision_value(unit))
+	_clear_selection()
+	queue_redraw()
+	var numgr = get_parent().get_node_or_null("NeutralUnitManager2D")
+	if numgr != null:
+		numgr.queue_redraw()
+	return {
+		"success": true,
+		"moved_count": moving_ids.size(),
+		"unit_ids": moving_ids.duplicate(),
+	}
+
+
+func _is_tile_passable_for_unit(unit: Dictionary, gx: int, gy: int) -> bool:
+	if _is_tile_passable(gx, gy):
+		return true
+	if bool(unit.get(INSIDE_DRAGON_LAIR_KEY, false)):
+		return _is_dragon_lair_miasma_tile(Vector2i(gx, gy))
+	return false
+
+
+func _sync_dragon_lair_location_state(unit: Dictionary) -> void:
+	var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	if _is_dragon_lair_miasma_tile(pos):
+		unit[INSIDE_DRAGON_LAIR_KEY] = true
+	else:
+		unit.erase(INSIDE_DRAGON_LAIR_KEY)
+
+
+func _update_dragon_lair_location_after_move(unit: Dictionary, _from: Vector2i, target: Vector2i) -> void:
+	if not bool(unit.get(INSIDE_DRAGON_LAIR_KEY, false)):
+		return
+	if not _is_dragon_lair_miasma_tile(target):
+		unit.erase(INSIDE_DRAGON_LAIR_KEY)
+
 
 func _is_tile_passable(gx: int, gy: int) -> bool:
 	if _wall_manager == null and is_inside_tree():
@@ -3357,6 +3721,49 @@ func _make_unit_view(unit: Dictionary) -> Dictionary:
 	view["warband_selected_count"] = _warband_selection_ids.size() if selecting else 0
 	view["skills"] = _get_unit_skill_actions(unit)
 	return view
+
+
+func _distance_to_cells(pos: Vector2i, cells: Array) -> int:
+	var best := 999999
+	for cell_variant in cells:
+		var cell: Vector2i = cell_variant
+		best = mini(best, _grid_distance(pos, cell))
+	return best
+
+
+func _sort_by_distance(a: Dictionary, b: Dictionary) -> bool:
+	var distance_a: int = int(a.get("distance", 0))
+	var distance_b: int = int(b.get("distance", 0))
+	if distance_a == distance_b:
+		return int(a.get("id", 0)) < int(b.get("id", 0))
+	return distance_a < distance_b
+
+
+func _find_teleport_destination(anchor: Vector2i, reserved: Array[Vector2i], ignored_unit_ids: Array[int]) -> Vector2i:
+	if _is_valid_teleport_tile(anchor, reserved, ignored_unit_ids):
+		return anchor
+	for radius in range(1, TELEPORT_SEARCH_RADIUS + 1):
+		for dx in range(-radius, radius + 1):
+			var dy_abs: int = radius - absi(dx)
+			var candidates: Array[Vector2i] = [Vector2i(anchor.x + dx, anchor.y + dy_abs)]
+			if dy_abs != 0:
+				candidates.append(Vector2i(anchor.x + dx, anchor.y - dy_abs))
+			for candidate in candidates:
+				if _is_valid_teleport_tile(candidate, reserved, ignored_unit_ids):
+					return candidate
+	return Vector2i(-1, -1)
+
+
+func _is_valid_teleport_tile(pos: Vector2i, reserved: Array[Vector2i], ignored_unit_ids: Array[int]) -> bool:
+	if pos in reserved:
+		return false
+	if not _in_bounds(pos.x, pos.y):
+		return false
+	if not _is_tile_passable(pos.x, pos.y) and not _is_dragon_lair_miasma_tile(pos):
+		return false
+	if not _is_tile_empty_ignoring_units(pos.x, pos.y, ignored_unit_ids):
+		return false
+	return true
 
 
 func _is_tile_empty(gx: int, gy: int) -> bool:

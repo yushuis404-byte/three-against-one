@@ -12,6 +12,7 @@ var _researched: Array = [{}, {}, {}]
 var _active_effects: Array = [{}, {}, {}]
 var _achievement_service: Node = null
 var _civilization_rules: Node = null
+var _resource_tracker: Node = null
 
 
 func _ready() -> void:
@@ -22,9 +23,10 @@ func _ready() -> void:
 		_research_free_root(player)
 
 
-func setup(achievement_service: Node, civilization_rules: Node) -> void:
+func setup(achievement_service: Node, civilization_rules: Node, resource_tracker: Node = null) -> void:
 	_achievement_service = achievement_service
 	_civilization_rules = civilization_rules
+	_resource_tracker = resource_tracker
 	for player in range(3):
 		_rebuild_effects(player)
 
@@ -112,10 +114,15 @@ func get_research_info(player: int, technology_id: String) -> Dictionary:
 				"current": current_points,
 			}
 
+	var resource_cost_info: Dictionary = _get_resource_cost_info(player, definition)
+	if not bool(resource_cost_info.get("available", true)):
+		return resource_cost_info
+
 	return {
 		"available": true,
 		"reason": "",
 		"cost": cost,
+		"resource_cost": resource_cost_info.get("resource_cost", {}),
 	}
 
 
@@ -130,6 +137,10 @@ func research(player: int, technology_id: String) -> bool:
 			return false
 		if not bool(_achievement_service.call("spend_tech_points", player, cost)):
 			return false
+	var resource_cost: Dictionary = info.get("resource_cost", {})
+	if not _spend_resource_cost(player, resource_cost):
+		print("[Technology] Resource cost failed: %s -> %s" % [technology_id, str(resource_cost)])
+		return false
 	_researched[player][technology_id] = true
 	_rebuild_effects(player)
 	var definition: Dictionary = _by_id.get(technology_id, {})
@@ -174,6 +185,19 @@ func get_effective_cost(player: int, technology_id: String) -> int:
 	return maxi(0, cost)
 
 
+func get_resource_cost_options(technology_id: String) -> Array:
+	var definition: Dictionary = _by_id.get(technology_id, {})
+	if definition.is_empty():
+		return []
+	var any_costs: Array = definition.get("resource_cost_any", [])
+	if not any_costs.is_empty():
+		return any_costs.duplicate(true)
+	var cost: Dictionary = definition.get("resource_cost", {})
+	if cost.is_empty():
+		return []
+	return [cost.duplicate(true)]
+
+
 func get_modifier(player: int, key: String, default_value: int = 0) -> int:
 	if not _is_valid_player(player):
 		return default_value
@@ -184,6 +208,55 @@ func get_all_modifiers(player: int) -> Dictionary:
 	if not _is_valid_player(player):
 		return {}
 	return _active_effects[player].duplicate(true)
+
+
+func _get_resource_cost_info(player: int, definition: Dictionary) -> Dictionary:
+	var any_costs: Array = definition.get("resource_cost_any", [])
+	if not any_costs.is_empty():
+		if _resource_tracker == null or not _resource_tracker.has_method("get_resource"):
+			return {"available": false, "reason": "resource_tracker_missing"}
+		for cost_variant in any_costs:
+			var cost: Dictionary = cost_variant
+			if _can_afford_resource_cost(player, cost):
+				return {"available": true, "resource_cost": cost}
+		return {
+			"available": false,
+			"reason": "not_enough_resource_cost_any",
+			"resource_cost_options": any_costs.duplicate(true),
+		}
+
+	var cost: Dictionary = definition.get("resource_cost", {})
+	if cost.is_empty():
+		return {"available": true, "resource_cost": {}}
+	if _resource_tracker == null or not _resource_tracker.has_method("get_resource"):
+		return {"available": false, "reason": "resource_tracker_missing"}
+	if not _can_afford_resource_cost(player, cost):
+		return {
+			"available": false,
+			"reason": "not_enough_resource_cost",
+			"resource_cost": cost,
+		}
+	return {"available": true, "resource_cost": cost}
+
+
+func _can_afford_resource_cost(player: int, cost: Dictionary) -> bool:
+	for key in cost:
+		if int(_resource_tracker.call("get_resource", player, str(key))) < int(cost[key]):
+			return false
+	return true
+
+
+func _spend_resource_cost(player: int, cost: Dictionary) -> bool:
+	if cost.is_empty():
+		return true
+	if _resource_tracker == null or not _resource_tracker.has_method("spend_resource"):
+		return false
+	if not _can_afford_resource_cost(player, cost):
+		return false
+	for key in cost:
+		if not bool(_resource_tracker.call("spend_resource", player, str(key), int(cost[key]))):
+			return false
+	return true
 
 
 func has_any(player: int, technology_ids: Array) -> bool:

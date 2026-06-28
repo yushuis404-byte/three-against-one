@@ -29,6 +29,14 @@ const REVENGE_COLOR := Color(0.8, 0.15, 0.15)        # 红色复仇
 const MOUNTAIN_CENTER := Vector2(49.5, 27.5)
 const RING_INNER := 4.0
 const RING_OUTER := 9.0
+const ZONE_MOUNTAIN_NEST := 1
+const ZONE_MOUNTAIN_BODY := 2
+const ZONE_MOUNTAIN_PATH := 3
+const ANCIENT_DRAGON_TEMPLATE_ID := "neutral.dragon.ancient"
+const PROGENITOR_DRAGON_TEMPLATE_ID := "neutral.dragon.progenitor"
+const ANCIENT_DRAGON_TERRITORY_RADIUS := 5
+const ANCIENT_DRAGON_AGGRO_RANGE := 3
+const ANCIENT_DRAGON_REST_HEAL := 2
 const MIN_WYVERN_SPACING := 3  # 亚龙之间最小曼哈顿间距
 
 # ========== 数据存储 ==========
@@ -92,7 +100,7 @@ func add_neutral_unit(
 		behavior: String = "",
 		aggro_range: int = 0) -> int:
 	## 添加一个中立单位到地图上。返回 unit_id（-1 表示失败）。
-	if not _is_valid_placement(grid_pos):
+	if not _is_valid_placement_for_behavior(grid_pos, behavior):
 		return -1
 
 	var uid := _next_id
@@ -279,6 +287,12 @@ func _draw() -> void:
 						label = "☠龙"
 					_:
 						label = "龙"
+			"ancient_dragon":
+				color = Color(0.45, 0.16, 0.12)
+				label = "古龙"
+			"progenitor_dragon":
+				color = Color(0.68, 0.05, 0.05)
+				label = "史祖"
 			"hidden_trader":
 				color = HIDDEN_TRADER_COLOR
 				label = "商"
@@ -325,6 +339,11 @@ func get_unit_at_world(world_pos: Vector2) -> Dictionary:
 func _on_neutral_turn_started() -> void:
 	print("[中立] 中立阶段开始，%d 个单位" % _neutral_units.size())
 	_process_guard_ai()
+	if _in_combat:
+		return
+	_process_ancient_dragon_ai()
+	if _in_combat:
+		return
 	_process_revenge_ai()
 
 
@@ -371,6 +390,50 @@ func _process_guard_ai() -> void:
 		if nearest >= 0:
 			ai["aggro_target"] = nearest
 			print("[中立] Guard %d 进入攻击状态，目标 %d" % [uid, nearest])
+
+
+func _process_ancient_dragon_ai() -> void:
+	for u in _neutral_units:
+		var uid: int = int(u.get("id", -1))
+		var ai: Dictionary = _ai_data.get(uid, {})
+		if str(ai.get("behavior", "")) != "ancient_dragon":
+			continue
+
+		var pos: Vector2i = u.get("grid_pos", Vector2i.ZERO)
+		var home: Vector2i = ai.get("spawn_pos", pos)
+		var territory_radius: int = int(ai.get("territory_radius", ANCIENT_DRAGON_TERRITORY_RADIUS))
+		var aggro: int = int(ai.get("aggro_range", ANCIENT_DRAGON_AGGRO_RANGE))
+		var target_id: int = int(ai.get("aggro_target", -1))
+
+		if target_id >= 0:
+			var target: Dictionary = _find_player_unit(target_id)
+			if target.is_empty():
+				ai["aggro_target"] = -1
+				_move_ancient_dragon_idle(u, ai, home, territory_radius)
+				continue
+			var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+			if not _is_in_ancient_dragon_territory(target_pos, home, territory_radius):
+				ai["aggro_target"] = -1
+				_return_ancient_dragon_home(u, uid, home, territory_radius)
+				continue
+			if _is_adjacent(pos, target_pos):
+				_start_ai_combat(uid, target_id)
+				return
+			var next: Vector2i = _bfs_step_toward_for_ancient_dragon(pos, target_pos, territory_radius * 2 + 2, home, territory_radius, uid)
+			if next != pos:
+				u["grid_pos"] = next
+				pos = next
+			if _is_adjacent(pos, target_pos):
+				_start_ai_combat(uid, target_id)
+				return
+			continue
+
+		var nearest: int = _find_nearest_player_unit_in_ancient_dragon_territory(pos, aggro, home, territory_radius)
+		if nearest >= 0:
+			ai["aggro_target"] = nearest
+			continue
+
+		_move_ancient_dragon_idle(u, ai, home, territory_radius)
 
 
 func _process_revenge_ai() -> void:
@@ -722,8 +785,65 @@ func _spawn_revenge_squad(player: int) -> void:
 
 func place_initial_neutral_units() -> void:
 	## 第一阶段：放置亚龙和流浪商队（确定性放置）
+	_place_dragon_lair_units()
 	_place_wyverns()
 	_place_wander_traders()
+
+
+func _place_dragon_lair_units() -> void:
+	var center := Vector2i(int(round(MOUNTAIN_CENTER.x)), int(round(MOUNTAIN_CENTER.y)))
+	var blocked_positions: Array[Vector2i] = []
+	var progenitor_pos: Vector2i = _find_nearest_dragon_lair_tile(center, blocked_positions, 2)
+	if progenitor_pos.x >= 0:
+		var progenitor_id := add_neutral_unit(
+			PROGENITOR_DRAGON_TEMPLATE_ID,
+			"史祖龙",
+			progenitor_pos,
+			70,
+			70,
+			8,
+			0,
+			6,
+			"progenitor_dragon",
+			0
+		)
+		if progenitor_id >= 0:
+			var progenitor_ai: Dictionary = _ai_data.get(progenitor_id, {})
+			progenitor_ai["territory_radius"] = 0
+			progenitor_ai["rest_heal"] = 0
+			_ai_data[progenitor_id] = progenitor_ai
+
+	var desired_positions: Array[Vector2i] = [
+		center + Vector2i(-4, -3),
+		center + Vector2i(-4, 3),
+		center + Vector2i(5, 1),
+	]
+	var used_positions: Array[Vector2i] = []
+	if progenitor_pos.x >= 0:
+		used_positions.append(progenitor_pos)
+	for desired_variant in desired_positions:
+		var desired: Vector2i = desired_variant
+		var pos: Vector2i = _find_nearest_dragon_lair_tile(desired, used_positions, 4)
+		if pos.x < 0:
+			continue
+		var uid := add_neutral_unit(
+			ANCIENT_DRAGON_TEMPLATE_ID,
+			"古龙",
+			pos,
+			28,
+			28,
+			5,
+			1,
+			4,
+			"ancient_dragon",
+			ANCIENT_DRAGON_AGGRO_RANGE
+		)
+		if uid >= 0:
+			var ancient_ai: Dictionary = _ai_data.get(uid, {})
+			ancient_ai["territory_radius"] = ANCIENT_DRAGON_TERRITORY_RADIUS
+			ancient_ai["rest_heal"] = ANCIENT_DRAGON_REST_HEAL
+			_ai_data[uid] = ancient_ai
+			used_positions.append(pos)
 
 
 func _place_wyverns() -> void:
@@ -877,6 +997,163 @@ func _place_wander_traders() -> void:
 			placed += 1
 
 	print("[中立] 流浪商队放置: %d 个 (候选 %d)" % [placed, candidates.size()])
+
+
+func _find_nearest_dragon_lair_tile(origin: Vector2i, blocked: Array[Vector2i], max_radius: int) -> Vector2i:
+	for radius in range(max_radius + 1):
+		for y in range(origin.y - radius, origin.y + radius + 1):
+			for x in range(origin.x - radius, origin.x + radius + 1):
+				var pos := Vector2i(x, y)
+				if abs(pos.x - origin.x) + abs(pos.y - origin.y) > radius:
+					continue
+				if pos in blocked:
+					continue
+				if _is_valid_placement_for_behavior(pos, "ancient_dragon"):
+					return pos
+	return Vector2i(-1, -1)
+
+
+func _is_valid_placement_for_behavior(pos: Vector2i, behavior: String) -> bool:
+	if behavior == "ancient_dragon" or behavior == "progenitor_dragon":
+		if not _in_bounds(pos.x, pos.y):
+			return false
+		if not _is_dragon_lair_zone(pos):
+			return false
+		if not _is_empty(pos.x, pos.y):
+			return false
+		return true
+	return _is_valid_placement(pos)
+
+
+func _is_dragon_lair_zone(pos: Vector2i) -> bool:
+	if _grid_manager == null or not _grid_manager.has_method("get_zone_at"):
+		return false
+	var zt: int = int(_grid_manager.get_zone_at(pos.x, pos.y))
+	return zt == ZONE_MOUNTAIN_NEST or zt == ZONE_MOUNTAIN_BODY or zt == ZONE_MOUNTAIN_PATH
+
+
+func _move_ancient_dragon_idle(unit: Dictionary, ai: Dictionary, home: Vector2i, territory_radius: int) -> void:
+	var uid: int = int(unit.get("id", -1))
+	var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	if not _is_in_ancient_dragon_territory(pos, home, territory_radius):
+		_return_ancient_dragon_home(unit, uid, home, territory_radius)
+		return
+	var hp: int = int(unit.get("hp", 0))
+	var hp_max: int = int(unit.get("hp_max", hp))
+	if hp < hp_max:
+		var heal: int = int(ai.get("rest_heal", ANCIENT_DRAGON_REST_HEAL))
+		unit["hp"] = mini(hp_max, hp + heal)
+		return
+	_patrol_ancient_dragon(unit, uid, home, territory_radius)
+
+
+func _return_ancient_dragon_home(unit: Dictionary, uid: int, home: Vector2i, territory_radius: int) -> void:
+	var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	var next: Vector2i = _bfs_step_toward_for_ancient_dragon(pos, home, territory_radius * 2 + 2, home, territory_radius, uid)
+	if next != pos:
+		unit["grid_pos"] = next
+
+
+func _patrol_ancient_dragon(unit: Dictionary, uid: int, home: Vector2i, territory_radius: int) -> void:
+	var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	var dirs: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+	var round_number: int = 0
+	if _turn_manager != null:
+		round_number = int(_turn_manager.round_number)
+	var start_index: int = int(floor(_simple_hash(uid, round_number, 91) * float(dirs.size())))
+	for i in range(dirs.size()):
+		var dir: Vector2i = dirs[(start_index + i) % dirs.size()]
+		var next: Vector2i = pos + dir
+		if _is_ancient_dragon_move_allowed(next, home, territory_radius, uid):
+			unit["grid_pos"] = next
+			return
+
+
+func _is_in_ancient_dragon_territory(pos: Vector2i, home: Vector2i, territory_radius: int) -> bool:
+	return abs(pos.x - home.x) + abs(pos.y - home.y) <= territory_radius
+
+
+func _find_nearest_player_unit_in_ancient_dragon_territory(from: Vector2i, radius: int, home: Vector2i, territory_radius: int) -> int:
+	if not _unit_manager or not _unit_manager.has_method("get_all_units"):
+		return -1
+	var units: Array = _unit_manager.get_all_units()
+	var nearest_dist := radius + 1
+	var nearest_id := -1
+	for unit_variant in units:
+		var unit: Dictionary = unit_variant
+		var upos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+		if not _is_in_ancient_dragon_territory(upos, home, territory_radius):
+			continue
+		var dist: int = abs(from.x - upos.x) + abs(from.y - upos.y)
+		if dist <= radius and dist < nearest_dist:
+			nearest_dist = dist
+			nearest_id = int(unit.get("id", -1))
+	return nearest_id
+
+
+func _bfs_step_toward_for_ancient_dragon(from: Vector2i, to: Vector2i, max_steps: int, home: Vector2i, territory_radius: int, uid: int) -> Vector2i:
+	if from == to:
+		return from
+	var dirs: Array[Vector2i] = [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	var visited := {}
+	var queue: Array = [from]
+	var parent := { from: from }
+	var depth := { from: 0 }
+	visited[from] = true
+	while queue.size() > 0:
+		var pos: Vector2i = queue.pop_front()
+		var d: int = int(depth[pos])
+		if pos == to:
+			var step: Vector2i = pos
+			while parent.get(step, step) != from:
+				step = parent.get(step, step)
+			return step
+		if d >= max_steps:
+			continue
+		for dir_variant in dirs:
+			var dir: Vector2i = dir_variant
+			var next: Vector2i = pos + dir
+			if visited.has(next):
+				continue
+			if next != to and not _is_ancient_dragon_move_allowed(next, home, territory_radius, uid):
+				continue
+			if next == to and not _is_in_ancient_dragon_territory(next, home, territory_radius):
+				continue
+			visited[next] = true
+			parent[next] = pos
+			depth[next] = d + 1
+			queue.append(next)
+	return from
+
+
+func _is_ancient_dragon_move_allowed(pos: Vector2i, home: Vector2i, territory_radius: int, uid: int) -> bool:
+	if not _in_bounds(pos.x, pos.y):
+		return false
+	if not _is_in_ancient_dragon_territory(pos, home, territory_radius):
+		return false
+	if not _is_dragon_lair_zone(pos):
+		return false
+	if _is_occupied_by_other_neutral(pos, uid):
+		return false
+	if _unit_manager and _unit_manager.has_method("get_unit_at"):
+		var player_unit: Dictionary = _unit_manager.get_unit_at(pos)
+		if not player_unit.is_empty():
+			return false
+	var bmgr = get_parent().get_node("BuildingManager2D")
+	if bmgr and bmgr.has_method("is_tile_occupied"):
+		if bmgr.is_tile_occupied(pos.x, pos.y):
+			return false
+	return true
+
+
+func _is_occupied_by_other_neutral(pos: Vector2i, uid: int) -> bool:
+	for unit_variant in _neutral_units:
+		var unit: Dictionary = unit_variant
+		if int(unit.get("id", -1)) == uid:
+			continue
+		if unit.get("grid_pos", Vector2i.ZERO) == pos:
+			return true
+	return false
 
 
 func _is_valid_placement(pos: Vector2i) -> bool:

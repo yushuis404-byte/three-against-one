@@ -66,6 +66,7 @@ var _effect_names: Dictionary = {
 	"fire_wyvern_equipment": "\u706b\u7130\u4e9a\u9f99\u88c5\u5907",
 	"frost_wyvern_equipment": "\u51b0\u971c\u4e9a\u9f99\u88c5\u5907",
 	"toxic_wyvern_equipment": "\u6bd2\u6db2\u4e9a\u9f99\u88c5\u5907",
+	"miasma_immunity": "瘴气免疫",
 	"orc_dragon_war_path": "\u517d\u4eba\u9f99\u6218\u8def\u7ebf",
 	"unlock_unit_orc_dragon_slayer": "\u89e3\u9501\u5c60\u9f99\u6218\u58eb",
 	"unlock_unit_orc_dragonbone_shield": "\u89e3\u9501\u9f99\u9aa8\u5de8\u76fe\u5175",
@@ -328,12 +329,13 @@ func _draw_detail(player: int) -> void:
 	_draw_text(Vector2(x + 18.0, HEADER_H + 32.0), title, 17, Color(0.98, 0.98, 1.0))
 	_draw_text(Vector2(x + 18.0, HEADER_H + 58.0), _status_text(researched, available, info), 12, Color(0.74, 0.86, 1.0))
 	_draw_text(Vector2(x + 18.0, HEADER_H + 88.0), "\u6d88\u8017\uff1a%d \u79d1\u6280\u70b9" % _service.get_effective_cost(player, _selected_id), 12, Color(0.86, 0.90, 0.96))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 116.0), "\u524d\u7f6e\uff1a" + _join_tech_titles(definition.get("parent_techs", [])), 11, Color(0.68, 0.74, 0.84))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 143.0), "\u4efb\u610f\u524d\u7f6e\uff1a" + _join_tech_titles(definition.get("required_any_techs", [])), 11, Color(0.68, 0.74, 0.84))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 170.0), "\u6210\u5c31\uff1a" + _join_achievement_titles(definition.get("required_achievements", [])), 11, Color(0.68, 0.74, 0.84))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 197.0), "\u9886\u4e3b\uff1a" + _join_lord_titles(definition.get("required_lords", [])), 11, Color(0.68, 0.74, 0.84))
-	_draw_text(Vector2(x + 18.0, HEADER_H + 232.0), "\u6548\u679c", 13, Color(0.94, 0.97, 1.0))
-	_draw_wrapped_lines(Vector2(x + 18.0, HEADER_H + 256.0), _effect_text(definition.get("effects", {})), 12, Color(0.78, 0.86, 0.94), 310.0)
+	_draw_text(Vector2(x + 18.0, HEADER_H + 116.0), "材料：" + _resource_cost_text(definition), 11, Color(0.74, 0.84, 0.78))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 143.0), "\u524d\u7f6e\uff1a" + _join_tech_titles(definition.get("parent_techs", [])), 11, Color(0.68, 0.74, 0.84))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 170.0), "\u4efb\u610f\u524d\u7f6e\uff1a" + _join_tech_titles(definition.get("required_any_techs", [])), 11, Color(0.68, 0.74, 0.84))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 197.0), "\u6210\u5c31\uff1a" + _join_achievement_titles(definition.get("required_achievements", [])), 11, Color(0.68, 0.74, 0.84))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 224.0), "\u9886\u4e3b\uff1a" + _join_lord_titles(definition.get("required_lords", [])), 11, Color(0.68, 0.74, 0.84))
+	_draw_text(Vector2(x + 18.0, HEADER_H + 256.0), "\u6548\u679c", 13, Color(0.94, 0.97, 1.0))
+	_draw_wrapped_lines(Vector2(x + 18.0, HEADER_H + 280.0), _effect_text(definition.get("effects", {})), 12, Color(0.78, 0.86, 0.94), 310.0)
 	_research_rect = Rect2(x + 18.0, size.y - 58.0, 126.0, 34.0)
 	var button_color := Color(0.20, 0.36, 0.58, 0.96) if available else Color(0.12, 0.13, 0.15, 0.96)
 	if researched:
@@ -361,6 +363,12 @@ func _status_text(researched: bool, available: bool, info: Dictionary) -> String
 			return "\u72b6\u6001\uff1a\u9700\u8981\u62e5\u6709\u5bf9\u5e94\u9886\u4e3b"
 		"not_enough_tech_points":
 			return "\u72b6\u6001\uff1a\u79d1\u6280\u70b9\u4e0d\u8db3 %d/%d" % [int(info.get("current", 0)), int(info.get("cost", 0))]
+		"not_enough_resource_cost_any":
+			return "状态：需要任意一种亚龙龙血"
+		"not_enough_resource_cost":
+			return "状态：材料不足"
+		"resource_tracker_missing":
+			return "状态：资源系统未连接"
 		"already_researched":
 			return "\u72b6\u6001\uff1a\u5df2\u7814\u7a76"
 	return "\u72b6\u6001\uff1a\u672a\u89e3\u9501"
@@ -388,6 +396,7 @@ func _build_static_layout() -> void:
 		"tech.dragon.wyvern_fire_research": _polar_to_world(-82.0, 470.0),
 		"tech.dragon.wyvern_frost_research": _polar_to_world(-62.0, 470.0),
 		"tech.dragon.wyvern_toxic_research": _polar_to_world(-42.0, 470.0),
+		"tech.dragon.miasma_shield": _polar_to_world(-62.0, 545.0),
 		"tech.dragon.fire_blade": _polar_to_world(-82.0, 620.0),
 		"tech.dragon.frost_scale": _polar_to_world(-62.0, 620.0),
 		"tech.dragon.corrosive_weapons": _polar_to_world(-42.0, 620.0),
@@ -502,6 +511,28 @@ func _lord_title(id: String) -> String:
 		"lord.orc.blood_chief":
 			return "\u8840\u65a7\u914b\u957f"
 	return id
+
+
+func _resource_cost_text(definition: Dictionary) -> String:
+	var any_costs: Array = definition.get("resource_cost_any", [])
+	if not any_costs.is_empty():
+		var parts := PackedStringArray()
+		for cost_variant in any_costs:
+			var cost: Dictionary = cost_variant
+			parts.append(_single_resource_cost_text(cost))
+		return "任意一种：" + " / ".join(parts)
+	var cost_dict: Dictionary = definition.get("resource_cost", {})
+	if cost_dict.is_empty():
+		return "无"
+	return _single_resource_cost_text(cost_dict)
+
+
+func _single_resource_cost_text(cost: Dictionary) -> String:
+	var parts := PackedStringArray()
+	for key in cost:
+		var resource_key: String = str(key)
+		parts.append("%s ×%d" % [GameCatalog.resource_name(resource_key), int(cost[key])])
+	return ", ".join(parts)
 
 
 func _effect_text(effects: Dictionary) -> Array[String]:

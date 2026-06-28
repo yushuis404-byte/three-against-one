@@ -23,7 +23,7 @@ enum UnitRole { WORKER, SCOUT, GUARD, ELITE, SIEGE, SPECIAL }
 @export var can_attack_buildings: bool = false
 
 # 中立单位 AI 行为
-@export var ai_behavior: String = ""       # "guard" | "hidden_trader" | "revenge"
+@export var ai_behavior: String = ""       # "guard" | "hidden_trader" | "revenge" | "ancient_dragon" | "progenitor_dragon"
 @export var aggro_range: int = 0
 
 
