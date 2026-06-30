@@ -24,6 +24,7 @@ var _building_manager: Node = null
 var _resource_tracker: Node = null
 var _grid_manager: Node = null
 var _fog_manager: Node = null
+var _network_game_service: Node = null
 
 var _walls: Array[Dictionary] = []
 var _next_wall_id := 1
@@ -61,6 +62,26 @@ func set_resource_tracker(resource_tracker: Node) -> void:
 
 func set_building_manager(building_manager: Node) -> void:
 	_building_manager = building_manager
+
+
+func set_network_game_service(service: Node) -> void:
+	_network_game_service = service
+
+
+func _is_network_game() -> bool:
+	return _network_game_service != null and _network_game_service.has_method("is_network_game") and bool(_network_game_service.call("is_network_game"))
+
+
+func _request_network_wall_blueprint(start_building_id: int, end_building_id: int) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "wall_blueprint", {
+			"start_building_id": start_building_id,
+			"end_building_id": end_building_id,
+		})
+		return true
+	return false
 
 
 func _on_fog_updated(_player: int) -> void:
@@ -106,6 +127,16 @@ func cancel_wall_blueprint() -> void:
 func confirm_wall_blueprint() -> bool:
 	if not _anchor_mode or _preview_cells.is_empty() or not _preview_valid:
 		return false
+	var start_building_id: int = int(_start_building.get("id", -1))
+	var end_building_id: int = int(_end_building.get("id", -1))
+	if _request_network_wall_blueprint(start_building_id, end_building_id):
+		return true
+	return _confirm_wall_blueprint_local()
+
+
+func _confirm_wall_blueprint_local() -> bool:
+	if not _anchor_mode or _preview_cells.is_empty() or not _preview_valid:
+		return false
 	var player := _current_player()
 	var cost := get_preview_stone_cost()
 	if _resource_tracker == null or not _resource_tracker.has_method("spend_resource"):
@@ -139,6 +170,34 @@ func confirm_wall_blueprint() -> bool:
 	cancel_wall_blueprint()
 	queue_redraw()
 	return true
+
+
+func request_network_wall_blueprint(player: int, start_building_id: int, end_building_id: int) -> bool:
+	if player != DWARF_PLAYER:
+		return false
+	if _turn_manager != null and _turn_manager.has_method("can_player_act"):
+		if not bool(_turn_manager.call("can_player_act", player)):
+			return false
+	if _building_manager == null or not _building_manager.has_method("get_building_by_id"):
+		return false
+	var start_building: Dictionary = _building_manager.call("get_building_by_id", start_building_id)
+	var end_building: Dictionary = _building_manager.call("get_building_by_id", end_building_id)
+	if start_building.is_empty() or end_building.is_empty():
+		return false
+	if int(start_building.get("faction", -1)) != player or int(end_building.get("faction", -1)) != player:
+		return false
+	var previous_player := -1
+	if _turn_manager != null:
+		previous_player = int(_turn_manager.current_player)
+		_turn_manager.current_player = player
+	_anchor_mode = true
+	_start_building = start_building
+	_end_building = end_building
+	_update_preview_between_buildings()
+	var ok: bool = _confirm_wall_blueprint_local()
+	if _turn_manager != null and previous_player >= 0:
+		_turn_manager.current_player = previous_player
+	return ok
 
 
 func get_preview_stone_cost() -> int:
