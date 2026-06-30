@@ -12,6 +12,7 @@ var _researched: Array = [{}, {}, {}]
 var _active_effects: Array = [{}, {}, {}]
 var _achievement_service: Node = null
 var _civilization_rules: Node = null
+var _network_game_service: Node = null
 
 
 func _ready() -> void:
@@ -27,6 +28,10 @@ func setup(achievement_service: Node, civilization_rules: Node) -> void:
 	_civilization_rules = civilization_rules
 	for player in range(3):
 		_rebuild_effects(player)
+
+
+func set_network_game_service(service: Node) -> void:
+	_network_game_service = service
 
 
 func get_definitions() -> Array:
@@ -120,6 +125,24 @@ func get_research_info(player: int, technology_id: String) -> Dictionary:
 
 
 func research(player: int, technology_id: String) -> bool:
+	if _request_network_research(player, technology_id):
+		return true
+	return research_local(player, technology_id)
+
+
+func request_network_research(player: int, technology_id: String) -> bool:
+	if _network_game_service != null and _network_game_service.has_method("is_network_game"):
+		if bool(_network_game_service.call("is_network_game")):
+			if not _network_game_service.has_method("is_host"):
+				return false
+			if not bool(_network_game_service.call("is_host")):
+				return false
+	if _turn_manager_blocks_player(player):
+		return false
+	return research_local(player, technology_id)
+
+
+func research_local(player: int, technology_id: String) -> bool:
 	var info: Dictionary = get_research_info(player, technology_id)
 	if not bool(info.get("available", false)):
 		print("[Technology] Research failed: %s -> %s" % [technology_id, str(info.get("reason", ""))])
@@ -137,6 +160,32 @@ func research(player: int, technology_id: String) -> bool:
 	technology_state_changed.emit(player)
 	print("[Technology] P%d researched %s." % [player, technology_id])
 	return true
+
+
+func _request_network_research(player: int, technology_id: String) -> bool:
+	if _network_game_service == null:
+		return false
+	if not _network_game_service.has_method("is_network_game"):
+		return false
+	if not bool(_network_game_service.call("is_network_game")):
+		return false
+	if not _network_game_service.has_method("request_action"):
+		return false
+	_network_game_service.call("request_action", "tech_research", {
+		"technology_id": technology_id,
+	})
+	return true
+
+
+func _turn_manager_blocks_player(player: int) -> bool:
+	if _network_game_service == null:
+		return false
+	if not _network_game_service.has_method("get_turn_manager"):
+		return false
+	var turn_manager: Node = _network_game_service.call("get_turn_manager")
+	if turn_manager == null or not turn_manager.has_method("can_player_act"):
+		return false
+	return not bool(turn_manager.call("can_player_act", player))
 
 
 func force_research(player: int, technology_id: String) -> bool:

@@ -433,6 +433,24 @@ func get_stats() -> Dictionary:
 	return { "counts": counts, "total": total }
 
 
+func get_all_resource_views() -> Array:
+	var result: Array = []
+	for y in range(grid_rows):
+		for x in range(grid_cols):
+			var rt: int = resource_grid[y][x]
+			if rt == ResourceType.NONE:
+				continue
+			var name := ""
+			if rt > 0 and rt <= RESOURCE_DEFS.size():
+				name = str(RESOURCE_DEFS[rt - 1][1])
+			result.append({
+				"type": rt,
+				"name": name,
+				"grid_pos": Vector2i(x, y),
+			})
+	return result
+
+
 # ========== 采集映射 ==========
 # ResourceType -> Array[Dictionary] 采集产出列表
 const RESOURCE_GATHER_KEY: Dictionary = {
