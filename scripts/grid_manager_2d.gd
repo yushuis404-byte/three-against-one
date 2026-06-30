@@ -189,7 +189,7 @@ var editor_brush_clif: int = CLIF_MIDDLE_RIGHT:
 		if Engine.is_editor_hint():
 			_update_editor_fit_texture()
 			queue_redraw()
-@export_enum("Elf Capital", "Dwarf Capital", "Orc Capital", "Gold Mine", "Stone")
+@export_enum("Elf Capital", "Dwarf Capital", "Orc Capital", "Gold Mine", "Stone", "Lumber Camp", "Quarry", "Farm", "Warehouse", "Iron Mine", "Forge", "Barracks", "Recruit Camp", "Scout Post", "Watch Tower")
 var editor_fit_preset: int = 0:
 	set(value):
 		editor_fit_preset = value
@@ -399,6 +399,16 @@ func _apply_editor_fit_preset_defaults() -> void:
 			editor_fit_footprint = Vector2i(2, 2)
 			editor_fit_texture_scale = 1.0
 			editor_fit_offset_tiles = Vector2.ZERO
+		5:
+			editor_fit_preview_cell = Vector2i(33, 11)
+			editor_fit_footprint = Vector2i(1, 1)
+			editor_fit_texture_scale = 1.0
+			editor_fit_offset_tiles = Vector2.ZERO
+		6, 7, 8, 9, 10, 11, 12, 13, 14:
+			editor_fit_preview_cell = Vector2i(33, 11)
+			editor_fit_footprint = Vector2i(1, 1)
+			editor_fit_texture_scale = 1.0
+			editor_fit_offset_tiles = Vector2.ZERO
 		_:
 			editor_fit_footprint = Vector2i(1, 1)
 			editor_fit_texture_scale = 1.0
@@ -428,6 +438,8 @@ func _get_editor_fit_texture_path() -> String:
 			return EDITOR_FIT_GOLD_MINE_PATH
 		4:
 			return EDITOR_FIT_STONE_PATH
+		5, 6, 7, 8, 9, 10, 11, 12, 13, 14:
+			return ""
 	return ""
 
 
@@ -443,14 +455,43 @@ func _get_editor_fit_config_key() -> String:
 			return "gold_mine"
 		4:
 			return "stone"
+		5:
+			return "lumber_camp"
+		6:
+			return "quarry"
+		7:
+			return "farm"
+		8:
+			return "warehouse"
+		9:
+			return "iron_mine"
+		10:
+			return "forge"
+		11:
+			return "barracks"
+		12:
+			return "recruit_camp"
+		13:
+			return "scout_post"
+		14:
+			return "watch_tower"
 	return "custom"
+
+
+func _get_editor_fit_save_texture_path() -> String:
+	var preset_path := _get_editor_fit_texture_path()
+	if not preset_path.is_empty():
+		return preset_path
+	if editor_fit_texture != null and not editor_fit_texture.resource_path.is_empty():
+		return editor_fit_texture.resource_path
+	return ""
 
 
 func _save_editor_building_fit_config() -> void:
 	var config := _load_building_fit_config()
 	var key := _get_editor_fit_config_key()
 	config[key] = {
-		"texture": _get_editor_fit_texture_path(),
+		"texture": _get_editor_fit_save_texture_path(),
 		"footprint": [editor_fit_footprint.x, editor_fit_footprint.y],
 		"scale": editor_fit_texture_scale,
 		"offset": [editor_fit_offset_tiles.x, editor_fit_offset_tiles.y],

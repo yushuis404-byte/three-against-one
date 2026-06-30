@@ -42,6 +42,7 @@ var _building_network_service = BuildingNetworkServiceScript.new()
 var _just_garrisoned: Dictionary = {}  # building_id -> true，本帧刚驻兵
 var _tower_cooldowns: Dictionary = {}
 var _building_texture_fit_config: Dictionary = {}
+var _building_texture_cache: Dictionary = {}
 
 # 放置模式
 var _placement_active := false
@@ -880,7 +881,11 @@ func _draw_buildings() -> void:
 				SELECT_COLOR, false, 4.0)
 
 		# 主城特殊效果：外发光
-		if data.category == BuildingData.BuildingCategory.CORE:
+		var texture_key := _get_building_texture_key(data, faction)
+		var building_texture := _get_building_texture(texture_key, data, faction)
+		var has_building_texture := building_texture != null
+
+		if data.category == BuildingData.BuildingCategory.CORE and not has_building_texture:
 			var glow_color: Color = GameCatalog.faction_color(faction)
 			glow_color.a = 0.3
 			draw_rect(Rect2(top_left.x - 4, top_left.y - 4, w + 8, h + 8), glow_color, true)
@@ -890,11 +895,12 @@ func _draw_buildings() -> void:
 		# 建筑底色方块
 		var color: Color = GameCatalog.faction_color(faction)
 		color.a = BUILDING_ALPHA
-		draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
-		var capital_texture := _get_capital_texture(data, faction)
-		if capital_texture != null:
-			var fit := _get_building_texture_fit(_get_capital_fit_key(faction), _get_capital_default_scale(faction))
-			var texture_scale: float = float(fit.get("scale", _get_capital_default_scale(faction)))
+		if not has_building_texture:
+			draw_rect(Rect2(top_left.x, top_left.y, w, h), color, true)
+		if has_building_texture:
+			var default_scale := _get_building_texture_default_scale(data, faction)
+			var fit := _get_building_texture_fit(texture_key, default_scale)
+			var texture_scale: float = float(fit.get("scale", default_scale))
 			var offset_tiles: Vector2 = fit.get("offset", Vector2.ZERO)
 			var tex_w: float = w * texture_scale
 			var tex_h: float = h * texture_scale
@@ -904,7 +910,7 @@ func _draw_buildings() -> void:
 				tex_w,
 				tex_h
 			)
-			draw_texture_rect(capital_texture, tex_rect, false)
+			draw_texture_rect(building_texture, tex_rect, false)
 
 		if bool(b.get("pending_demolition", false)):
 			_draw_demolition_marker(top_left, Vector2(w, h))
@@ -915,7 +921,7 @@ func _draw_buildings() -> void:
 		var font: Font = ThemeDB.fallback_font
 		var fsize: int = 13 if data.category == BuildingData.BuildingCategory.CORE else 11
 		var label: String = data.name
-		if data.category == BuildingData.BuildingCategory.CORE:
+		if data.category == BuildingData.BuildingCategory.CORE or has_building_texture:
 			label = ""
 		if int(b.get("level", 1)) > 1 and data.max_level > 1:
 			label = "%s Lv%d" % [data.name, int(b.get("level", 1))]
@@ -1216,9 +1222,10 @@ func _get_building_texture_fit(key: String, default_scale: float) -> Dictionary:
 		"scale": default_scale,
 		"offset": Vector2.ZERO,
 	}
-	if not _building_texture_fit_config.has(key):
+	var resolved_key := _resolve_building_texture_key(key)
+	if not _building_texture_fit_config.has(resolved_key):
 		return result
-	var fit_variant: Variant = _building_texture_fit_config[key]
+	var fit_variant: Variant = _building_texture_fit_config[resolved_key]
 	if not fit_variant is Dictionary:
 		return result
 	var fit: Dictionary = fit_variant
@@ -1231,6 +1238,92 @@ func _get_building_texture_fit(key: String, default_scale: float) -> Dictionary:
 			if offset_array.size() >= 2:
 				result["offset"] = Vector2(float(offset_array[0]), float(offset_array[1]))
 	return result
+
+
+func _get_building_texture_key(data: BuildingData, faction: int) -> String:
+	if data.category == BuildingData.BuildingCategory.CORE:
+		return _get_capital_fit_key(faction)
+	if data.unique_effect_id != "":
+		return data.unique_effect_id.replace(".", "_")
+	if data.tags.has("barracks"):
+		return "barracks"
+	if data.tags.has("forge"):
+		return "forge"
+	if data.storage_level > 0:
+		return "warehouse"
+	if data.needs_resource_point:
+		return "gold_mine_shaft"
+	if data.production.has("wood"):
+		return "lumber_camp"
+	if data.production.has("stone"):
+		return "quarry"
+	if data.production.has("food"):
+		return "farm"
+	if data.production.has("iron"):
+		return "iron_mine"
+	if data.production.has("gold_ore"):
+		return "gold_mine_shaft"
+	match data.category:
+		BuildingData.BuildingCategory.RECRUITMENT:
+			return "recruit_camp"
+		BuildingData.BuildingCategory.SCOUT:
+			if data.defense_attack_range > 0:
+				return "watch_tower"
+			return "scout_post"
+	if data.defense_attack_range > 0:
+		return "defense_tower"
+	return ""
+
+
+func _resolve_building_texture_key(key: String) -> String:
+	if key.is_empty() or _building_texture_fit_config.has(key):
+		return key
+	var aliases := {
+		"gold_mine_shaft": "gold_mine",
+		"barracks": "barracks_lv1",
+	}
+	var alias: String = str(aliases.get(key, ""))
+	if not alias.is_empty() and _building_texture_fit_config.has(alias):
+		return alias
+	return key
+
+
+func _get_building_texture(data_key: String, data: BuildingData, faction: int) -> Texture2D:
+	var path := _get_building_texture_path(data_key)
+	if not path.is_empty():
+		return _load_building_texture(path)
+	if data.category == BuildingData.BuildingCategory.CORE:
+		return _get_capital_texture(data, faction)
+	return null
+
+
+func _get_building_texture_path(key: String) -> String:
+	var resolved_key := _resolve_building_texture_key(key)
+	if resolved_key.is_empty() or not _building_texture_fit_config.has(resolved_key):
+		return ""
+	var fit_variant: Variant = _building_texture_fit_config[resolved_key]
+	if not fit_variant is Dictionary:
+		return ""
+	var fit: Dictionary = fit_variant
+	var texture_path := str(fit.get("texture", ""))
+	return texture_path.strip_edges()
+
+
+func _load_building_texture(path: String) -> Texture2D:
+	if path.is_empty():
+		return null
+	if _building_texture_cache.has(path):
+		return _building_texture_cache[path]
+	var loaded := load(path)
+	var texture: Texture2D = loaded if loaded is Texture2D else null
+	_building_texture_cache[path] = texture
+	return texture
+
+
+func _get_building_texture_default_scale(data: BuildingData, faction: int) -> float:
+	if data.category == BuildingData.BuildingCategory.CORE:
+		return _get_capital_default_scale(faction)
+	return 1.0
 
 
 func _get_capital_texture(data: BuildingData, faction: int) -> Texture2D:

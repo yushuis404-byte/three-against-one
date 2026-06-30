@@ -31,6 +31,22 @@
 		"scale": 1.04,
 		"texture": "res://assets/texture/Elven Capital.png"
 	},
+	"lumber_camp": {
+		"footprint": [
+			1.0,
+			1.0
+		],
+		"offset": [
+			0.0,
+			0.0
+		],
+		"preview_cell": [
+			33.0,
+			11.0
+		],
+		"scale": 0.98,
+		"texture": "res://assets/texture/Logging camp.png"
+	},
 	"orc_capital": {
 		"footprint": [
 			2.0,
@@ -47,18 +63,34 @@
 		"scale": 1.14,
 		"texture": "res://assets/texture/Orc Capital.png"
 	},
-	"stone": {
+	"quarry": {
 		"footprint": [
 			1,
 			1
+		],
+		"offset": [
+			0.0,
+			0.0
+		],
+		"preview_cell": [
+			33,
+			11
+		],
+		"scale": 1.0,
+		"texture": "res://assets/texture/Quarry.png"
+	},
+	"stone": {
+		"footprint": [
+			1.0,
+			1.0
 		],
 		"offset": [
 			0.0350000001490116,
 			-0.0649999976158142
 		],
 		"preview_cell": [
-			35,
-			43
+			35.0,
+			43.0
 		],
 		"scale": 1.4,
 		"texture": "res://assets/texture/stone.png"
