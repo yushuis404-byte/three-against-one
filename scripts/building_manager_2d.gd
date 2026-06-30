@@ -27,6 +27,7 @@ var _demolition_control_building_id := -1
 
 var _grid_manager: Node = null
 var _turn_manager: Node = null
+var _network_game_service: Node = null
 var _territory_mgr: Node = null
 var _fog_mgr: Node = null
 var _resource_mgr: Node = null
@@ -107,6 +108,107 @@ func set_turn_manager(tm: Node) -> void:
 		tm.player_turn_started.connect(_on_player_turn_started)
 		tm.round_ended.connect(_on_round_ended)
 	_configure_services()
+
+
+func set_network_game_service(service: Node) -> void:
+	_network_game_service = service
+
+
+func _is_network_game() -> bool:
+	return _network_game_service != null and _network_game_service.has_method("is_network_game") and bool(_network_game_service.call("is_network_game"))
+
+
+func _make_building_key(data: BuildingData) -> Dictionary:
+	if data == null:
+		return {}
+	return {
+		"name": data.name,
+		"category": int(data.category),
+	}
+
+
+func _find_building_template_from_key(key: Dictionary) -> BuildingData:
+	var name := str(key.get("name", ""))
+	var category := int(key.get("category", -1))
+	var templates_by_category: Dictionary = BuildingData.get_templates()
+	if category >= 0 and templates_by_category.has(category):
+		for data_variant in templates_by_category[category]:
+			var data: BuildingData = data_variant
+			if data.name == name:
+				return data
+	for category_key in templates_by_category:
+		for data_variant in templates_by_category[category_key]:
+			var data: BuildingData = data_variant
+			if data.name == name:
+				return data
+	return null
+
+
+func _request_network_build(data: BuildingData, faction: int, pos: Vector2i) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "build_place", {
+			"building": _make_building_key(data),
+			"x": pos.x,
+			"y": pos.y,
+			"faction": faction,
+		})
+		return true
+	return false
+
+
+func _request_network_recruit(building_id: int, unit_template_id: String, count: int) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "recruit", {
+			"building_id": building_id,
+			"unit_template_id": unit_template_id,
+			"count": count,
+		})
+		return true
+	return false
+
+
+func request_network_build(player: int, building_key: Dictionary, pos: Vector2i) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	var data := _find_building_template_from_key(building_key)
+	if data == null:
+		return false
+	var previous_player := int(_turn_manager.current_player)
+	_turn_manager.current_player = player
+	var ok := _check_build_payment_available(data, player)
+	if ok:
+		ok = _can_place(data, player, pos)
+	if ok:
+		_spend_building_cost(data, player)
+		if _turn_manager != null:
+			ok = _turn_manager.spend_ap(player, 2)
+	if ok:
+		ok = place_building(data, player, pos)
+	_turn_manager.current_player = previous_player
+	if ok:
+		queue_redraw()
+	return ok
+
+
+func request_network_recruit(player: int, building_id: int, unit_template_id: String, count: int) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	var building: Dictionary = _get_building_by_id(building_id)
+	if building.is_empty() or int(building.get("faction", -1)) != player:
+		return false
+	var previous_player := int(_turn_manager.current_player)
+	_turn_manager.current_player = player
+	var ok: bool = _request_recruitment_local(building_id, unit_template_id, count)
+	_turn_manager.current_player = previous_player
+	return ok
 
 
 func set_resource_tracker(rt: Node) -> void:
@@ -1496,6 +1598,35 @@ func _check_placement_valid(pos: Vector2i) -> bool:
 	return _can_place(data, faction, pos)
 
 
+func _check_build_payment_available(data: BuildingData, faction: int) -> bool:
+	if data == null:
+		return false
+	if _resource_tracker:
+		if _resource_tracker.get_resource(faction, "gold") < data.cost_gold:
+			return false
+		if _resource_tracker.get_resource(faction, "wood") < data.cost_wood:
+			return false
+		if _resource_tracker.get_resource(faction, "stone") < data.cost_stone:
+			return false
+		if _resource_tracker.get_resource(faction, "iron") < data.cost_iron:
+			return false
+		if _resource_tracker.get_resource(faction, "food") < data.cost_food:
+			return false
+	if _turn_manager and _turn_manager.get_ap(faction) < 2:
+		return false
+	return true
+
+
+func _spend_building_cost(data: BuildingData, faction: int) -> void:
+	if data == null or _resource_tracker == null:
+		return
+	_resource_tracker.spend_resource(faction, "gold", data.cost_gold)
+	_resource_tracker.spend_resource(faction, "wood", data.cost_wood)
+	_resource_tracker.spend_resource(faction, "stone", data.cost_stone)
+	_resource_tracker.spend_resource(faction, "iron", data.cost_iron)
+	_resource_tracker.spend_resource(faction, "food", data.cost_food)
+
+
 func _do_placement(pos: Vector2i) -> void:
 	## 执行建造：扣资源 -> 扣 AP -> 放置建筑
 	if not _placement_data:
@@ -1505,6 +1636,9 @@ func _do_placement(pos: Vector2i) -> void:
 	var faction: int = _placement_faction
 
 	# 扣资源
+	if _request_network_build(data, faction, pos):
+		cancel_placement()
+		return
 	if _resource_tracker:
 		_resource_tracker.spend_resource(faction, "gold", data.cost_gold)
 		_resource_tracker.spend_resource(faction, "wood", data.cost_wood)
@@ -1543,6 +1677,12 @@ func _in_bounds(gx: int, gy: int) -> bool:
 
 
 func request_recruitment(building_id: int, unit_template_id: String, count: int) -> bool:
+	if _request_network_recruit(building_id, unit_template_id, count):
+		return true
+	return _request_recruitment_local(building_id, unit_template_id, count)
+
+
+func _request_recruitment_local(building_id: int, unit_template_id: String, count: int) -> bool:
 	var ok: bool = _recruitment_service.request_recruitment(building_id, unit_template_id, count)
 	if ok:
 		var building: Dictionary = _get_building_by_id(building_id)

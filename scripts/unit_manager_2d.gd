@@ -32,6 +32,7 @@ var _attack_range_tiles: Array[Vector2i] = []
 var _throw_range_tiles: Array[Vector2i] = []
 
 var _turn_manager: Node = null
+var _network_game_service: Node = null
 var _grid_manager: Node = null
 var _fog_manager: Node = null
 var _template_registry: Node = null
@@ -176,7 +177,90 @@ func set_turn_manager(tm: Node) -> void:
 		tm.player_turn_ended.connect(_on_player_turn_ended)
 
 
+func set_network_game_service(service: Node) -> void:
+	_network_game_service = service
+
+
+func _is_network_game() -> bool:
+	return _network_game_service != null and _network_game_service.has_method("is_network_game") and bool(_network_game_service.call("is_network_game"))
+
+
+func _request_network_unit_move(unit_id: int, target: Vector2i) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "unit_move", {
+			"unit_id": unit_id,
+			"x": target.x,
+			"y": target.y,
+		})
+		return true
+	return false
+
+
+func _request_network_unit_attack(attacker_id: int, target_id: int) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "unit_attack", {
+			"attacker_id": attacker_id,
+			"target_id": target_id,
+		})
+		return true
+	return false
+
+
 # ========== 单位管理 ==========
+
+func _request_network_throw_beast(slinger_id: int, beast_id: int, target: Vector2i) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "throw_beast", {
+			"slinger_id": slinger_id,
+			"beast_id": beast_id,
+			"x": target.x,
+			"y": target.y,
+		})
+		return true
+	return false
+
+
+func _request_network_fog_skill(action_type: String, caster_id: int, target: Vector2i) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", action_type, {
+			"caster_id": caster_id,
+			"x": target.x,
+			"y": target.y,
+		})
+		return true
+	return false
+
+
+func _request_network_form_warband(leader_id: int, member_ids: Array[int]) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "warband_form", {
+			"leader_id": leader_id,
+			"member_ids": member_ids,
+		})
+		return true
+	return false
+
+
+func _request_network_disband_warband(unit_id: int) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "warband_disband", {
+			"unit_id": unit_id,
+		})
+		return true
+	return false
+
 
 func place_initial_units() -> void:
 	## 每阵营初始：1工人 + 1斥候 + 1守卫
@@ -270,6 +354,182 @@ func get_all_units() -> Array:
 func get_unit_by_id(uid: int) -> Dictionary:
 	## 公开版 _get_unit_by_id
 	return _get_unit_by_id(uid)
+
+
+func request_network_move(player: int, unit_id: int, target: Vector2i) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	if not _in_bounds(target.x, target.y):
+		return false
+	var unit: Dictionary = _get_unit_by_id(unit_id)
+	if unit.is_empty() or int(unit.get("faction", -1)) != player:
+		return false
+	if _is_active_warband_member(unit):
+		var warband_reachable: Array = _calc_warband_reachable(unit)
+		if not target in warband_reachable:
+			return false
+		return _execute_as_player(player, func() -> bool:
+			_selected_id = unit_id
+			_move_warband_to(unit, target)
+			return true
+		)
+	var reachable: Array = _calc_reachable(unit)
+	if not target in reachable:
+		return false
+	return _execute_as_player(player, func() -> bool:
+		_selected_id = unit_id
+		_move_selected_to(target)
+		return true
+	)
+
+
+func request_network_attack(player: int, attacker_id: int, target_id: int) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	var target: Dictionary = _get_unit_by_id(target_id)
+	if attacker.is_empty() or target.is_empty():
+		return false
+	if int(attacker.get("faction", -1)) != player:
+		return false
+	if int(target.get("faction", -1)) == player:
+		return false
+	if _is_retreat_unselectable_for_attacker(attacker, target):
+		return false
+	return _execute_as_player(player, func() -> bool:
+		_selected_id = attacker_id
+		if _can_ranged_attack(attacker, target):
+			_initiate_ranged_combat(attacker_id, target_id)
+			return true
+		if _is_adjacent(attacker.get("grid_pos", Vector2i.ZERO), target.get("grid_pos", Vector2i.ZERO)):
+			_initiate_combat(attacker_id, target_id)
+			return true
+		return _try_move_to_attack(attacker, target)
+	)
+
+
+func request_network_throw_beast(player: int, slinger_id: int, beast_id: int, target: Vector2i) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	if not _in_bounds(target.x, target.y):
+		return false
+	var slinger: Dictionary = _get_unit_by_id(slinger_id)
+	var beast: Dictionary = _get_unit_by_id(beast_id)
+	if slinger.is_empty() or beast.is_empty():
+		return false
+	if int(slinger.get("faction", -1)) != player or int(beast.get("faction", -1)) != player:
+		return false
+	if not _is_orc_slinger(slinger) or not _is_orc_beast(beast):
+		return false
+	if not _is_adjacent(slinger.get("grid_pos", Vector2i.ZERO), beast.get("grid_pos", Vector2i.ZERO)):
+		return false
+	return _execute_as_player(player, func() -> bool:
+		_selected_id = slinger_id
+		_throw_beast_source_id = beast_id
+		return _try_throw_beast_to(target)
+	)
+
+
+func request_network_fog_reveal(player: int, caster_id: int, target: Vector2i) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	if player != 0:
+		return false
+	var caster: Dictionary = _get_unit_by_id(caster_id)
+	if caster.is_empty() or int(caster.get("faction", -1)) != player:
+		return false
+	return _execute_as_player(player, func() -> bool:
+		_selected_id = caster_id
+		_fog_reveal_mode = true
+		return _try_reveal_fog_at(target)
+	)
+
+
+func request_network_fog_conceal(player: int, caster_id: int, target: Vector2i) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	if player != 0:
+		return false
+	var caster: Dictionary = _get_unit_by_id(caster_id)
+	if caster.is_empty() or int(caster.get("faction", -1)) != player:
+		return false
+	return _execute_as_player(player, func() -> bool:
+		_selected_id = caster_id
+		_fog_conceal_mode = true
+		return _try_conceal_fog_at(target)
+	)
+
+
+func request_network_form_warband(player: int, leader_id: int, member_ids: Array) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	if player != 2:
+		return false
+	var normalized_ids: Array[int] = []
+	for raw_id in member_ids:
+		var member_id: int = int(raw_id)
+		if not member_id in normalized_ids:
+			normalized_ids.append(member_id)
+	if not leader_id in normalized_ids:
+		normalized_ids.push_front(leader_id)
+	if normalized_ids.size() < WARBAND_MIN_MEMBERS or normalized_ids.size() > WARBAND_MAX_MEMBERS:
+		return false
+	var leader: Dictionary = _get_unit_by_id(leader_id)
+	if leader.is_empty() or int(leader.get("faction", -1)) != player:
+		return false
+	var leader_pos: Vector2i = leader.get("grid_pos", Vector2i.ZERO)
+	for member_id in normalized_ids:
+		var member: Dictionary = _get_unit_by_id(member_id)
+		if member.is_empty() or int(member.get("faction", -1)) != player:
+			return false
+		if member_id != leader_id and int(member.get("warband_id", -1)) >= 0:
+			return false
+		if _grid_distance(leader_pos, member.get("grid_pos", Vector2i.ZERO)) > WARBAND_RADIUS:
+			return false
+	return _execute_as_player(player, func() -> bool:
+		_warband_selection_leader_id = leader_id
+		_warband_selection_ids = normalized_ids.duplicate()
+		return _confirm_warband_selection_local()
+	)
+
+
+func request_network_disband_warband(player: int, unit_id: int) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	var unit: Dictionary = _get_unit_by_id(unit_id)
+	if unit.is_empty() or int(unit.get("faction", -1)) != player:
+		return false
+	return _execute_as_player(player, func() -> bool:
+		_selected_id = unit_id
+		return _disband_warband_local(unit_id)
+	)
+
+
+func _execute_as_player(player: int, callback: Callable) -> bool:
+	var previous_player := -1
+	if _turn_manager != null:
+		previous_player = int(_turn_manager.current_player)
+		_turn_manager.current_player = player
+	var previous_selected := _selected_id
+	var result: bool = bool(callback.call())
+	if _turn_manager != null and previous_player >= 0:
+		_turn_manager.current_player = previous_player
+	_selected_id = previous_selected
+	return result
 
 
 func apply_building_damage(unit_id: int, attacker_faction: int, damage: int) -> bool:
@@ -471,9 +731,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if _fog_conceal_mode:
+		if _request_network_fog_skill("unit_fog_conceal", _selected_id, gpos):
+			return
 		_try_conceal_fog_at(gpos)
 		return
 	if _fog_reveal_mode:
+		if _request_network_fog_skill("unit_fog_reveal", _selected_id, gpos):
+			return
 		_try_reveal_fog_at(gpos)
 		return
 
@@ -482,6 +746,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if _selected_id >= 0 and _throw_beast_source_id >= 0:
+		if _request_network_throw_beast(_selected_id, _throw_beast_source_id, gpos):
+			return
 		_try_throw_beast_to(gpos)
 		return
 
@@ -495,6 +761,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	# 检查是否点击了可达格（移动）
 	if _selected_id >= 0 and gpos in _reachable_tiles:
+		if _request_network_unit_move(_selected_id, gpos):
+			return
 		# 检查是否可驻兵建筑
 		if _turn_manager:
 			var bmgr: Node = get_parent().get_node("BuildingManager2D")
@@ -519,6 +787,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					return
 			var target := get_visible_unit_at(gpos)
 			if not target.is_empty() and target["faction"] != src["faction"]:
+				if _request_network_unit_attack(int(src.get("id", -1)), int(target.get("id", -1))):
+					return
 				if _is_retreat_unselectable_for_attacker(src, target):
 					print("[Combat] Target cannot be selected by this attacker until its next turn.")
 					return
@@ -1017,6 +1287,17 @@ func confirm_warband_selection() -> bool:
 	if _warband_selection_ids.size() < WARBAND_MIN_MEMBERS:
 		print("[Warband] Need at least %d members." % WARBAND_MIN_MEMBERS)
 		return false
+	if _request_network_form_warband(_warband_selection_leader_id, _warband_selection_ids.duplicate()):
+		return true
+	return _confirm_warband_selection_local()
+
+
+func _confirm_warband_selection_local() -> bool:
+	if not _is_warband_selection_active():
+		return false
+	if _warband_selection_ids.size() < WARBAND_MIN_MEMBERS:
+		print("[Warband] Need at least %d members." % WARBAND_MIN_MEMBERS)
+		return false
 	if _turn_manager:
 		var leader: Dictionary = _get_unit_by_id(_warband_selection_leader_id)
 		if leader.is_empty() or int(leader.get("faction", -1)) != int(_turn_manager.current_player):
@@ -1058,6 +1339,12 @@ func cancel_warband_selection() -> void:
 
 func disband_warband(unit_id: int = -1) -> bool:
 	var selected_unit_id: int = unit_id if unit_id >= 0 else _selected_id
+	if _request_network_disband_warband(selected_unit_id):
+		return true
+	return _disband_warband_local(selected_unit_id)
+
+
+func _disband_warband_local(selected_unit_id: int) -> bool:
 	var unit: Dictionary = _get_unit_by_id(selected_unit_id)
 	if unit.is_empty():
 		return false

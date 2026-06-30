@@ -8,7 +8,9 @@ const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_pane
 const VictoryServiceScript = preload("res://scripts/services/victory_service.gd")
 const ScoreRulePanelScript = preload("res://scripts/ui/score_rule_panel.gd")
 const CivilizationRoutePanelScript = preload("res://scripts/ui/civilization_route_panel.gd")
-const DragonPortalManagerScript = preload("res://scripts/dragon_portal_manager_2d.gd")
+const VisibilityServiceScript = preload("res://scripts/services/visibility_service.gd")
+const GameStateSerializerScript = preload("res://scripts/services/game_state_serializer.gd")
+const NetworkGameServiceScript = preload("res://scripts/services/network_game_service.gd")
 ## 主场景控制器 — 2.5D 三人竞技棋
 
 @onready var camera: Camera2D = $GameCamera
@@ -50,9 +52,18 @@ var civilization_route_panel: Control = null
 var civilization_route_button: Button = null
 var creative_mode_button: Button = null
 var wall_blueprint_button: Button = null
-var dragon_portal_manager: Node2D = null
 var wall_blueprint_status_label: Label = null
 var zoom_status_label: Label = null
+var visibility_service: VisibilityService = null
+var game_state_serializer: GameStateSerializer = null
+var network_game_service: NetworkGameService = null
+var network_status_label: Label = null
+var network_ready_label: Label = null
+var network_host_button: Button = null
+var network_join_button: Button = null
+var network_ready_button: Button = null
+var network_address_input: LineEdit = null
+var network_port_input: LineEdit = null
 var _creative_mode_enabled := false
 var _selected_unit_skill_view: Dictionary = {}
 var _wall_preview_valid: bool = false
@@ -138,7 +149,6 @@ func _setup_game() -> void:
 	if unit_manager.has_method("set_civilization_rules"):
 		unit_manager.set_civilization_rules(civilization_rules)
 	unit_manager.place_initial_units()
-	_init_dragon_portal_manager()
 
 	# 中立生物系统初始化
 	neutral_unit_manager.set_turn_manager(turn_manager)
@@ -187,21 +197,11 @@ func _setup_game() -> void:
 	_init_civilization_route_panel()
 	_init_civilization_route_button()
 	_init_wall_blueprint_ui()
+	_init_network_services()
+	_init_network_ui()
 
 	# 所有信号就绪后启动第一回合
 	turn_manager.start_game()
-
-
-func _init_dragon_portal_manager() -> void:
-	if dragon_portal_manager != null:
-		return
-	dragon_portal_manager = DragonPortalManagerScript.new()
-	dragon_portal_manager.name = "DragonPortalManager2D"
-	$GameBoard.add_child(dragon_portal_manager)
-	if dragon_portal_manager.has_method("set_turn_manager"):
-		dragon_portal_manager.call("set_turn_manager", turn_manager)
-	if dragon_portal_manager.has_signal("portal_hovered"):
-		dragon_portal_manager.portal_hovered.connect(_on_resource_hovered)
 
 
 func _hide_civilization_debug_panel() -> void:
@@ -237,8 +237,6 @@ func _on_fog_updated(player: int) -> void:
 	building_manager.queue_redraw()
 	unit_manager.queue_redraw()
 	neutral_unit_manager.queue_redraw()
-	if dragon_portal_manager != null:
-		dragon_portal_manager.queue_redraw()
 
 
 func _on_resource_hovered(text: String) -> void:
@@ -408,7 +406,7 @@ func _init_technology_service() -> void:
 	technology_service = TechnologyServiceScript.new()
 	technology_service.name = "TechnologyService"
 	$GameBoard.add_child(technology_service)
-	technology_service.setup(achievement_service, civilization_rules, resource_tracker)
+	technology_service.setup(achievement_service, civilization_rules)
 	if building_manager != null and building_manager.has_method("set_technology_service"):
 		building_manager.set_technology_service(technology_service)
 	if resource_tracker != null and resource_tracker.has_method("set_technology_service"):
@@ -953,9 +951,229 @@ func _init_action_preview_panel() -> void:
 	unit_manager.action_preview_changed.connect(action_preview_panel.show_preview)
 
 
+func _init_network_services() -> void:
+	visibility_service = VisibilityServiceScript.new()
+	visibility_service.name = "VisibilityService"
+	$GameBoard.add_child(visibility_service)
+	visibility_service.setup($GameBoard/FogOfWar2D)
+
+	game_state_serializer = GameStateSerializerScript.new()
+	game_state_serializer.name = "GameStateSerializer"
+	$GameBoard.add_child(game_state_serializer)
+	game_state_serializer.setup(
+		turn_manager,
+		unit_manager,
+		building_manager,
+		resource_manager,
+		resource_tracker,
+		visibility_service
+	)
+
+	network_game_service = NetworkGameServiceScript.new()
+	network_game_service.name = "NetworkGameService"
+	$GameBoard.add_child(network_game_service)
+	network_game_service.setup(turn_manager, game_state_serializer)
+	network_game_service.set_unit_manager(unit_manager)
+	network_game_service.set_building_manager(building_manager)
+	if technology_service != null and network_game_service.has_method("set_technology_service"):
+		network_game_service.set_technology_service(technology_service)
+	if wall_blueprint_manager != null and network_game_service.has_method("set_wall_blueprint_manager"):
+		network_game_service.set_wall_blueprint_manager(wall_blueprint_manager)
+	if unit_manager.has_method("set_network_game_service"):
+		unit_manager.set_network_game_service(network_game_service)
+	if building_manager.has_method("set_network_game_service"):
+		building_manager.set_network_game_service(network_game_service)
+	if technology_service != null and technology_service.has_method("set_network_game_service"):
+		technology_service.set_network_game_service(network_game_service)
+	if wall_blueprint_manager != null and wall_blueprint_manager.has_method("set_network_game_service"):
+		wall_blueprint_manager.set_network_game_service(network_game_service)
+	network_game_service.network_status_changed.connect(_on_network_status_changed)
+	network_game_service.local_faction_changed.connect(_on_network_local_faction_changed)
+	network_game_service.remote_snapshot_received.connect(_on_network_snapshot_received)
+	if turn_manager.has_signal("player_ready_changed"):
+		turn_manager.player_ready_changed.connect(_on_player_ready_changed)
+	if turn_manager.has_signal("round_action_started"):
+		turn_manager.round_action_started.connect(_on_sync_round_action_started)
+
+
+func _init_network_ui() -> void:
+	network_host_button = Button.new()
+	network_host_button.name = "NetworkHostButton"
+	network_host_button.text = "LAN Host"
+	network_host_button.position = Vector2(468.0, 176.0)
+	network_host_button.size = Vector2(96.0, 30.0)
+	network_host_button.focus_mode = Control.FOCUS_NONE
+	network_host_button.z_index = 90
+	network_host_button.pressed.connect(_on_network_host_pressed)
+	$UI.add_child(network_host_button)
+
+	network_join_button = Button.new()
+	network_join_button.name = "NetworkJoinButton"
+	network_join_button.text = "LAN Join"
+	network_join_button.position = Vector2(570.0, 176.0)
+	network_join_button.size = Vector2(96.0, 30.0)
+	network_join_button.focus_mode = Control.FOCUS_NONE
+	network_join_button.z_index = 90
+	network_join_button.pressed.connect(_on_network_join_pressed)
+	$UI.add_child(network_join_button)
+
+	network_address_input = LineEdit.new()
+	network_address_input.name = "NetworkAddressInput"
+	network_address_input.text = "127.0.0.1"
+	network_address_input.placeholder_text = "Host IP"
+	network_address_input.position = Vector2(672.0, 176.0)
+	network_address_input.size = Vector2(142.0, 30.0)
+	network_address_input.focus_mode = Control.FOCUS_CLICK
+	network_address_input.z_index = 90
+	$UI.add_child(network_address_input)
+
+	network_port_input = LineEdit.new()
+	network_port_input.name = "NetworkPortInput"
+	network_port_input.text = "24531"
+	network_port_input.placeholder_text = "Port"
+	network_port_input.position = Vector2(820.0, 176.0)
+	network_port_input.size = Vector2(68.0, 30.0)
+	network_port_input.focus_mode = Control.FOCUS_CLICK
+	network_port_input.z_index = 90
+	$UI.add_child(network_port_input)
+
+	network_ready_button = Button.new()
+	network_ready_button.name = "NetworkReadyButton"
+	network_ready_button.text = "End Round"
+	network_ready_button.position = Vector2(894.0, 176.0)
+	network_ready_button.size = Vector2(112.0, 30.0)
+	network_ready_button.focus_mode = Control.FOCUS_NONE
+	network_ready_button.z_index = 90
+	network_ready_button.pressed.connect(_on_network_ready_pressed)
+	$UI.add_child(network_ready_button)
+
+	network_status_label = Label.new()
+	network_status_label.name = "NetworkStatusLabel"
+	network_status_label.position = Vector2(468.0, 214.0)
+	network_status_label.size = Vector2(520.0, 24.0)
+	network_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	network_status_label.z_index = 90
+	network_status_label.add_theme_font_size_override("font_size", 13)
+	network_status_label.add_theme_color_override("font_color", Color(0.72, 0.9, 1.0, 0.96))
+	network_status_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	network_status_label.add_theme_constant_override("shadow_offset_x", 1)
+	network_status_label.add_theme_constant_override("shadow_offset_y", 1)
+	$UI.add_child(network_status_label)
+
+	network_ready_label = Label.new()
+	network_ready_label.name = "NetworkReadyLabel"
+	network_ready_label.position = Vector2(468.0, 238.0)
+	network_ready_label.size = Vector2(520.0, 24.0)
+	network_ready_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	network_ready_label.z_index = 90
+	network_ready_label.add_theme_font_size_override("font_size", 13)
+	network_ready_label.add_theme_color_override("font_color", Color(0.9, 0.92, 0.78, 0.96))
+	network_ready_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	network_ready_label.add_theme_constant_override("shadow_offset_x", 1)
+	network_ready_label.add_theme_constant_override("shadow_offset_y", 1)
+	$UI.add_child(network_ready_label)
+	_update_network_ready_label()
+
+
+func _on_network_host_pressed() -> void:
+	if network_game_service != null:
+		var port := _get_network_port()
+		if network_game_service.host_game(port):
+			_show_host_lan_addresses(port)
+
+
+func _on_network_join_pressed() -> void:
+	if network_game_service != null:
+		var address := _get_network_address()
+		var port := _get_network_port()
+		network_game_service.join_game(address, port)
+
+
+func _on_network_ready_pressed() -> void:
+	_on_end_turn()
+
+
+func _on_network_status_changed(text: String) -> void:
+	if network_status_label != null:
+		network_status_label.text = text
+	debug_label.text = text
+	_update_network_ready_label()
+
+
+func _get_network_address() -> String:
+	if network_address_input == null:
+		return "127.0.0.1"
+	var value := network_address_input.text.strip_edges()
+	if value.is_empty():
+		return "127.0.0.1"
+	return value
+
+
+func _get_network_port() -> int:
+	if network_port_input == null:
+		return 24531
+	var value := network_port_input.text.strip_edges()
+	if value.is_empty() or not value.is_valid_int():
+		return 24531
+	return clampi(int(value), 1, 65535)
+
+
+func _show_host_lan_addresses(port: int) -> void:
+	if network_game_service == null or not network_game_service.has_method("get_lan_addresses"):
+		return
+	var addresses: PackedStringArray = network_game_service.call("get_lan_addresses")
+	var address_text := "unknown"
+	if not addresses.is_empty():
+		address_text = ", ".join(addresses)
+	var text := "Host IP: %s | Port: %d" % [address_text, port]
+	if network_status_label != null:
+		network_status_label.text = text
+	debug_label.text = text
+
+
+func _on_network_local_faction_changed(player: int) -> void:
+	if turn_manager.has_method("set_view_player"):
+		turn_manager.call("set_view_player", player)
+	resource_tracker.update_display(player)
+	building_ui.refresh(player)
+	_update_ap_status_label(player)
+	_update_wall_blueprint_ui(player, "")
+	_update_network_ready_label()
+
+
+func _on_network_snapshot_received(snapshot: Dictionary) -> void:
+	_update_network_ready_label()
+	if network_status_label != null:
+		network_status_label.text = "LAN snapshot round %d" % int(snapshot.get("round", 0))
+
+
+func _on_player_ready_changed(_player: int, _ready: bool) -> void:
+	_update_network_ready_label()
+
+
+func _on_sync_round_action_started(_round: int) -> void:
+	_update_network_ready_label()
+
+
+func _update_network_ready_label() -> void:
+	if network_ready_label == null:
+		return
+	var ready: Array = []
+	if turn_manager != null and turn_manager.has_method("get_ready_players"):
+		ready = turn_manager.call("get_ready_players")
+	var parts: PackedStringArray = []
+	for p in range(3):
+		var state := "OK" if p < ready.size() and bool(ready[p]) else "--"
+		parts.append("%s:%s" % [GameCatalog.faction_name(p), state])
+	network_ready_label.text = "Round %d | %s" % [turn_manager.round_number, "  ".join(parts)]
+
+
 func _input(event: InputEvent) -> void:
 	# Enter 或 Tab 都可结束回合（Tab 在编辑器内嵌模式可能被截获）
 	if event is InputEventKey and event.pressed and not event.echo:
+		var focus_owner := get_viewport().gui_get_focus_owner()
+		if focus_owner is LineEdit:
+			return
 		if wall_blueprint_manager != null and wall_blueprint_manager.has_method("is_wall_mode_active"):
 			if bool(wall_blueprint_manager.call("is_wall_mode_active")) and event.keycode == KEY_ENTER:
 				return
@@ -969,6 +1187,9 @@ func _on_end_turn() -> void:
 	if unit_manager.is_in_combat():
 		return
 	if neutral_unit_manager.is_in_combat():
+		return
+	if network_game_service != null and network_game_service.is_network_game():
+		network_game_service.request_end_round()
 		return
 	turn_manager.end_player_turn(turn_manager.current_player)
 
