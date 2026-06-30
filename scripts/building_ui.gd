@@ -50,6 +50,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS  # 根节点不拦截地图区域的点击
 	_build_ui()
 	_select_category(BuildingData.BuildingCategory.ECONOMY)
+	visible = false
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -69,6 +70,13 @@ func set_civilization_rules(rules: Node) -> void:
 	if _civilization_rules != null and _civilization_rules.has_signal("route_changed"):
 		_civilization_rules.route_changed.connect(_on_civilization_route_changed)
 
+
+
+func toggle_panel() -> void:
+	visible = not visible
+
+func hide_panel() -> void:
+	visible = false
 
 func refresh(player: int) -> void:
 	_current_player = player

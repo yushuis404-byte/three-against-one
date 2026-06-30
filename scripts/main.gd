@@ -152,6 +152,7 @@ func _setup_game() -> void:
 		resource_tracker.set_civilization_rules(civilization_rules)
 	resource_tracker.resources_updated.connect(_on_resources_updated)
 	_init_resource_labels()
+	_restyle_top_bar()
 	_init_creative_mode_button()
 	_init_achievement_service()
 	_init_technology_service()
@@ -209,6 +210,36 @@ func _hide_civilization_debug_panel() -> void:
 	if panel != null:
 		panel.visible = false
 
+
+
+func _restyle_top_bar() -> void:
+	# Reposition to full-width unified top bar (Civ 6 style)
+	resource_panel.offset_left = 0.0
+	resource_panel.offset_top = 0.0
+	resource_panel.offset_right = 1920.0
+	resource_panel.offset_bottom = 36.0
+
+	var bar_style := StyleBoxFlat.new()
+	bar_style.bg_color = Color(0.03, 0.03, 0.03, 0.94)
+	bar_style.border_color = Color(0.18, 0.42, 0.18, 0.6)
+	bar_style.border_width_bottom = 2
+	resource_panel.add_theme_stylebox_override("panel", bar_style)
+
+	var hbox: HBoxContainer = resource_panel.get_node("HBox") as HBoxContainer
+	if hbox:
+		# Separator between faction label and resources
+		var sep := VSeparator.new()
+		sep.name = "TopBarSep"
+		hbox.add_child(sep)
+		hbox.move_child(sep, 1)
+
+		var spacer := Control.new()
+		spacer.name = "TopBarSpacer"
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hbox.add_child(spacer)
+
+		turn_label.reparent(hbox)
+		turn_label.add_theme_font_size_override("font_size", 14)
 
 func _on_building_selected(data: BuildingData) -> void:
 	building_manager.start_placement(data, turn_manager.current_player)
@@ -961,6 +992,12 @@ func _input(event: InputEvent) -> void:
 				return
 		if event.keycode == KEY_ENTER or event.keycode == KEY_TAB:
 			_on_end_turn()
+		elif event.keycode == KEY_1:
+			if current_state == GameState.PLAYING and building_ui != null:
+				building_ui.toggle_panel()
+		elif event.keycode == KEY_ESCAPE:
+			if building_ui != null and building_ui.visible:
+				building_ui.hide_panel()
 
 
 func _on_end_turn() -> void:
