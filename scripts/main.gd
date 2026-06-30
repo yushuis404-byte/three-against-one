@@ -1173,6 +1173,18 @@ func _on_network_local_faction_changed(player: int) -> void:
 
 
 func _on_network_snapshot_received(snapshot: Dictionary) -> void:
+	var player: int = int(snapshot.get("player", turn_manager.current_player))
+	if turn_manager.has_method("set_view_player"):
+		turn_manager.call("set_view_player", player)
+	resource_tracker.update_display(player)
+	building_ui.refresh(player)
+	_update_ap_status_label(player)
+	_update_wall_blueprint_ui(player, "")
+	grid_manager.queue_redraw()
+	resource_manager.queue_redraw()
+	building_manager.queue_redraw()
+	unit_manager.queue_redraw()
+	$GameBoard/FogOfWar2D.queue_redraw()
 	_update_network_ready_label()
 	if network_status_label != null:
 		network_status_label.text = "LAN snapshot round %d" % int(snapshot.get("round", 0))

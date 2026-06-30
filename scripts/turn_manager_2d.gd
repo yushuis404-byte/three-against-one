@@ -248,7 +248,9 @@ func apply_network_snapshot(snapshot: Dictionary) -> void:
 		round_number = int(snapshot.get("round", round_number))
 	if snapshot.has("turn_phase"):
 		turn_phase = int(snapshot.get("turn_phase", turn_phase))
-	if snapshot.has("current_player"):
+	if snapshot.has("player"):
+		current_player = int(snapshot.get("player", current_player))
+	elif snapshot.has("current_player"):
 		current_player = int(snapshot.get("current_player", current_player))
 	var ready: Array = snapshot.get("player_ready", [])
 	for p in range(mini(PLAYER_COUNT, ready.size())):
