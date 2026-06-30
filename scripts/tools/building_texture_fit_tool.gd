@@ -10,6 +10,16 @@ const PRESET_TEXTURES := [
 	{"key": "orc_capital", "name": "Orc Capital", "path": "res://assets/texture/Orc Capital.png", "footprint": Vector2i(2, 2), "scale": 1.0},
 	{"key": "gold_mine", "name": "Gold Mine", "path": "res://assets/texture/Gold mine.png", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "stone", "name": "Stone", "path": "res://assets/texture/stone.png", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "lumber_camp", "name": "Lumber Camp", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "quarry", "name": "Quarry", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "farm", "name": "Farm", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "warehouse", "name": "Warehouse", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "iron_mine", "name": "Iron Mine", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "forge", "name": "Forge", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "barracks", "name": "Barracks", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "recruit_camp", "name": "Recruit Camp", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "scout_post", "name": "Scout Post", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "watch_tower", "name": "Watch Tower", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 ]
 
 var _preset_index := 0

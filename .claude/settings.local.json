@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(\"C:/tools/godot/Godot_v4.6.2-stable_win64_console.exe\" --path \"E:/ClaudeProjects/three-against-one\" --headless --check-only)"
+      "Bash(\"C:/tools/godot/Godot_v4.6.2-stable_win64_console.exe\" --path \"E:/ClaudeProjects/three-against-one\" --headless --check-only)",
+      "Bash(python -c \"import cv2; import PIL; print\\('OK'\\)\")",
+      "Bash(pip install *)"
     ]
   }
 }
