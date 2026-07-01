@@ -4,13 +4,10 @@ class_name BuildingData
 enum BuildingCategory {
 	CORE,
 	ECONOMY,
-	STORAGE,
-	EXPANSION,
 	SCOUT,
+	DEFENSE,
 	RECRUITMENT,
 	INDUSTRY,
-	GOLD_CHAIN,
-	RARE,
 	LORD_SPECIAL,
 }
 
@@ -80,9 +77,9 @@ static func _default_garrison_capacity(p_cat: BuildingCategory) -> int:
 	match p_cat:
 		BuildingCategory.CORE:
 			return 4
-		BuildingCategory.EXPANSION, BuildingCategory.SCOUT, BuildingCategory.RECRUITMENT:
+		BuildingCategory.SCOUT, BuildingCategory.DEFENSE, BuildingCategory.RECRUITMENT:
 			return 1
-		BuildingCategory.ECONOMY, BuildingCategory.STORAGE, BuildingCategory.INDUSTRY, BuildingCategory.GOLD_CHAIN, BuildingCategory.RARE, BuildingCategory.LORD_SPECIAL:
+		BuildingCategory.ECONOMY, BuildingCategory.INDUSTRY, BuildingCategory.LORD_SPECIAL:
 			return 2
 		_:
 			return 0
@@ -145,7 +142,7 @@ static func infra_warehouse() -> BuildingData:
 
 static func warehouse_lv1() -> BuildingData:
 	var b := BuildingData.new(
-		"\u4ed3\u5e93 Lv1", BuildingCategory.STORAGE, Vector2i(1, 1),
+		"\u4ed3\u5e93 Lv1", BuildingCategory.ECONOMY, Vector2i(1, 1),
 		0, 25, 15, 0, 0,
 		6, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
@@ -204,7 +201,7 @@ static func forge() -> BuildingData:
 
 static func t1_extraction_tower() -> BuildingData:
 	var b := BuildingData.new(
-		"\u8403\u53d6\u5854", BuildingCategory.RARE, Vector2i(1, 1),
+		"\u8403\u53d6\u5854", BuildingCategory.INDUSTRY, Vector2i(1, 1),
 		0, 35, 25, 5, 0,
 		6, { "magic_dust": 2 },
 		[TerrainData.Terrain.RUINS],
@@ -215,7 +212,7 @@ static func t1_extraction_tower() -> BuildingData:
 	return b
 static func t1_ancient_wood_harvest() -> BuildingData:
 	var b := BuildingData.new(
-		"\u53e4\u6728\u91c7\u96c6\u573a", BuildingCategory.RARE, Vector2i(1, 1),
+		"\u53e4\u6728\u91c7\u96c6\u573a", BuildingCategory.INDUSTRY, Vector2i(1, 1),
 		0, 40, 20, 0, 5,
 		6, { "ancient_wood": 2 },
 		[TerrainData.Terrain.FOREST_ELF],
@@ -273,7 +270,7 @@ static func watch_tower() -> BuildingData:
 
 static func ballista_tower() -> BuildingData:
 	var b := BuildingData.new(
-		"\u5f29\u70ae\u5854", BuildingCategory.SCOUT, Vector2i(1, 1),
+		"\u5f29\u70ae\u5854", BuildingCategory.DEFENSE, Vector2i(1, 1),
 		0, 20, 35, 10, 0,
 		14, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
@@ -293,7 +290,7 @@ static func ballista_tower() -> BuildingData:
 
 static func heavy_ballista_tower() -> BuildingData:
 	var b := BuildingData.new(
-		"\u9ad8\u7ea7\u5f29\u70ae", BuildingCategory.SCOUT, Vector2i(1, 1),
+		"\u9ad8\u7ea7\u5f29\u70ae", BuildingCategory.DEFENSE, Vector2i(1, 1),
 		0, 30, 55, 20, 0,
 		18, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
@@ -313,7 +310,7 @@ static func heavy_ballista_tower() -> BuildingData:
 
 static func stone_cannon_tower() -> BuildingData:
 	var b := BuildingData.new(
-		"\u788e\u77f3\u70ae\u53f0", BuildingCategory.SCOUT, Vector2i(1, 1),
+		"\u788e\u77f3\u70ae\u53f0", BuildingCategory.DEFENSE, Vector2i(1, 1),
 		0, 15, 45, 8, 0,
 		12, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
@@ -339,7 +336,7 @@ static func _configure_defense_attack(b: BuildingData, attack_range: int, damage
 
 static func outpost() -> BuildingData:
 	var b := BuildingData.new(
-		"\u524d\u54e8\u7ad9", BuildingCategory.EXPANSION, Vector2i(1, 1),
+		"\u524d\u54e8\u7ad9", BuildingCategory.ECONOMY, Vector2i(1, 1),
 		0, 30, 20, 0, 5,
 		10, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
@@ -539,14 +536,11 @@ static func get_templates() -> Dictionary:
 	## 返回按分类分组的全部建筑模板
 	return {
 		BuildingCategory.CORE: [town_hall()],
-		BuildingCategory.ECONOMY: [infra_lumber_camp(), infra_quarry(), infra_farm()],
-		BuildingCategory.STORAGE: [infra_warehouse()],
-		BuildingCategory.EXPANSION: [outpost()],
-		BuildingCategory.SCOUT: [scout_post(), watch_tower(), ballista_tower(), heavy_ballista_tower(), stone_cannon_tower()],
+		BuildingCategory.ECONOMY: [infra_lumber_camp(), infra_quarry(), infra_farm(), infra_warehouse(), outpost(), gold_mine_shaft(), mint()],
+		BuildingCategory.SCOUT: [scout_post(), watch_tower()],
+		BuildingCategory.DEFENSE: [ballista_tower(), heavy_ballista_tower(), stone_cannon_tower()],
 		BuildingCategory.RECRUITMENT: [recruit_camp(), barracks_lv1()],
-		BuildingCategory.INDUSTRY: [t1_mine(), forge()],
-		BuildingCategory.GOLD_CHAIN: [gold_mine_shaft(), mint()],
-		BuildingCategory.RARE: [t1_extraction_tower(), t1_ancient_wood_harvest()],
+		BuildingCategory.INDUSTRY: [t1_mine(), forge(), t1_extraction_tower(), t1_ancient_wood_harvest()],
 		BuildingCategory.LORD_SPECIAL: [lord_wind_speaking_tree(), lord_rootweb_shrine(), lord_moonshadow_watchtower(), lord_deep_forge_workshop(), lord_iron_oath_fortress(), lord_vein_lift(), lord_war_drum_camp(), lord_plunder_banner(), lord_flesh_pen()],
 	}
 
@@ -567,7 +561,7 @@ static func _storage_bonus_for(amount: int) -> Dictionary:
 
 static func gold_mine_shaft() -> BuildingData:
 	var b := BuildingData.new(
-		"金矿矿井", BuildingCategory.GOLD_CHAIN, Vector2i(1, 1),
+		"金矿矿井", BuildingCategory.ECONOMY, Vector2i(1, 1),
 		0, 20, 15, 0, 0,
 		6, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
@@ -584,7 +578,7 @@ static func gold_mine_shaft() -> BuildingData:
 
 static func mint() -> BuildingData:
 	var b := BuildingData.new(
-		"金币铸造厂", BuildingCategory.GOLD_CHAIN, Vector2i(1, 1),
+		"金币铸造厂", BuildingCategory.ECONOMY, Vector2i(1, 1),
 		0, 30, 20, 5, 0,
 		6, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,

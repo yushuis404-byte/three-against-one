@@ -7,7 +7,7 @@ static func get_definitions() -> Array:
 		_def("foundation.lumber.first", "\u7b2c\u4e00\u5ea7\u4f10\u6728\u573a", "foundation", [], _cond("building", {"production_key": "wood"}), _reward(1, {"wood": 6})),
 		_def("foundation.quarry.first", "\u7b2c\u4e00\u5ea7\u91c7\u77f3\u573a", "foundation", [], _cond("building", {"production_key": "stone"}), _reward(1, {"stone": 6})),
 		_def("foundation.farm.first", "\u7b2c\u4e00\u5ea7\u519c\u573a", "foundation", [], _cond("building", {"production_key": "food"}), _reward(1, {"food": 6})),
-		_def("foundation.storage.first", "\u7b2c\u4e00\u5ea7\u4ed3\u5e93", "foundation", [], _cond("building", {"category": BuildingData.BuildingCategory.STORAGE}), _reward(1, {"wood": 5, "stone": 5})),
+		_def("foundation.storage.first", "\u7b2c\u4e00\u5ea7\u4ed3\u5e93", "foundation", [], _cond("building", {"category": BuildingData.BuildingCategory.ECONOMY}), _reward(1, {"wood": 5, "stone": 5})),
 		_def("foundation.worker.force", "\u52b3\u529b\u6210\u578b", "foundation", [], _cond("unit_count", {"category": UnitData.UnitCategory.WORKER, "count": 3}), _reward(1, {"food": 5})),
 		_def("foundation.worker.garrison", "\u5de5\u4eba\u5165\u9a7b", "foundation", ["foundation.worker.force"], _cond("building_garrison", {"worker": true}), _reward(1, {})),
 
