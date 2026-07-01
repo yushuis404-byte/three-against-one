@@ -1,18 +1,17 @@
 extends Node2D
-## 采集管理器 — 独立管理工人的资源采集逻辑
-##
-## 工人移动到资源格时由 UnitManager2D 调用 start_gather() 登记
-## 下一回合该阵营开始时结算：工人还在资源格上 → 获得资源 → 资源点消失
 
 const TILE_SIZE := 32.0
 const GRID_CENTER := Vector2(49.5, 27.5)
+const GATHER_DURATION := 5.0
+const GATHER_AP_COST := 1
 
 var _turn_mgr: Node = null
 var _unit_mgr: Node = null
 var _res_mgr: Node = null
 var _tracker: Node = null
+var _network_game_service: Node = null
 
-var _pending_gathers: Array = []  # Array[Dictionary] — { faction, pos: Vector2i, info: Dictionary }
+var _active_gathers: Dictionary = {}
 
 
 func _ready() -> void:
@@ -20,58 +19,228 @@ func _ready() -> void:
 	_unit_mgr = get_parent().get_node("UnitManager2D")
 	_res_mgr = get_parent().get_node("ResourceManager2D")
 	_tracker = get_parent().get_node("ResourceTracker")
-
-	if _turn_mgr:
-		_turn_mgr.player_turn_started.connect(_on_player_turn_started)
-
-
-func start_gather(faction: int, pos: Vector2i, info: Array) -> void:
-	## 被 UnitManager2D 调用：工人到达资源格，登记采集
-	_pending_gathers.append({ "faction": faction, "pos": pos, "info": info })
+	set_process(true)
+	if _turn_mgr != null and _turn_mgr.has_signal("player_turn_ended"):
+		_turn_mgr.player_turn_ended.connect(_on_player_turn_ended)
 
 
-func _on_player_turn_started(player: int) -> void:
-	var i := 0
-	while i < _pending_gathers.size():
-		var g = _pending_gathers[i]
-		if g["faction"] != player:
-			i += 1
+func _process(delta: float) -> void:
+	if _active_gathers.is_empty():
+		return
+	var completed_ids: Array[int] = []
+	var canceled_ids: Array[int] = []
+	for unit_id_variant in _active_gathers.keys():
+		var unit_id: int = int(unit_id_variant)
+		var gather: Dictionary = _active_gathers[unit_id]
+		var player: int = int(gather.get("faction", -1))
+		if _is_player_ready(player):
+			canceled_ids.append(unit_id)
 			continue
+		gather["elapsed"] = float(gather.get("elapsed", 0.0)) + delta
+		_active_gathers[unit_id] = gather
+		if float(gather.get("elapsed", 0.0)) >= GATHER_DURATION:
+			completed_ids.append(unit_id)
+	for unit_id in canceled_ids:
+		cancel_gather(unit_id)
+	for unit_id in completed_ids:
+		_complete_gather(unit_id)
+	queue_redraw()
 
-		# 检查工人是否还在资源格上
-		var still_gathering := false
-		if _unit_mgr and _unit_mgr.has_method("get_unit_at"):
-			var unit: Dictionary = _unit_mgr.get_unit_at(g["pos"])
-			if not unit.is_empty() and unit["faction"] == player:
-				var data: UnitData = unit["data"]
-				if _can_unit_complete_gather(data, g.get("info", [])):
-					still_gathering = true
 
-		if still_gathering:
-			# 检查资源是否还存在
-			if _res_mgr and _res_mgr.has_method("get_gather_result"):
-				var results: Array = _res_mgr.get_gather_result(g["pos"].x, g["pos"].y)
-				if not results.is_empty():
-					if _tracker:
-						for r in results:
-							var entry: Dictionary = r
-							_tracker.add_resource(player, entry["key"], entry["amount"])
-					if _res_mgr.has_method("remove_resource"):
-						_res_mgr.remove_resource(g["pos"].x, g["pos"].y)
-					_show_gather_text(g["pos"], results)
+func set_network_game_service(service: Node) -> void:
+	_network_game_service = service
 
-		# 删除该条采集记录（无论成功与否）
-		_pending_gathers.remove_at(i)
+
+func start_gather(unit_id: int, faction: int, pos: Vector2i, info: Array) -> bool:
+	if unit_id < 0 or info.is_empty():
+		return false
+	var unit: Dictionary = _get_unit(unit_id)
+	if unit.is_empty() or int(unit.get("faction", -1)) != faction:
+		return false
+	if unit.get("grid_pos", Vector2i(-1, -1)) != pos:
+		return false
+	cancel_gather(unit_id)
+	_active_gathers[unit_id] = {
+		"unit_id": unit_id,
+		"faction": faction,
+		"pos": pos,
+		"info": info.duplicate(true),
+		"elapsed": 0.0,
+	}
+	queue_redraw()
+	return true
+
+
+func cancel_gather(unit_id: int) -> void:
+	if _active_gathers.erase(unit_id):
+		queue_redraw()
+
+
+func cancel_gathers_for_units(unit_ids: Array) -> void:
+	var changed := false
+	for raw_id in unit_ids:
+		changed = _active_gathers.erase(int(raw_id)) or changed
+	if changed:
+		queue_redraw()
+
+
+func cancel_gathers_for_player(player: int) -> void:
+	var changed := false
+	for unit_id_variant in _active_gathers.keys():
+		var unit_id: int = int(unit_id_variant)
+		var gather: Dictionary = _active_gathers[unit_id]
+		if int(gather.get("faction", -1)) == player:
+			changed = _active_gathers.erase(unit_id) or changed
+	if changed:
+		queue_redraw()
+
+
+func is_unit_gathering(unit_id: int) -> bool:
+	return _active_gathers.has(unit_id)
+
+
+func apply_network_gather_complete(player: int, unit_id: int, pos: Vector2i, results: Array) -> void:
+	cancel_gather(unit_id)
+	if _turn_mgr != null and _turn_mgr.has_method("spend_ap"):
+		_turn_mgr.call("spend_ap", player, GATHER_AP_COST)
+	if _tracker != null:
+		for result_variant in results:
+			var entry: Dictionary = result_variant
+			_tracker.add_resource(player, str(entry.get("key", "")), int(entry.get("amount", 0)))
+	if _res_mgr != null and _res_mgr.has_method("remove_resource"):
+		_res_mgr.remove_resource(pos.x, pos.y)
+	_show_gather_text(pos, results)
+	queue_redraw()
+
+
+func _on_player_turn_ended(player: int) -> void:
+	cancel_gathers_for_player(player)
+
+
+func _complete_gather(unit_id: int) -> void:
+	if not _active_gathers.has(unit_id):
+		return
+	var gather: Dictionary = _active_gathers[unit_id]
+	_active_gathers.erase(unit_id)
+	var player: int = int(gather.get("faction", -1))
+	var pos: Vector2i = gather.get("pos", Vector2i(-1, -1))
+	if _is_network_client():
+		queue_redraw()
+		return
+	if not _can_complete_gather(unit_id, player, pos):
+		queue_redraw()
+		return
+	var results: Array = _res_mgr.get_gather_result(pos.x, pos.y) if _res_mgr != null and _res_mgr.has_method("get_gather_result") else []
+	if results.is_empty():
+		queue_redraw()
+		return
+	if _turn_mgr != null and _turn_mgr.has_method("spend_ap"):
+		if not bool(_turn_mgr.call("spend_ap", player, GATHER_AP_COST)):
+			queue_redraw()
+			return
+	if _tracker != null:
+		for result_variant in results:
+			var entry: Dictionary = result_variant
+			_tracker.add_resource(player, str(entry.get("key", "")), int(entry.get("amount", 0)))
+	if _res_mgr != null and _res_mgr.has_method("remove_resource"):
+		_res_mgr.remove_resource(pos.x, pos.y)
+	_show_gather_text(pos, results)
+	if _network_game_service != null and _network_game_service.has_method("broadcast_gather_complete"):
+		_network_game_service.call("broadcast_gather_complete", player, unit_id, pos, results)
+	queue_redraw()
+
+
+func _can_complete_gather(unit_id: int, player: int, pos: Vector2i) -> bool:
+	if player < 0:
+		return false
+	var unit: Dictionary = _get_unit(unit_id)
+	if unit.is_empty() or int(unit.get("faction", -1)) != player:
+		return false
+	if unit.get("grid_pos", Vector2i(-1, -1)) != pos:
+		return false
+	if _res_mgr == null or not _res_mgr.has_method("get_gather_result"):
+		return false
+	var results: Array = _res_mgr.get_gather_result(pos.x, pos.y)
+	if results.is_empty():
+		return false
+	if not _can_unit_complete_gather(_get_unit_data(unit), results):
+		return false
+	return true
+
+
+func _draw() -> void:
+	for unit_id_variant in _active_gathers.keys():
+		var unit_id: int = int(unit_id_variant)
+		var gather: Dictionary = _active_gathers[unit_id]
+		var unit: Dictionary = _get_unit(unit_id)
+		if unit.is_empty() or not _is_unit_visible(unit):
+			continue
+		var pos: Vector2i = unit.get("grid_pos", gather.get("pos", Vector2i.ZERO))
+		var world_pos := _grid_to_world(pos.x, pos.y) + Vector2(0, -20)
+		var progress := clampf(float(gather.get("elapsed", 0.0)) / GATHER_DURATION, 0.0, 1.0)
+		draw_circle(world_pos, 10.0, Color(0.05, 0.10, 0.08, 0.55))
+		draw_arc(world_pos, 10.0, -PI / 2.0, -PI / 2.0 + TAU * progress, 24, Color(0.55, 1.0, 0.46, 0.95), 2.5)
+		draw_arc(world_pos, 10.0, 0.0, TAU, 24, Color(0.0, 0.0, 0.0, 0.65), 1.0)
+
+
+func _is_unit_visible(unit: Dictionary) -> bool:
+	if _turn_mgr == null:
+		return true
+	var viewer: int = int(_turn_mgr.get("current_player"))
+	if int(unit.get("faction", -1)) == viewer:
+		return true
+	if _unit_mgr != null and _unit_mgr.has_method("get_visible_unit_at"):
+		var pos: Vector2i = unit.get("grid_pos", Vector2i(-1, -1))
+		var visible_unit: Dictionary = _unit_mgr.call("get_visible_unit_at", pos)
+		return not visible_unit.is_empty() and int(visible_unit.get("id", -1)) == int(unit.get("id", -2))
+	return false
+
+
+func _get_unit(unit_id: int) -> Dictionary:
+	if _unit_mgr == null or not _unit_mgr.has_method("get_unit_by_id"):
+		return {}
+	return _unit_mgr.call("get_unit_by_id", unit_id)
+
+
+func _get_unit_data(unit: Dictionary) -> UnitData:
+	if unit.has("data") and unit["data"] is UnitData:
+		return unit["data"]
+	return UnitData.worker()
+
+
+func _can_unit_complete_gather(data: UnitData, gather_info: Array) -> bool:
+	if data.category == UnitData.UnitCategory.WORKER:
+		return true
+	for result_variant in gather_info:
+		var entry: Dictionary = result_variant
+		if str(entry.get("key", "")) == "food":
+			return true
+	return false
+
+
+func _is_network_client() -> bool:
+	if _network_game_service == null:
+		return false
+	if not _network_game_service.has_method("is_network_game") or not bool(_network_game_service.call("is_network_game")):
+		return false
+	if not _network_game_service.has_method("is_host"):
+		return false
+	return not bool(_network_game_service.call("is_host"))
+
+
+func _is_player_ready(player: int) -> bool:
+	if _turn_mgr == null or not _turn_mgr.has_method("is_player_ready"):
+		return false
+	return bool(_turn_mgr.call("is_player_ready", player))
 
 
 func _show_gather_text(grid_pos: Vector2i, results: Array) -> void:
-	## 在资源格位置创建浮动文字 "+2 木材" 或 "+2 食物+2 木材" 并向上飘散消失
 	var label := Label.new()
 	var parts: PackedStringArray = []
-	for r in results:
-		var entry: Dictionary = r
-		var display: String = GameCatalog.resource_name(str(entry["key"]))
-		parts.append("+%d %s" % [entry["amount"], display])
+	for result_variant in results:
+		var entry: Dictionary = result_variant
+		var display: String = GameCatalog.resource_name(str(entry.get("key", "")))
+		parts.append("+%d %s" % [int(entry.get("amount", 0)), display])
 	label.text = "\n".join(parts)
 	label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
 	label.add_theme_font_size_override("font_size", 14)
@@ -87,15 +256,6 @@ func _show_gather_text(grid_pos: Vector2i, results: Array) -> void:
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
 	tween.tween_callback(label.queue_free)
 
-
-func _can_unit_complete_gather(data: UnitData, gather_info: Array) -> bool:
-	if data.category == UnitData.UnitCategory.WORKER:
-		return true
-	for result in gather_info:
-		var entry: Dictionary = result
-		if str(entry.get("key", "")) == "food":
-			return true
-	return false
 
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:
 	var offset := Vector2(-GRID_CENTER.x * TILE_SIZE, -GRID_CENTER.y * TILE_SIZE)

@@ -23,6 +23,7 @@ const NetworkGameServiceScript = preload("res://scripts/services/network_game_se
 @onready var wall_blueprint_manager: Node2D = $GameBoard/WallBlueprintManager2D
 @onready var turn_label: Label = $UI/TurnLabel
 @onready var resource_tracker: Node = $GameBoard/ResourceTracker
+@onready var gathering_manager: Node2D = $GameBoard/GatheringManager2D
 @onready var resource_panel: Panel = $UI/ResourcePanel
 @onready var building_ui: Control = $UI/BuildingUI
 @onready var recruit_ui: Control = $UI/RecruitUI
@@ -1006,6 +1007,8 @@ func _init_network_services() -> void:
 	network_game_service.setup(turn_manager, game_state_serializer)
 	network_game_service.set_unit_manager(unit_manager)
 	network_game_service.set_building_manager(building_manager)
+	if network_game_service.has_method("set_gathering_manager"):
+		network_game_service.set_gathering_manager(gathering_manager)
 	if technology_service != null and network_game_service.has_method("set_technology_service"):
 		network_game_service.set_technology_service(technology_service)
 	if wall_blueprint_manager != null and network_game_service.has_method("set_wall_blueprint_manager"):
@@ -1014,6 +1017,8 @@ func _init_network_services() -> void:
 		unit_manager.set_network_game_service(network_game_service)
 	if building_manager.has_method("set_network_game_service"):
 		building_manager.set_network_game_service(network_game_service)
+	if gathering_manager.has_method("set_network_game_service"):
+		gathering_manager.set_network_game_service(network_game_service)
 	if technology_service != null and technology_service.has_method("set_network_game_service"):
 		technology_service.set_network_game_service(network_game_service)
 	if wall_blueprint_manager != null and wall_blueprint_manager.has_method("set_network_game_service"):

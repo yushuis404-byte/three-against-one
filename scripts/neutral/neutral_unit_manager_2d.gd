@@ -477,6 +477,16 @@ func is_in_combat() -> bool:
 	return _in_combat
 
 
+func is_combat_involving_player(player: int) -> bool:
+	if not _in_combat:
+		return false
+	var player_unit_id: int = int(_combat_data.get("player_unit_id", -1))
+	if player_unit_id < 0:
+		return false
+	var player_unit: Dictionary = _find_player_unit(player_unit_id)
+	return not player_unit.is_empty() and int(player_unit.get("faction", -1)) == player
+
+
 func engage_combat(player_unit_id: int, neutral_unit_id: int) -> void:
 	## 玩家攻击中立生物的入口，由 UnitManager2D 在检测到点击时调用
 	## Timer 交替攻击，玩家先行

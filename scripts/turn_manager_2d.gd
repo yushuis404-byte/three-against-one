@@ -8,6 +8,7 @@ signal round_started(round: int)
 signal player_turn_started(player: int)
 signal player_turn_ended(player: int)
 signal player_ready_changed(player: int, ready: bool)
+signal view_player_changed(player: int)
 signal round_action_started(round: int)
 signal round_resolve_started(round: int)
 signal round_ended(round: int)
@@ -148,7 +149,7 @@ func set_view_player(player: int) -> void:
 	if player < 0 or player >= PLAYER_COUNT:
 		return
 	current_player = player
-	player_turn_started.emit(player)
+	view_player_changed.emit(player)
 
 
 func _resolve_synchronous_round() -> void:
@@ -252,6 +253,11 @@ func apply_network_snapshot(snapshot: Dictionary) -> void:
 		current_player = int(snapshot.get("player", current_player))
 	elif snapshot.has("current_player"):
 		current_player = int(snapshot.get("current_player", current_player))
+	if snapshot.has("player") and snapshot.has("ap"):
+		var snapshot_player: int = int(snapshot.get("player", -1))
+		if snapshot_player >= 0 and snapshot_player < PLAYER_COUNT:
+			player_ap[snapshot_player] = int(snapshot.get("ap", player_ap[snapshot_player]))
+			ap_changed.emit(snapshot_player, get_ap(snapshot_player))
 	var ready: Array = snapshot.get("player_ready", [])
 	for p in range(mini(PLAYER_COUNT, ready.size())):
 		var value := bool(ready[p])

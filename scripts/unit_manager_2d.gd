@@ -6,6 +6,12 @@ const ORC_BLOOD_AXE_HURT_TEXTURE: Texture2D = preload("res://assets/texture/char
 const ORC_BLOOD_AXE_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Attack01.png")
 const ORC_BLOOD_AXE_DEATH_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Death.png")
 const ORC_HUNTING_BEAST_TEXTURE: Texture2D = preload("res://assets/texture/character/Hunter-Beast/Hunter-tooth Beast.png")
+const ELF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png")
+const ELF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Walk.png")
+const ELF_RANGER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Ranger/Elf-Ranger-Idle.png")
+const ELF_RANGER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Ranger/Elf-Ranger-Walk.png")
+const ELF_ASSASSIN_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Moonshadow Assassin/Elf-Assassin-Idle.png")
+const ELF_ASSASSIN_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Moonshadow Assassin/Elf-Assassin-Walk.png")
 ## 单位管理器 — 放置、绘制、选择、移动、战斗
 ##
 ## 单位绘制在迷雾之下（原型简化），阵营色圆圈 + 中文名 + HP
@@ -39,6 +45,7 @@ var _template_registry: Node = null
 var _building_manager: Node = null
 var _wall_manager: Node = null
 var _technology_service: Node = null
+var _gathering_manager: Node = null
 var _building_effect_service = BuildingEffectServiceScript.new()
 
 # 战斗系统
@@ -103,6 +110,9 @@ const UNIT_ATTACK_INTERVAL := 1.0
 const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
 const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
 const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
+const ELF_WORKER_TEMPLATE_ID := "unit.elf.worker"
+const ELF_RANGER_TEMPLATE_ID := "unit.elf.ranger"
+const ELF_ASSASSIN_TEMPLATE_ID := "unit.elf.guard"
 const ELF_FOG_REVEAL_CASTER_TEMPLATE_ID := "unit.elf.scout"
 const ELF_FOG_CONCEAL_CASTER_TEMPLATE_ID := "unit.elf.guard"
 const SLINGER_THROW_RANGE := 5
@@ -142,6 +152,18 @@ const ORC_HUNTING_BEAST_FRAMES := 6
 const ORC_HUNTING_BEAST_FRAME_SIZE := Vector2(629.0 / 6.0, 55.0)
 const ORC_HUNTING_BEAST_DRAW_SIZE := Vector2(48.0, 25.2)
 const ORC_HUNTING_BEAST_FRAME_SECONDS := 0.12
+const ELF_WORKER_IDLE_FRAMES := 2
+const ELF_WORKER_WALK_FRAMES := 10
+const ELF_WORKER_IDLE_FRAME_SIZE := Vector2(320.0, 320.0)
+const ELF_WORKER_WALK_FRAME_SIZE := Vector2(640.0, 640.0)
+const ELF_WORKER_DRAW_SIZE := Vector2(36.0, 36.0)
+const ELF_WORKER_IDLE_FRAME_SECONDS := 0.22
+const ELF_RANGER_WALK_FRAMES := 9
+const ELF_RANGER_FRAME_SIZE := Vector2(320.0, 320.0)
+const ELF_RANGER_DRAW_SIZE := Vector2(28.8, 28.8)
+const ELF_ASSASSIN_WALK_FRAMES := 10
+const ELF_ASSASSIN_FRAME_SIZE := Vector2(320.0, 320.0)
+const ELF_ASSASSIN_DRAW_SIZE := Vector2(36.0, 36.0)
 const ORC_HUNTING_BEAST_FRAME_OFFSETS := [
 	Vector2(5.9, 0.0),
 	Vector2(3.9, 0.0),
@@ -159,6 +181,7 @@ func _ready() -> void:
 	_building_manager = get_parent().get_node_or_null("BuildingManager2D")
 	_wall_manager = get_parent().get_node_or_null("WallBlueprintManager2D")
 	_technology_service = get_parent().get_node_or_null("TechnologyService")
+	_gathering_manager = get_parent().get_node_or_null("GatheringManager2D")
 	set_process(true)
 
 
@@ -356,6 +379,39 @@ func get_unit_by_id(uid: int) -> Dictionary:
 	return _get_unit_by_id(uid)
 
 
+func _cancel_gather_for_unit(unit_id: int) -> void:
+	if unit_id < 0:
+		return
+	if _gathering_manager == null and is_inside_tree():
+		_gathering_manager = get_parent().get_node_or_null("GatheringManager2D")
+	if _gathering_manager != null and _gathering_manager.has_method("cancel_gather"):
+		_gathering_manager.call("cancel_gather", unit_id)
+
+
+func _cancel_gather_for_units(unit_ids: Array) -> void:
+	if _gathering_manager == null and is_inside_tree():
+		_gathering_manager = get_parent().get_node_or_null("GatheringManager2D")
+	if _gathering_manager != null and _gathering_manager.has_method("cancel_gathers_for_units"):
+		_gathering_manager.call("cancel_gathers_for_units", unit_ids)
+
+
+func _try_start_gather_for_unit(unit: Dictionary) -> void:
+	if unit.is_empty():
+		return
+	if _gathering_manager == null and is_inside_tree():
+		_gathering_manager = get_parent().get_node_or_null("GatheringManager2D")
+	if _gathering_manager == null or not _gathering_manager.has_method("start_gather"):
+		return
+	var pos: Vector2i = unit.get("grid_pos", Vector2i(-1, -1))
+	var res_mgr = get_parent().get_node_or_null("ResourceManager2D")
+	if res_mgr == null or not res_mgr.has_method("get_gather_result"):
+		return
+	var gather_info: Array = res_mgr.get_gather_result(pos.x, pos.y)
+	if not _can_unit_gather(_get_unit_data(unit), gather_info):
+		return
+	_gathering_manager.call("start_gather", int(unit.get("id", -1)), int(unit.get("faction", -1)), pos, gather_info)
+
+
 func request_network_move(player: int, unit_id: int, target: Vector2i) -> bool:
 	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
 		return false
@@ -541,6 +597,7 @@ func apply_building_damage(unit_id: int, attacker_faction: int, damage: int) -> 
 		unit["hp"] = int(unit.get("hp", 0)) - final_damage
 		_play_hit_effect(unit_id, unit.get("grid_pos", Vector2i.ZERO), final_damage)
 		if int(unit.get("hp", 0)) <= 0:
+			_cancel_gather_for_unit(unit_id)
 			unit_killed.emit(attacker_faction, int(unit.get("faction", -1)), unit.duplicate())
 			_move_visuals.erase(unit_id)
 			_hurt_visuals.erase(unit_id)
@@ -633,6 +690,12 @@ func _draw() -> void:
 			_draw_orc_blood_axe(u, draw_pos)
 		elif _is_orc_beast(u):
 			_draw_orc_hunting_beast(u, draw_pos)
+		elif _is_elf_worker(u):
+			_draw_elf_worker(u, draw_pos)
+		elif _is_elf_ranger(u):
+			_draw_elf_ranger(u, draw_pos)
+		elif _is_elf_assassin(u):
+			_draw_elf_assassin(u, draw_pos)
 		else:
 			var color: Color = GameCatalog.faction_color(faction)
 			if _hit_flash.has(uid):
@@ -715,14 +778,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	# 战斗中锁定所有操作（含中立战斗）
-	if _in_combat:
-		return
-	if not _move_visuals.is_empty():
-		return
-	var numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
-	if numgr and numgr.has_method("is_in_combat") and numgr.is_in_combat():
+	if _is_unit_input_locked():
 		return
 
+	var numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
 	var cursor := get_global_mouse_position()
 	var gpos := _world_to_grid(cursor)
 	if not _in_bounds(gpos.x, gpos.y):
@@ -854,13 +913,38 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _is_unit_input_locked() -> bool:
-	if _in_combat:
+	var player := _current_player_id()
+	if _in_combat and _does_active_combat_involve_player(player):
 		return true
-	if not _move_visuals.is_empty():
+	if _has_move_visual_for_player(player):
 		return true
 	var numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+	if numgr and numgr.has_method("is_combat_involving_player"):
+		return bool(numgr.call("is_combat_involving_player", player))
 	if numgr and numgr.has_method("is_in_combat") and numgr.is_in_combat():
 		return true
+	return false
+
+
+func _has_move_visual_for_player(player: int) -> bool:
+	for unit_id in _move_visuals.keys():
+		var unit: Dictionary = _get_unit_by_id(int(unit_id))
+		if not unit.is_empty() and int(unit.get("faction", -1)) == player:
+			return true
+	return false
+
+
+func _does_active_combat_involve_player(player: int) -> bool:
+	var combat_unit_ids: Array[int] = []
+	for key in ["unit_a_id", "unit_b_id", "first_attacker_id", "decision_unit_id", "attacker_id", "defender_id"]:
+		if _combat_data.has(key):
+			var unit_id: int = int(_combat_data.get(key, -1))
+			if unit_id >= 0 and not unit_id in combat_unit_ids:
+				combat_unit_ids.append(unit_id)
+	for unit_id in combat_unit_ids:
+		var unit: Dictionary = _get_unit_by_id(unit_id)
+		if not unit.is_empty() and int(unit.get("faction", -1)) == player:
+			return true
 	return false
 
 
@@ -1224,6 +1308,7 @@ func _try_reveal_fog_at(target: Vector2i) -> bool:
 		return false
 	if _fog_manager == null or not _fog_manager.has_method("reveal_area"):
 		return false
+	_cancel_gather_for_unit(int(caster.get("id", -1)))
 	if _turn_manager != null:
 		var ok: bool = _turn_manager.spend_ap(int(_turn_manager.current_player), FOG_REVEAL_AP_COST)
 		if not ok:
@@ -1251,6 +1336,7 @@ func _try_conceal_fog_at(target: Vector2i) -> bool:
 		return false
 	if _fog_manager == null or not _fog_manager.has_method("add_magic_fog"):
 		return false
+	_cancel_gather_for_unit(int(caster.get("id", -1)))
 	if _turn_manager != null:
 		var ok: bool = _turn_manager.spend_ap(int(_turn_manager.current_player), FOG_CONCEAL_AP_COST)
 		if not ok:
@@ -1309,6 +1395,7 @@ func _confirm_warband_selection_local() -> bool:
 	var warband_id: int = _next_warband_id
 	var formed_count: int = _warband_selection_ids.size()
 	_next_warband_id += 1
+	_cancel_gather_for_units(_warband_selection_ids)
 	for member_id in _warband_selection_ids:
 		var member: Dictionary = _get_unit_by_id(member_id)
 		if member.is_empty():
@@ -1356,6 +1443,7 @@ func _disband_warband_local(selected_unit_id: int) -> bool:
 	for member in _units:
 		if int(member.get("warband_id", -1)) != warband_id:
 			continue
+		_cancel_gather_for_unit(int(member.get("id", -1)))
 		member.erase("warband_id")
 		member.erase("warband_leader_id")
 		member.erase("warband_turn")
@@ -1406,7 +1494,8 @@ func _update_action_preview() -> void:
 	if _fog_reveal_mode or _fog_conceal_mode:
 		_emit_action_preview({})
 		return
-	if _selected_id < 0 or _in_combat or not _move_visuals.is_empty():
+	var player := _current_player_id()
+	if _selected_id < 0 or (_in_combat and _does_active_combat_involve_player(player)) or _has_move_visual_for_player(player):
 		_emit_action_preview({})
 		return
 	var attacker: Dictionary = _get_unit_by_id(_selected_id)
@@ -1745,6 +1834,7 @@ func _start_building_attack(attacker: Dictionary, building: Dictionary) -> void:
 	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
 	if bmgr == null or not bmgr.has_method("damage_building") or not bmgr.has_method("get_building_by_id"):
 		return
+	_cancel_gather_for_unit(int(attacker.get("id", -1)))
 	_in_combat = true
 	_combat_sequence_id += 1
 	_combat_data = {}
@@ -1848,6 +1938,7 @@ func _remove_unit_after_attack(target_id: int, attacker: Dictionary) -> void:
 		if int(_units[i].get("id", -1)) != target_id:
 			continue
 		var loser: Dictionary = _units[i]
+		_cancel_gather_for_unit(target_id)
 		unit_killed.emit(int(attacker.get("faction", -1)), int(loser.get("faction", -1)), loser.duplicate())
 		_apply_kill_food_reward(attacker)
 		_move_visuals.erase(target_id)
@@ -1924,6 +2015,8 @@ func _try_throw_beast_to(target: Vector2i) -> bool:
 			print("[Unit] Not enough AP for beast throw.")
 			return false
 	var from: Vector2i = beast.get("grid_pos", Vector2i.ZERO)
+	_cancel_gather_for_unit(int(slinger.get("id", -1)))
+	_cancel_gather_for_unit(int(beast.get("id", -1)))
 	beast["grid_pos"] = landing
 	beast["has_moved"] = true
 	_update_dragon_lair_location_after_move(beast, from, landing)
@@ -1979,6 +2072,7 @@ func _move_selected_to(target: Vector2i) -> void:
 					# AP 不足，回退
 					break
 
+			_cancel_gather_for_unit(int(u.get("id", -1)))
 			u["grid_pos"] = target
 			u["has_moved"] = true
 			_update_dragon_lair_location_after_move(u, from, target)
@@ -1997,13 +2091,7 @@ func _move_selected_to(target: Vector2i) -> void:
 				numgr.queue_redraw()
 
 			# 工人到达资源格 → 通知采集管理器
-			var gather_mgr = get_parent().get_node("GatheringManager2D")
-			if gather_mgr and gather_mgr.has_method("start_gather"):
-				var res_mgr = get_parent().get_node("ResourceManager2D")
-				if res_mgr and res_mgr.has_method("get_gather_result"):
-					var gather_info: Array = res_mgr.get_gather_result(target.x, target.y)
-					if _can_unit_gather(data, gather_info):
-						gather_mgr.start_gather(u["faction"], target, gather_info)
+			_try_start_gather_for_unit(u)
 
 			# 移动后自动取消选择
 			_clear_selection()
@@ -2033,6 +2121,7 @@ func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
 
 	for u in _units:
 		if u["id"] == attacker_id:
+			_cancel_gather_for_unit(attacker_id)
 			u["grid_pos"] = approach_tile
 			u["has_moved"] = true
 			_update_dragon_lair_location_after_move(u, from, approach_tile)
@@ -2141,13 +2230,13 @@ func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
 
 func _has_orc_blood_axe_units() -> bool:
 	for unit in _units:
-		if _is_orc_blood_axe(unit) or _is_orc_beast(unit):
+		if _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
 			return true
 	return false
 
 
 func _uses_orc_sprite(unit: Dictionary) -> bool:
-	return _is_orc_blood_axe(unit) or _is_orc_beast(unit)
+	return _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
 
 
 func _is_orc_blood_axe(unit: Dictionary) -> bool:
@@ -2160,6 +2249,89 @@ func _is_orc_slinger(unit: Dictionary) -> bool:
 
 func _is_orc_beast(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == ORC_BEAST_TEMPLATE_ID
+
+
+func _is_elf_worker(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ELF_WORKER_TEMPLATE_ID
+
+
+func _is_elf_ranger(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ELF_RANGER_TEMPLATE_ID
+
+
+func _is_elf_assassin(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ELF_ASSASSIN_TEMPLATE_ID
+
+
+func _draw_elf_worker(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var texture: Texture2D = ELF_WORKER_IDLE_TEXTURE
+	var frame_size: Vector2 = ELF_WORKER_IDLE_FRAME_SIZE
+	var frame_count: int = ELF_WORKER_IDLE_FRAMES
+	var frame: int = 0
+	if is_moving:
+		texture = ELF_WORKER_WALK_TEXTURE
+		frame_size = ELF_WORKER_WALK_FRAME_SIZE
+		frame_count = ELF_WORKER_WALK_FRAMES
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(frame_count))), 0, frame_count - 1)
+	else:
+		var seconds: float = float(Time.get_ticks_msec()) / 1000.0
+		frame = int(floor(seconds / ELF_WORKER_IDLE_FRAME_SECONDS)) % frame_count
+	var src := Rect2(Vector2(frame_size.x * frame, 0.0), frame_size)
+	var dst := Rect2(-ELF_WORKER_DRAW_SIZE * 0.5, ELF_WORKER_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_elf_assassin(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var frame: int = 0
+	var texture: Texture2D = ELF_ASSASSIN_IDLE_TEXTURE
+	var frame_size: Vector2 = ELF_ASSASSIN_FRAME_SIZE
+	if is_moving:
+		texture = ELF_ASSASSIN_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(ELF_ASSASSIN_WALK_FRAMES))), 0, ELF_ASSASSIN_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(frame_size.x * frame, 0.0), frame_size)
+	var dst := Rect2(-ELF_ASSASSIN_DRAW_SIZE * 0.5, ELF_ASSASSIN_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_elf_ranger(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var frame: int = 0
+	var texture: Texture2D = ELF_RANGER_IDLE_TEXTURE
+	if is_moving:
+		texture = ELF_RANGER_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(ELF_RANGER_WALK_FRAMES))), 0, ELF_RANGER_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(ELF_RANGER_FRAME_SIZE.x * frame, 0.0), ELF_RANGER_FRAME_SIZE)
+	var dst := Rect2(-ELF_RANGER_DRAW_SIZE * 0.5, ELF_RANGER_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_orc_hunting_beast(unit: Dictionary, draw_pos: Vector2) -> void:
@@ -2705,6 +2877,7 @@ func _remove_unit_from_miasma(unit_index: int) -> void:
 		return
 	var unit: Dictionary = _units[unit_index]
 	var uid: int = int(unit.get("id", -1))
+	_cancel_gather_for_unit(uid)
 	_move_visuals.erase(uid)
 	_hurt_visuals.erase(uid)
 	_attack_visuals.erase(uid)
@@ -2746,6 +2919,7 @@ func _garrison_unit_to(building_id: int, target: Vector2i) -> void:
 				bmgr.garrison_unit(building_id, u)
 
 			# 从单位列表移除
+			_cancel_gather_for_unit(int(u.get("id", -1)))
 			_units.erase(u)
 			_clear_selection()
 			queue_redraw()
@@ -2770,6 +2944,10 @@ func _move_warband_to(selected_unit: Dictionary, target: Vector2i) -> void:
 		if not ok:
 			return
 	var delta: Vector2i = target - from
+	var moving_ids: Array[int] = []
+	for member_for_cancel in members:
+		moving_ids.append(int(member_for_cancel.get("id", -1)))
+	_cancel_gather_for_units(moving_ids)
 	for member in members:
 		var member_from: Vector2i = member.get("grid_pos", Vector2i.ZERO)
 		var member_to: Vector2i = member_from + delta
@@ -2845,6 +3023,7 @@ func _begin_tactical_encounter(initiator_id: int, target_id: int) -> bool:
 
 
 func _start_locked_duel(first_attacker_id: int, second_unit_id: int) -> void:
+	_cancel_gather_for_unit(first_attacker_id)
 	if _combat_timer:
 		_combat_timer.stop()
 		_combat_timer.queue_free()
@@ -3036,6 +3215,7 @@ func _find_forced_approach_tile(mover: Dictionary, opponent: Dictionary) -> Vect
 
 func _move_unit_without_ap(unit: Dictionary, target: Vector2i) -> void:
 	var from: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	_cancel_gather_for_unit(int(unit.get("id", -1)))
 	unit["grid_pos"] = target
 	unit["has_moved"] = true
 	_update_dragon_lair_location_after_move(unit, from, target)
@@ -3052,6 +3232,7 @@ func _initiate_combat(attacker_id: int, defender_id: int) -> void:
 	if _in_combat:
 		return
 	## 发起决斗：创建 1 秒间隔 Timer，轮流攻击直至死亡
+	_cancel_gather_for_unit(attacker_id)
 	_in_combat = true
 	_combat_data = {
 		"unit_a_id": attacker_id,
@@ -3079,6 +3260,7 @@ func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
 		return
 	if _in_combat:
 		return
+	_cancel_gather_for_unit(attacker_id)
 	_in_combat = true
 	_combat_data = {
 		"mode": "ranged_unit",
@@ -3097,6 +3279,7 @@ func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
 func _initiate_ranged_neutral_combat(attacker_id: int, neutral_id: int, neutral_mgr: Node) -> void:
 	if attacker_id < 0 or neutral_id < 0 or neutral_mgr == null:
 		return
+	_cancel_gather_for_unit(attacker_id)
 	_in_combat = true
 	_combat_data = {
 		"mode": "ranged_neutral",
@@ -3462,6 +3645,7 @@ func remove_unit_by_id(uid: int) -> void:
 	## 公开接口：按 ID 移除单位（供 NeutralUnitManager2D 战斗后调用）
 	for i in range(_units.size() - 1, -1, -1):
 		if _units[i]["id"] == uid:
+			_cancel_gather_for_unit(uid)
 			_move_visuals.erase(uid)
 			_hurt_visuals.erase(uid)
 			_attack_visuals.erase(uid)

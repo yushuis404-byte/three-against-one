@@ -16,6 +16,7 @@ var _turn_manager: Node = null
 var _serializer: GameStateSerializer = null
 var _unit_manager: Node = null
 var _building_manager: Node = null
+var _gathering_manager: Node = null
 var _technology_service: Node = null
 var _wall_blueprint_manager: Node = null
 var _is_network_game := false
@@ -41,6 +42,10 @@ func set_unit_manager(unit_manager: Node) -> void:
 
 func set_building_manager(building_manager: Node) -> void:
 	_building_manager = building_manager
+
+
+func set_gathering_manager(gathering_manager: Node) -> void:
+	_gathering_manager = gathering_manager
 
 
 func set_technology_service(technology_service: Node) -> void:
@@ -219,6 +224,10 @@ func _handle_action_request(player: int, action_type: String, payload: Dictionar
 			_handle_build_place(player, payload)
 		"recruit":
 			_handle_recruit(player, payload)
+		"gather_start":
+			_handle_gather_start(player, payload)
+		"gather_cancel":
+			_handle_gather_cancel(player, payload)
 		"tech_research":
 			_handle_tech_research(player, payload)
 		_:
@@ -338,6 +347,27 @@ func _handle_recruit(player: int, payload: Dictionary) -> void:
 		rpc("_rpc_apply_recruit", player, building_id, unit_template_id, count)
 
 
+func _handle_gather_start(player: int, payload: Dictionary) -> void:
+	if _gathering_manager == null or not _gathering_manager.has_method("start_gather"):
+		return
+	var unit_id: int = int(payload.get("unit_id", -1))
+	var target := Vector2i(int(payload.get("x", -1)), int(payload.get("y", -1)))
+	var info: Array = payload.get("info", [])
+	var ok: bool = bool(_gathering_manager.call("start_gather", unit_id, player, target, info))
+	if not ok:
+		network_status_changed.emit("Gather start rejected")
+	else:
+		rpc("_rpc_apply_gather_start", player, unit_id, target.x, target.y, info)
+
+
+func _handle_gather_cancel(_player: int, payload: Dictionary) -> void:
+	if _gathering_manager == null or not _gathering_manager.has_method("cancel_gather"):
+		return
+	var unit_id: int = int(payload.get("unit_id", -1))
+	_gathering_manager.call("cancel_gather", unit_id)
+	rpc("_rpc_apply_gather_cancel", unit_id)
+
+
 func _handle_tech_research(player: int, payload: Dictionary) -> void:
 	if _technology_service == null or not _technology_service.has_method("request_network_research"):
 		return
@@ -360,6 +390,13 @@ func _broadcast_snapshots() -> void:
 		if faction_to_peer.has(faction):
 			var peer_id: int = int(faction_to_peer[faction])
 			rpc_id(peer_id, "_rpc_receive_snapshot", snapshot)
+
+
+func broadcast_gather_complete(player: int, unit_id: int, pos: Vector2i, results: Array) -> void:
+	if not is_host():
+		return
+	rpc("_rpc_apply_gather_complete", player, unit_id, pos.x, pos.y, results)
+	_broadcast_snapshots()
 
 
 func _on_turn_state_changed() -> void:
@@ -476,6 +513,33 @@ func _rpc_apply_recruit(player: int, building_id: int, unit_template_id: String,
 	if _building_manager == null or not _building_manager.has_method("request_network_recruit"):
 		return
 	_building_manager.call("request_network_recruit", player, building_id, unit_template_id, count)
+
+
+@rpc("authority", "reliable")
+func _rpc_apply_gather_start(player: int, unit_id: int, x: int, y: int, info: Array) -> void:
+	if is_host():
+		return
+	if _gathering_manager == null or not _gathering_manager.has_method("start_gather"):
+		return
+	_gathering_manager.call("start_gather", unit_id, player, Vector2i(x, y), info)
+
+
+@rpc("authority", "reliable")
+func _rpc_apply_gather_cancel(unit_id: int) -> void:
+	if is_host():
+		return
+	if _gathering_manager == null or not _gathering_manager.has_method("cancel_gather"):
+		return
+	_gathering_manager.call("cancel_gather", unit_id)
+
+
+@rpc("authority", "reliable")
+func _rpc_apply_gather_complete(player: int, unit_id: int, x: int, y: int, results: Array) -> void:
+	if is_host():
+		return
+	if _gathering_manager == null or not _gathering_manager.has_method("apply_network_gather_complete"):
+		return
+	_gathering_manager.call("apply_network_gather_complete", player, unit_id, Vector2i(x, y), results)
 
 
 @rpc("authority", "reliable")

@@ -32,9 +32,16 @@ func set_turn_manager(tm: Node) -> void:
 	_turn_manager = tm
 	if tm:
 		tm.player_turn_started.connect(_on_player_turn_started)
+		if tm.has_signal("view_player_changed"):
+			tm.view_player_changed.connect(_on_view_player_changed)
 
 
 func _on_player_turn_started(player: int) -> void:
+	current_player = player
+	queue_redraw()
+
+
+func _on_view_player_changed(player: int) -> void:
 	current_player = player
 	queue_redraw()
 
