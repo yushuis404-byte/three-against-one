@@ -70,6 +70,9 @@ var network_join_button: Button = null
 var network_ready_button: Button = null
 var network_address_input: LineEdit = null
 var network_port_input: LineEdit = null
+var hover_info_card: TextureRect = null
+var hover_info_label: Label = null
+var _last_hover_info_text := ""
 var _creative_mode_enabled := false
 var _selected_unit_skill_view: Dictionary = {}
 var _wall_preview_valid: bool = false
@@ -84,6 +87,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_update_zoom_status_label()
+	_sync_hover_info_card()
 
 
 func _setup_game() -> void:
@@ -152,6 +156,8 @@ func _setup_game() -> void:
 
 	# 单位系统初始化
 	unit_manager.set_turn_manager(turn_manager)
+	if unit_manager.has_signal("unit_hovered"):
+		unit_manager.unit_hovered.connect(_on_resource_hovered)
 	if unit_manager.has_method("set_civilization_rules"):
 		unit_manager.set_civilization_rules(civilization_rules)
 	unit_manager.place_initial_units()
@@ -169,6 +175,7 @@ func _setup_game() -> void:
 	resource_tracker.resources_updated.connect(_on_resources_updated)
 	_init_resource_labels()
 	_restyle_top_bar()
+	_init_hover_info_card()
 	_init_creative_mode_button()
 	_init_achievement_service()
 	_init_technology_service()
@@ -251,6 +258,49 @@ func _restyle_top_bar() -> void:
 		turn_label.add_theme_font_size_override("font_size", 14)
 		turn_label.visible = false
 
+
+func _init_hover_info_card() -> void:
+	debug_label.visible = false
+	hover_info_card = TextureRect.new()
+	hover_info_card.name = "HoverInfoCard"
+	hover_info_card.texture = load("res://assets/小信息.png")
+	hover_info_card.position = Vector2((1920.0 - 360.0) * 0.5, 58.0)
+	hover_info_card.size = Vector2(360.0, 102.0)
+	hover_info_card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hover_info_card.stretch_mode = TextureRect.STRETCH_SCALE
+	hover_info_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_info_card.z_index = 120
+	hover_info_card.visible = false
+	$UI.add_child(hover_info_card)
+
+	hover_info_label = Label.new()
+	hover_info_label.name = "HoverInfoLabel"
+	hover_info_label.position = Vector2(40.0, 30.0)
+	hover_info_label.size = Vector2(280.0, 42.0)
+	hover_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hover_info_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hover_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hover_info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_info_label.add_theme_font_size_override("font_size", 16)
+	hover_info_label.add_theme_color_override("font_color", Color(0.28, 0.16, 0.06, 1.0))
+	hover_info_label.add_theme_color_override("font_shadow_color", Color(1.0, 0.92, 0.72, 0.45))
+	hover_info_label.add_theme_constant_override("shadow_offset_x", 1)
+	hover_info_label.add_theme_constant_override("shadow_offset_y", 1)
+	hover_info_card.add_child(hover_info_label)
+	_sync_hover_info_card(true)
+
+
+func _sync_hover_info_card(force: bool = false) -> void:
+	if hover_info_card == null or hover_info_label == null or debug_label == null:
+		return
+	var text: String = debug_label.text.strip_edges()
+	if not force and text == _last_hover_info_text:
+		return
+	_last_hover_info_text = text
+	hover_info_label.text = text
+	hover_info_card.visible = not text.is_empty()
+
+
 func _on_building_selected(data: BuildingData) -> void:
 	building_manager.start_placement(data, turn_manager.current_player)
 
@@ -281,10 +331,8 @@ func _on_fog_updated(player: int) -> void:
 
 
 func _on_resource_hovered(text: String) -> void:
-	if text.is_empty():
-		debug_label.text = ""
-	else:
-		debug_label.text = text
+	debug_label.text = text
+	_sync_hover_info_card(true)
 
 
 # 三阵营出生点坐标（领土系统 seed）

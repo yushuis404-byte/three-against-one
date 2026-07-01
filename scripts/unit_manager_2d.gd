@@ -27,6 +27,7 @@ signal combat_ended()
 signal hidden_trader_discovered(faction: int)
 signal action_preview_changed(preview: Dictionary)
 signal unit_killed(killer_player: int, victim_player: int, victim: Dictionary)
+signal unit_hovered(text: String)
 
 var grid_cols := 100
 var grid_rows := 56
@@ -83,6 +84,7 @@ var _selection_drag_active: bool = false
 var _selection_drag_start: Vector2 = Vector2.ZERO
 var _selection_drag_current: Vector2 = Vector2.ZERO
 var _selection_drag_moved: bool = false
+var _last_hovered_unit_text := ""
 
 # 战斗视觉效果
 var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
@@ -747,6 +749,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_selection_drag_current = get_global_mouse_position()
 			_selection_drag_moved = _selection_drag_start.distance_to(_selection_drag_current) >= SELECTION_DRAG_THRESHOLD
 			queue_redraw()
+			return
+		_update_hovered_unit_info(get_global_mouse_position())
 		return
 
 	if not event is InputEventMouseButton:
@@ -2221,6 +2225,25 @@ func _finish_move_visual(unit_id: int) -> void:
 				_initiate_combat(unit_id, defender_id)
 				return
 	queue_redraw()
+
+
+func _update_hovered_unit_info(world_pos: Vector2) -> void:
+	var text := ""
+	var grid_pos: Vector2i = _world_to_grid(world_pos)
+	if _in_bounds(grid_pos.x, grid_pos.y):
+		var unit: Dictionary = get_visible_unit_at(grid_pos)
+		if not unit.is_empty():
+			text = _get_unit_data(unit).unit_name
+		else:
+			var neutral_mgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+			if neutral_mgr != null and neutral_mgr.has_method("get_unit_at_world"):
+				var neutral: Dictionary = neutral_mgr.call("get_unit_at_world", world_pos)
+				if not neutral.is_empty():
+					text = str(neutral.get("display_name", "中立单位"))
+	if text == _last_hovered_unit_text:
+		return
+	_last_hovered_unit_text = text
+	unit_hovered.emit(text)
 
 
 func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
