@@ -10,11 +10,13 @@ signal disband_warband_requested(unit_id: int)
 var _panel: Panel
 var _portrait_rect: TextureRect
 var _portrait_fallback: Label
+var _faction_bar: ColorRect
+
+# ── 分隔线 ──
 
 # ── 中部属性区 ──
 var _name_label: Label
 var _cat_label: Label
-var _status_label: Label
 var _hp_heart_1: Label
 var _hp_heart_2: Label
 var _hp_heart_3: Label
@@ -56,30 +58,34 @@ const CATEGORY_LETTERS := {
 }
 
 # ── 尺寸常量 ──
-const PANEL_LEFT := 8.0
-const PANEL_TOP := 612.0
-const PANEL_RIGHT := 608.0
-const PANEL_BOTTOM := 1072.0
-const PANEL_W := 600.0
-const PANEL_H := 460.0
+const PANEL_LEFT := 4.0
+const PANEL_TOP := 880.0
+const PANEL_RIGHT := 694.0
+const PANEL_BOTTOM := 1148.0
+const PANEL_W := 690.0
+const PANEL_H := 268.0
 
-const PORTRAIT_W := 120.0
+const MARGIN_L := 34.0
+const MARGIN_R := 52.0
+const MARGIN_T := 13.0
+const MARGIN_B := 18.0
+const PORTRAIT_W := 130.0
 const COMMAND_W := 80.0
 const DIVIDER_W := 2.0
 
 # ── 颜色 ──
-const CLR_BG := Color(0.08, 0.055, 0.02, 0.96)
-const CLR_BORDER := Color(0.50, 0.35, 0.08, 0.85)
-const CLR_DIVIDER := Color(0.30, 0.20, 0.05, 0.5)
-const CLR_TEXT_WHITE := Color(0.18, 0.10, 0.03)
-const CLR_TEXT_DIM := Color(0.32, 0.20, 0.08)
-const CLR_GREEN := Color(0.45, 0.28, 0.08)
-const CLR_GREEN_DIM := Color(0.28, 0.16, 0.05)
-const CLR_HEART := Color(0.55, 0.12, 0.08)
-const CLR_HEART_EMPTY := Color(0.55, 0.40, 0.25)
-const CLR_PORTRAIT_BG := Color(0.10, 0.07, 0.03)
-const CLR_BTN_BG := Color(0.10, 0.07, 0.03)
-const CLR_BTN_HOVER := Color(0.20, 0.14, 0.05)
+const CLR_BG := Color(0.08, 0.08, 0.08, 0.92)
+const CLR_BORDER := Color(0.722, 0.565, 0.180, 0.5)
+const CLR_DIVIDER := Color(0.651, 0.498, 0.149, 0.5)
+const CLR_TEXT_WHITE := Color(0.227, 0.149, 0.094)
+const CLR_TEXT_DIM := Color(0.420, 0.298, 0.231)
+const CLR_GREEN := Color(0.165, 0.290, 0.118)
+const CLR_GREEN_DIM := Color(0.129, 0.227, 0.086)
+const CLR_HEART := Color(0.761, 0.227, 0.180)
+const CLR_HEART_EMPTY := Color(0.361, 0.290, 0.243)
+const CLR_PORTRAIT_BG := Color(0.176, 0.133, 0.086)
+const CLR_BTN_BG := Color(0.290, 0.227, 0.157)
+const CLR_BTN_HOVER := Color(0.420, 0.314, 0.212)
 
 
 func _ready() -> void:
@@ -95,12 +101,14 @@ func _build_ui() -> void:
 	_panel.offset_top = PANEL_TOP
 	_panel.offset_right = PANEL_RIGHT
 	_panel.offset_bottom = PANEL_BOTTOM
+	_panel.scale = Vector2(0.75, 0.75)
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0, 0, 0, 0)
 	_panel.add_theme_stylebox_override("panel", style)
+	add_child(_panel)
 
-	# Parchment background image
+	# 羊皮纸底图
 	var bg_tex := TextureRect.new()
 	bg_tex.name = "ParchmentBG"
 	bg_tex.offset_left = 0.0
@@ -112,8 +120,6 @@ func _build_ui() -> void:
 	bg_tex.stretch_mode = TextureRect.STRETCH_SCALE
 	bg_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.add_child(bg_tex)
-	add_child(_panel)
-
 
 	# ═══ 分区构建 ═══
 	_build_portrait_section()
@@ -122,12 +128,13 @@ func _build_ui() -> void:
 
 
 func _build_portrait_section() -> void:
-	var cx := PORTRAIT_W / 2.0
-	var cy := PANEL_H / 2.0
-	var frame_size := 108.0
+	var cx := MARGIN_L + PORTRAIT_W / 2.0 + 80.0
+	var frame_size := 110.0
+	var grid_bottom := MARGIN_T + 138.0 + 44.0 + 18.0
+	var py := grid_bottom - frame_size
 
 	_portrait_rect = TextureRect.new()
-	_portrait_rect.position = Vector2(cx - frame_size / 2.0, cy - frame_size / 2.0)
+	_portrait_rect.position = Vector2(cx - frame_size / 2.0, py)
 	_portrait_rect.size = Vector2(frame_size, frame_size)
 	_portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -138,7 +145,7 @@ func _build_portrait_section() -> void:
 		_portrait_rect.texture = tex
 	else:
 		_portrait_fallback = Label.new()
-		_portrait_fallback.position = Vector2(cx - 10, cy - 14)
+		_portrait_fallback.position = Vector2(cx - 10, py + frame_size / 2.0 - 16)
 		_portrait_fallback.add_theme_font_size_override("font_size", 32)
 		_portrait_fallback.add_theme_color_override("font_color", CLR_GREEN)
 		_portrait_fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -146,28 +153,24 @@ func _build_portrait_section() -> void:
 
 
 func _build_stats_section() -> void:
-	var sx := PORTRAIT_W + 16.0
+	var sx := MARGIN_L + PORTRAIT_W + 112.0
 
 	# ═══ 单位名 + 标签 + 状态 ═══
 	_name_label = Label.new()
-	_name_label.position = Vector2(sx, 50)
+	_name_label.position = Vector2(MARGIN_L + 92.0, MARGIN_T + 34)
 	_name_label.add_theme_font_size_override("font_size", 22)
-	_name_label.add_theme_color_override("font_color", CLR_GREEN)
+	_name_label.add_theme_color_override("font_color", CLR_TEXT_DIM)
 	_panel.add_child(_name_label)
 
 	_cat_label = Label.new()
-	_cat_label.position = Vector2(sx + 180, 52)
+	_cat_label.position = Vector2(sx + 2, MARGIN_T + 40)
 	_cat_label.add_theme_font_size_override("font_size", 12)
 	_cat_label.add_theme_color_override("font_color", CLR_TEXT_DIM)
 	_panel.add_child(_cat_label)
 
-	_status_label = Label.new()
-	_status_label.position = Vector2(sx + 230, 52)
-	_status_label.add_theme_font_size_override("font_size", 12)
-	_panel.add_child(_status_label)
 
 	# ═══ HP 爱心 ═══
-	var hp_y := 162.0
+	var hp_y := MARGIN_T + 78.0
 	var hp_label := Label.new()
 	hp_label.position = Vector2(sx, hp_y + 6)
 	hp_label.text = "生命"
@@ -188,11 +191,11 @@ func _build_stats_section() -> void:
 	_panel.add_child(_hp_text)
 
 	# ═══ 属性 2×2 网格 ═══
-	var grid_y := 248.0
-	var col_w := 150.0
-	var row_h := 46.0
+	var grid_y := MARGIN_T + 138.0
+	var col_w := 170.0
+	var row_h := 44.0
 	var icon_ofs := 36.0
-	var val_ofs := 58.0
+	var val_ofs := 66.0
 
 	_make_stat_name(sx, grid_y, "攻击")
 	_atk_icon = _make_icon_texture(sx + icon_ofs, grid_y, "icon_atk")
@@ -210,22 +213,20 @@ func _build_stats_section() -> void:
 	_food_icon = _make_icon_texture(sx + col_w + icon_ofs, grid_y + row_h, "icon_food")
 	_food_label = _make_stat_val(sx + col_w + val_ofs, grid_y + row_h, "1")
 
-
-
 func _build_command_section() -> void:
-	var cx := PANEL_W - COMMAND_W - 12.0
+	var cx := PANEL_W - MARGIN_R - COMMAND_W
 	var btn_w := 76.0
 	var btn_h := 28.0
 	var btn_x := cx + (COMMAND_W - btn_w) / 2.0
 	var gap := 8.0
-	var start_y := 20.0
+	var start_y := MARGIN_T + 6.0
 
 	# 军团按钮
 	var wb_y := start_y + (btn_h + gap) * 3 + 4
 
 	_warband_button = Button.new()
 	_warband_button.position = Vector2(btn_x - 4, wb_y)
-	_warband_button.size = Vector2(btn_w + 4, btn_h)
+	_warband_button.size = Vector2(btn_w + 8, btn_h)
 	_warband_button.text = "组建军团"
 	_warband_button.focus_mode = Control.FOCUS_NONE
 	_warband_button.pressed.connect(_on_warband_button_pressed)
@@ -252,7 +253,7 @@ func _build_command_section() -> void:
 
 	_warband_disband_button = Button.new()
 	_warband_disband_button.position = Vector2(btn_x - 4, wb_y)
-	_warband_disband_button.size = Vector2(btn_w + 4, btn_h)
+	_warband_disband_button.size = Vector2(btn_w + 8, btn_h)
 	_warband_disband_button.text = "解散军团"
 	_warband_disband_button.focus_mode = Control.FOCUS_NONE
 	_warband_disband_button.pressed.connect(_on_warband_disband_pressed)
@@ -260,10 +261,10 @@ func _build_command_section() -> void:
 	_panel.add_child(_warband_disband_button)
 
 	_warband_cost_label = Label.new()
-	_warband_cost_label.position = Vector2(cx - 110, wb_y + btn_h - 4)
-	_warband_cost_label.size = Vector2(100, 32)
+	_warband_cost_label.position = Vector2(cx - 120, wb_y + btn_h - 4)
+	_warband_cost_label.size = Vector2(110, 32)
 	_warband_cost_label.add_theme_font_size_override("font_size", 12)
-	_warband_cost_label.add_theme_color_override("font_color", Color(0.40, 0.25, 0.08))
+	_warband_cost_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.58))
 	_warband_cost_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_panel.add_child(_warband_cost_label)
 
@@ -282,7 +283,7 @@ func _make_heart(x: float, y: float) -> Label:
 
 func _make_stat_name(x: float, y: float, text: String) -> void:
 	var lbl := Label.new()
-	lbl.position = Vector2(x, y + 2)
+	lbl.position = Vector2(x, y)
 	lbl.text = text
 	lbl.add_theme_font_size_override("font_size", 13)
 	lbl.add_theme_color_override("font_color", CLR_TEXT_DIM)
@@ -303,7 +304,7 @@ func _make_icon_texture(x: float, y: float, icon_name: String) -> TextureRect:
 
 func _make_stat_val(x: float, y: float, default_val: String) -> Label:
 	var lbl := Label.new()
-	lbl.position = Vector2(x, y + 2)
+	lbl.position = Vector2(x, y)
 	lbl.text = default_val
 	lbl.add_theme_font_size_override("font_size", 16)
 	lbl.add_theme_color_override("font_color", CLR_TEXT_WHITE)
@@ -319,8 +320,8 @@ func _style_button(btn: Button, primary: bool) -> void:
 		s.bg_color = CLR_BTN_BG
 		s.border_color = CLR_GREEN_DIM
 	else:
-		s.bg_color = Color(0.12, 0.08, 0.03)
-		s.border_color = Color(0.25, 0.16, 0.05, 0.7)
+		s.bg_color = Color(0.03, 0.06, 0.03)
+		s.border_color = Color(0.15, 0.30, 0.15, 0.7)
 	s.border_width_top = 2
 	s.border_width_bottom = 2
 	s.border_width_left = 2
@@ -338,10 +339,10 @@ func _style_button(btn: Button, primary: bool) -> void:
 
 	btn.add_theme_font_size_override("font_size", 13 if primary else 11)
 	btn.add_theme_color_override("font_color", CLR_GREEN if primary else CLR_TEXT_DIM)
-	btn.add_theme_color_override("font_hover_color", Color(0.50, 0.32, 0.10))
+	btn.add_theme_color_override("font_hover_color", Color(0.54, 0.93, 0.54))
 	btn.add_theme_color_override("font_focus_color", CLR_GREEN)
 	if not primary:
-		btn.add_theme_color_override("font_color", Color(0.35, 0.22, 0.10))
+		btn.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
 
 
 # ── 公共接口 ──
@@ -356,31 +357,16 @@ func show_unit(unit: Dictionary) -> void:
 	_current_unit_id = int(unit.get("id", -1))
 	var color: Color = GameCatalog.faction_color(faction)
 
+	# 阵营色条
+	if _faction_bar:
+		_faction_bar.color = color
 
 	# 名称（阵营色）
 	_name_label.text = data.unit_name
-	_name_label.add_theme_color_override("font_color", color)
+	_name_label.add_theme_color_override("font_color", CLR_TEXT_DIM)
 
 	# 分类标签
 	_cat_label.text = CATEGORY_NAMES.get(data.category, "未知")
-
-	# 状态
-	var moved: bool = unit.get("has_moved", false)
-	var statuses: Dictionary = unit.get("statuses", {})
-	var weaken_turns: int = int(statuses.get("poison_weakened_turns", 0))
-
-	if weaken_turns > 0:
-		_status_label.text = "虚弱 %d 回合" % weaken_turns
-		_status_label.add_theme_color_override("font_color", Color(0.35, 0.20, 0.06))
-	elif int(unit.get("warband_id", -1)) >= 0:
-		_status_label.text = "军团中"
-		_status_label.add_theme_color_override("font_color", Color(0.50, 0.22, 0.06))
-	elif moved:
-		_status_label.text = "已移动"
-		_status_label.add_theme_color_override("font_color", Color(0.38, 0.22, 0.06))
-	else:
-		_status_label.text = "可行动"
-		_status_label.add_theme_color_override("font_color", Color(0.28, 0.16, 0.04))
 
 	# HP 爱心
 	var hp: int = unit.get("hp", data.hp_max)
@@ -388,9 +374,9 @@ func show_unit(unit: Dictionary) -> void:
 	_set_hearts(hp, hp_max)
 	_hp_text.text = "%d/%d" % [hp, hp_max]
 	if hp == 0:
-		_hp_text.add_theme_color_override("font_color", Color(0.55, 0.12, 0.08))
+		_hp_text.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
 	elif hp < hp_max:
-		_hp_text.add_theme_color_override("font_color", Color(0.45, 0.25, 0.06))
+		_hp_text.add_theme_color_override("font_color", Color(1.0, 0.7, 0.2))
 	else:
 		_hp_text.add_theme_color_override("font_color", CLR_TEXT_WHITE)
 

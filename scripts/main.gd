@@ -220,13 +220,14 @@ func _restyle_top_bar() -> void:
 	resource_panel.offset_bottom = 36.0
 
 	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.03, 0.03, 0.03, 0.94)
-	bar_style.border_color = Color(0.18, 0.42, 0.18, 0.6)
-	bar_style.border_width_bottom = 2
+	bar_style.bg_color = Color(0.65, 0.06, 0.06, 0.94)
+	bar_style.border_color = Color(0.35, 0.04, 0.04, 0.8)
+	bar_style.border_width_bottom = 1
 	resource_panel.add_theme_stylebox_override("panel", bar_style)
 
 	var hbox: HBoxContainer = resource_panel.get_node("HBox") as HBoxContainer
 	if hbox:
+		hbox.add_theme_constant_override("separation", 18)
 		# Separator between faction label and resources
 		var sep := VSeparator.new()
 		sep.name = "TopBarSep"
@@ -240,6 +241,7 @@ func _restyle_top_bar() -> void:
 
 		turn_label.reparent(hbox)
 		turn_label.add_theme_font_size_override("font_size", 14)
+		turn_label.visible = false
 
 func _on_building_selected(data: BuildingData) -> void:
 	building_manager.start_placement(data, turn_manager.current_player)
@@ -375,8 +377,17 @@ func _init_resource_labels() -> void:
 			label.name = "Label" + node_name
 			label.add_theme_font_size_override("font_size", 13)
 			hbox.add_child(label)
+		label.add_theme_color_override("font_color", Color.WHITE)
 		resource_tracker.set_resource_label(str(key_map[node_name]), label)
 	resource_tracker.set_faction_label(panel.get_node("HBox/FactionLabel") as Label)
+
+	# hide labels not in top bar visible set
+	var visible_keys := ["gold", "wood", "stone", "food", "iron", "magic_dust"]
+	var all_extra := ["AncientWood", "GoldOre", "Mithril", "Steel"]
+	for node_name in all_extra:
+		var lbl: Label = hbox.get_node_or_null("Label" + node_name) as Label
+		if lbl:
+			lbl.visible = false
 
 
 func _on_resources_updated(_player: int) -> void:
@@ -723,15 +734,11 @@ func _on_goblin_market_started(stage: int, round_number: int) -> void:
 func _init_stage_label() -> void:
 	stage_label = Label.new()
 	stage_label.name = "StageLabel"
-	stage_label.position = Vector2(760, 48)
-	stage_label.size = Vector2(400, 28)
-	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	stage_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stage_label.add_theme_font_size_override("font_size", 16)
-	stage_label.add_theme_color_override("font_color", Color(0.86, 0.92, 1.0))
-	stage_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
-	stage_label.add_theme_constant_override("shadow_offset_x", 1)
-	stage_label.add_theme_constant_override("shadow_offset_y", 1)
+	stage_label.add_theme_font_size_override("font_size", 14)
+	stage_label.add_theme_color_override("font_color", Color.WHITE)
+	stage_label.position = Vector2(1700, 8)
 	$UI.add_child(stage_label)
 	_update_stage_label(maxi(turn_manager.round_number, 1))
 
@@ -765,9 +772,8 @@ func _update_stage_label(round_number: int) -> void:
 		return
 	var stage: int = GameStageRulesScript.get_stage_for_round(round_number)
 	var round_in_stage: int = GameStageRulesScript.get_round_in_stage(round_number)
-	stage_label.text = "第 %d / %d 阶段 · 阶段回合 %d / %d" % [
+	stage_label.text = "第%d阶段 第%d/%d回合" % [
 		stage,
-		GameStageRulesScript.TOTAL_STAGES,
 		round_in_stage,
 		GameStageRulesScript.ROUNDS_PER_STAGE,
 	]

@@ -12,6 +12,7 @@ var _civilization_rules: Node = null
 var creative_mode_enabled := false
 
 const CAPPED_RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore", "mithril", "steel"]
+const TOP_BAR_VISIBLE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "gold"]
 const CREATIVE_RESOURCE_VALUE := 999
 const BASE_RESOURCE_CAPS := {
 	"wood": 50,
@@ -199,18 +200,18 @@ func update_display(player: int) -> void:
 			_faction_label.text = "[%s]" % GameCatalog.faction_name(player)
 
 	# 资源数值
-	for key in GameCatalog.RESOURCE_KEYS:
+	for key in TOP_BAR_VISIBLE_KEYS:
 		if _label_refs.has(key):
 			var label: Label = _label_refs[key]
 			var name: String = GameCatalog.resource_name(key)
 			if creative_mode_enabled:
-				label.text = "%s ∞" % name
+				label.text = "%s:∞" % name
 				continue
 			var cap: int = get_resource_cap(player, key)
 			if cap >= 0:
-				label.text = "%s %d/%d" % [name, res.get(key, 0), cap]
+				label.text = "%s:%d/%d" % [name, res.get(key, 0), cap]
 			else:
-				label.text = "%s %d" % [name, res.get(key, 0)]
+				label.text = "%s:%d" % [name, res.get(key, 0)]
 
 
 func set_creative_mode_enabled(enabled: bool) -> void:
