@@ -70,6 +70,7 @@ var _attack_visuals: Dictionary = {}  # unit_id -> { t: float, flip_x: bool }
 var _death_visuals: Dictionary = {}  # unit_id -> { pos: Vector2, t: float, flip_x: bool }
 var _unit_facing_flip: Dictionary = {}  # unit_id -> bool
 var _pending_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
+var _pending_building_attack_after_move: Dictionary = {}  # attacker_id -> building_id
 var _throw_beast_source_id: int = -1
 var _fog_reveal_mode: bool = false
 var _fog_reveal_tiles: Array[Vector2i] = []
@@ -247,6 +248,17 @@ func _request_network_unit_attack(attacker_id: int, target_id: int) -> bool:
 		return true
 	return false
 
+
+func _request_network_building_attack(attacker_id: int, building_id: int) -> bool:
+	if not _is_network_game():
+		return false
+	if _network_game_service.has_method("request_action"):
+		_network_game_service.call("request_action", "unit_attack_building", {
+			"attacker_id": attacker_id,
+			"building_id": building_id,
+		})
+		return true
+	return false
 
 # ========== 单位管理 ==========
 
@@ -483,6 +495,32 @@ func request_network_attack(player: int, attacker_id: int, target_id: int) -> bo
 	)
 
 
+func request_network_building_attack(player: int, attacker_id: int, building_id: int) -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return false
+	if not bool(_turn_manager.call("can_player_act", player)):
+		return false
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	if attacker.is_empty():
+		return false
+	if int(attacker.get("faction", -1)) != player:
+		return false
+	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+	if bmgr == null or not bmgr.has_method("get_building_by_id"):
+		return false
+	var building: Dictionary = bmgr.call("get_building_by_id", building_id)
+	if building.is_empty():
+		return false
+	if int(building.get("faction", -1)) == player:
+		return false
+	return _execute_as_player(player, func() -> bool:
+		_selected_id = attacker_id
+		if _try_attack_building(attacker, building):
+			return true
+		return _try_move_to_attack_building(attacker, building)
+	)
+
+
 func request_network_throw_beast(player: int, slinger_id: int, beast_id: int, target: Vector2i) -> bool:
 	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
 		return false
@@ -620,6 +658,7 @@ func apply_building_damage(unit_id: int, attacker_faction: int, damage: int) -> 
 			_death_visuals.erase(unit_id)
 			_unit_facing_flip.erase(unit_id)
 			_pending_attack_after_move.erase(unit_id)
+			_pending_building_attack_after_move.erase(unit_id)
 			_units.remove_at(i)
 			queue_redraw()
 			return true
@@ -845,9 +884,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not src.is_empty():
 			var bmgr_for_attack: Node = get_parent().get_node_or_null("BuildingManager2D")
 			if bmgr_for_attack and bmgr_for_attack.has_method("get_building_at"):
-				var building_target: Dictionary = bmgr_for_attack.call("get_building_at", gpos)
-				if _try_attack_building(src, building_target):
-					return
+				var building_target: Dictionary = _get_attackable_building_target_at(gpos, src)
+				if not building_target.is_empty():
+					var atk_building_id := int(building_target.get("id", -1))
+					if _request_network_building_attack(int(src.get("id", -1)), atk_building_id):
+						return
+					if _try_attack_building(src, building_target):
+						return
+					if _try_move_to_attack_building(src, building_target):
+						return
 			var target := get_visible_unit_at(gpos)
 			if not target.is_empty() and target["faction"] != src["faction"]:
 				if _request_network_unit_attack(int(src.get("id", -1)), int(target.get("id", -1))):
@@ -1958,6 +2003,7 @@ func _remove_unit_after_attack(target_id: int, attacker: Dictionary) -> void:
 		_death_visuals.erase(target_id)
 		_unit_facing_flip.erase(target_id)
 		_pending_attack_after_move.erase(target_id)
+		_pending_building_attack_after_move.erase(target_id)
 		_units.remove_at(i)
 		return
 
@@ -2148,6 +2194,74 @@ func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
 	return false
 
 
+func _get_attackable_building_target_at(grid_pos: Vector2i, attacker: Dictionary) -> Dictionary:
+	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+	if bmgr == null:
+		return {}
+	if bmgr.has_method("get_building_at"):
+		var direct: Dictionary = bmgr.call("get_building_at", grid_pos)
+		if not direct.is_empty() and int(direct.get("faction", -1)) != int(attacker.get("faction", -2)):
+			return direct
+	if not bmgr.has_method("get_all_buildings"):
+		return {}
+	var best: Dictionary = {}
+	var best_distance: int = 999
+	var buildings: Array = bmgr.call("get_all_buildings")
+	for building_variant in buildings:
+		var building: Dictionary = building_variant
+		if building.is_empty():
+			continue
+		if int(building.get("faction", -1)) == int(attacker.get("faction", -2)):
+			continue
+		var distance: int = _distance_to_building(grid_pos, building)
+		if distance < 0 or distance > 1:
+			continue
+		if distance < best_distance:
+			best = building
+			best_distance = distance
+	return best
+
+
+func _try_move_to_attack_building(attacker: Dictionary, building: Dictionary) -> bool:
+	if attacker.is_empty() or building.is_empty():
+		return false
+	var attacker_id: int = int(attacker.get("id", -1))
+	if attacker_id != _selected_id:
+		return false
+	if int(building.get("faction", -1)) == int(attacker.get("faction", -2)):
+		return false
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var approach_tile: Vector2i = _find_building_attack_approach_tile(attacker, building)
+	if approach_tile.x < 0:
+		return false
+	var steps: int = _calc_path_length_for_unit(attacker, from, approach_tile)
+	if steps <= 0:
+		return false
+	var ap_cost: int = _get_movement_ap_cost(attacker, steps)
+	if _turn_manager:
+		var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, ap_cost)
+		if not ok:
+			return false
+
+	for u in _units:
+		if int(u.get("id", -1)) == attacker_id:
+			_cancel_gather_for_unit(attacker_id)
+			u["grid_pos"] = approach_tile
+			u["has_moved"] = true
+			_update_dragon_lair_location_after_move(u, from, approach_tile)
+			_pending_building_attack_after_move[attacker_id] = int(building.get("id", -1))
+			_start_move_visual(attacker_id, from, approach_tile)
+			var fog_mgr = get_parent().get_node("FogOfWar2D")
+			if fog_mgr and _turn_manager:
+				fog_mgr.reveal_area(_turn_manager.current_player, approach_tile.x, approach_tile.y, _get_unit_vision_value(u))
+			_reachable_tiles = []
+			_attack_range_tiles = []
+			_throw_range_tiles = []
+			queue_redraw()
+			return true
+	return false
+
+
 func _find_attack_approach_tile(attacker: Dictionary, target: Dictionary) -> Vector2i:
 	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
 	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
@@ -2183,6 +2297,30 @@ func _get_attack_approach_candidates(from: Vector2i, target_pos: Vector2i) -> Ar
 			continue
 		result.append(target_pos + dir)
 	return result
+
+
+func _find_building_attack_approach_tile(attacker: Dictionary, building: Dictionary) -> Vector2i:
+	var reachable: Array = _calc_reachable(attacker)
+	if reachable.is_empty():
+		return Vector2i(-1, -1)
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var attack_range: int = _get_unit_data(attacker).attack_range
+	var best_tile := Vector2i(-1, -1)
+	var best_steps: int = 999
+	var best_distance: int = 999
+	for tile_variant in reachable:
+		var tile: Vector2i = tile_variant
+		var distance: int = _distance_to_building(tile, building)
+		if distance < 0 or distance > attack_range:
+			continue
+		var steps: int = _calc_path_length_for_unit(attacker, from, tile)
+		if steps <= 0:
+			continue
+		if steps < best_steps or (steps == best_steps and distance < best_distance):
+			best_tile = tile
+			best_steps = steps
+			best_distance = distance
+	return best_tile
 
 
 func _start_move_visual(unit_id: int, from: Vector2i, to: Vector2i) -> void:
@@ -2223,6 +2361,15 @@ func _finish_move_visual(unit_id: int) -> void:
 		if not attacker.is_empty() and not defender.is_empty():
 			if _is_adjacent(attacker["grid_pos"], defender["grid_pos"]):
 				_initiate_combat(unit_id, defender_id)
+				return
+	if _pending_building_attack_after_move.has(unit_id):
+		var building_id: int = int(_pending_building_attack_after_move.get(unit_id, -1))
+		_pending_building_attack_after_move.erase(unit_id)
+		var attacker_for_building: Dictionary = _get_unit_by_id(unit_id)
+		var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+		if not attacker_for_building.is_empty() and bmgr != null and bmgr.has_method("get_building_by_id"):
+			var building: Dictionary = bmgr.call("get_building_by_id", building_id)
+			if not building.is_empty() and _try_attack_building(attacker_for_building, building):
 				return
 	queue_redraw()
 
@@ -2967,6 +3114,7 @@ func _remove_unit_from_miasma(unit_index: int) -> void:
 	_death_visuals.erase(uid)
 	_unit_facing_flip.erase(uid)
 	_pending_attack_after_move.erase(uid)
+	_pending_building_attack_after_move.erase(uid)
 	if _selected_id == uid:
 		_selected_id = -1
 	_units.remove_at(unit_index)
@@ -3513,6 +3661,7 @@ func _end_combat(winner_id: int, attacker_pos: Vector2i = Vector2i(-1, -1), lose
 				_hurt_visuals.erase(loser_id)
 				_attack_visuals.erase(loser_id)
 				_pending_attack_after_move.erase(loser_id)
+				_pending_building_attack_after_move.erase(loser_id)
 				_units.remove_at(i)
 				break
 
@@ -3735,6 +3884,7 @@ func remove_unit_by_id(uid: int) -> void:
 			_death_visuals.erase(uid)
 			_unit_facing_flip.erase(uid)
 			_pending_attack_after_move.erase(uid)
+			_pending_building_attack_after_move.erase(uid)
 			_units.remove_at(i)
 			break
 	queue_redraw()

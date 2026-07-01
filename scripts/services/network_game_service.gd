@@ -128,6 +128,32 @@ func leave_game() -> void:
 	network_status_changed.emit("已离开联机房间")
 
 
+func adopt_existing_peer() -> void:
+	if multiplayer.multiplayer_peer == null:
+		return
+	_is_network_game = true
+	_enable_sync_turns()
+	if multiplayer.is_server():
+		local_faction = 0
+		peer_to_faction.clear()
+		faction_to_peer.clear()
+		peer_to_faction[1] = 0
+		faction_to_peer[0] = 1
+		multiplayer.peer_connected.connect(_on_peer_connected)
+		multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+		local_faction_changed.emit(local_faction)
+		network_status_changed.emit("已创建局域网房间，等待玩家加入")
+		for peer_id in multiplayer.get_peers():
+			if not peer_to_faction.has(peer_id):
+				_on_peer_connected(peer_id)
+		_broadcast_snapshots()
+	else:
+		multiplayer.connected_to_server.connect(_on_connected_to_server)
+		multiplayer.connection_failed.connect(_on_connection_failed)
+		multiplayer.server_disconnected.connect(_on_server_disconnected)
+		network_status_changed.emit("已连接，等待主机分配阵营")
+
+
 func request_action(action_type: String, payload: Dictionary) -> void:
 	if not _is_network_game:
 		return
@@ -232,6 +258,8 @@ func _handle_action_request(player: int, action_type: String, payload: Dictionar
 			_handle_gather_cancel(player, payload)
 		"tech_research":
 			_handle_tech_research(player, payload)
+		"unit_attack_building":
+			_handle_unit_attack_building(player, payload)
 		_:
 			network_status_changed.emit("暂未接入联机操作: %s" % action_type)
 	_broadcast_snapshots()
@@ -261,6 +289,17 @@ func _handle_unit_attack(player: int, payload: Dictionary) -> void:
 		rpc("_rpc_apply_unit_attack", player, attacker_id, target_id)
 
 
+
+func _handle_unit_attack_building(player: int, payload: Dictionary) -> void:
+	if _unit_manager == null or not _unit_manager.has_method("request_network_building_attack"):
+		return
+	var attacker_id: int = int(payload.get("attacker_id", -1))
+	var building_id: int = int(payload.get("building_id", -1))
+	var ok: bool = bool(_unit_manager.call("request_network_building_attack", player, attacker_id, building_id))
+	if not ok:
+		network_status_changed.emit("Building attack rejected")
+	else:
+		rpc("_rpc_apply_unit_attack_building", player, attacker_id, building_id)
 func _handle_throw_beast(player: int, payload: Dictionary) -> void:
 	if _unit_manager == null or not _unit_manager.has_method("request_network_throw_beast"):
 		return
@@ -449,6 +488,14 @@ func _rpc_apply_unit_attack(player: int, attacker_id: int, target_id: int) -> vo
 	if _unit_manager == null or not _unit_manager.has_method("request_network_attack"):
 		return
 	_unit_manager.call("request_network_attack", player, attacker_id, target_id)
+
+@rpc("authority", "reliable")
+func _rpc_apply_unit_attack_building(player: int, attacker_id: int, building_id: int) -> void:
+	if is_host():
+		return
+	if _unit_manager == null or not _unit_manager.has_method("request_network_building_attack"):
+		return
+	_unit_manager.call("request_network_building_attack", player, attacker_id, building_id)
 
 
 @rpc("authority", "reliable")

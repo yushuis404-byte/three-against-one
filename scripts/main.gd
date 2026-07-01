@@ -1303,6 +1303,15 @@ func _init_network_services() -> void:
 		turn_manager.player_ready_changed.connect(_on_player_ready_changed)
 	if turn_manager.has_signal("round_action_started"):
 		turn_manager.round_action_started.connect(_on_sync_round_action_started)
+	if network_game_service != null:
+		if GameSession.is_multiplayer_launch:
+			network_game_service.adopt_existing_peer()
+		else:
+			if multiplayer.multiplayer_peer != null:
+				multiplayer.multiplayer_peer.close()
+			multiplayer.multiplayer_peer = null
+			if turn_manager.has_method("set_synchronous_mode_enabled"):
+				turn_manager.call("set_synchronous_mode_enabled", false)
 
 
 func _init_network_ui() -> void:
@@ -1383,6 +1392,18 @@ func _init_network_ui() -> void:
 	$UI.add_child(network_ready_label)
 	_update_network_ready_label()
 
+
+
+
+	if network_game_service != null and network_game_service.is_network_game():
+		if network_host_button != null:
+			network_host_button.visible = false
+		if network_join_button != null:
+			network_join_button.visible = false
+		if network_address_input != null:
+			network_address_input.visible = false
+		if network_port_input != null:
+			network_port_input.visible = false
 
 func _on_network_host_pressed() -> void:
 	if network_game_service != null:

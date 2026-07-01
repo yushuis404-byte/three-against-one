@@ -1553,6 +1553,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		var building := get_building_at(gpos)
 		if not building.is_empty():
+			# 战争迷雾下不显示信息卡片
+			var viewer: int = _turn_manager.current_player if _turn_manager else 0
+			if _fog_mgr and _fog_mgr.has_method("get_fog") and _fog_mgr.get_fog(viewer, gpos.x, gpos.y) > 0.0:
+				_set_hovered_building(-1)
+				building_hovered.emit("")
+				return
 			_set_hovered_building(int(building["id"]))
 			var data: BuildingData = building["data"]
 			var building_name: String = data.name
