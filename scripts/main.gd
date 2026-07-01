@@ -603,6 +603,7 @@ func _init_end_turn_button() -> void:
 	end_turn_button.add_theme_font_size_override("font_size", 15)
 	end_turn_button.pressed.connect(_on_end_turn_button_pressed)
 	$UI.add_child(end_turn_button)
+	_update_end_turn_button()
 
 
 func _on_end_turn_button_pressed() -> void:
@@ -612,6 +613,24 @@ func _on_end_turn_button_pressed() -> void:
 		network_game_service.request_end_round()
 	else:
 		_on_end_turn()
+	_update_end_turn_button()
+
+
+func _update_end_turn_button() -> void:
+	if end_turn_button == null:
+		return
+	end_turn_button.visible = true
+	end_turn_button.disabled = current_state != GameState.PLAYING
+	end_turn_button.text = "结束回合"
+	if network_game_service == null or not network_game_service.is_network_game() or turn_manager == null:
+		return
+	var player: int = _get_display_player()
+	var ready := false
+	if turn_manager.has_method("is_player_ready"):
+		ready = bool(turn_manager.call("is_player_ready", player))
+	if ready:
+		end_turn_button.text = "等待其他玩家"
+		end_turn_button.disabled = true
 
 
 func _update_creative_mode_button() -> void:
@@ -1209,7 +1228,7 @@ func _get_wall_skill_actions() -> Array:
 	var result: Array = []
 	if wall_blueprint_manager == null or turn_manager == null:
 		return result
-	if int(turn_manager.current_player) != 1:
+	if _get_display_player() != 1:
 		return result
 	var active: bool = false
 	if wall_blueprint_manager.has_method("is_wall_mode_active"):
@@ -1429,11 +1448,12 @@ func _sync_network_ui_visibility() -> void:
 	if network_port_input != null:
 		network_port_input.visible = false
 	if network_ready_button != null:
-		network_ready_button.visible = in_network_game
+		network_ready_button.visible = false
 	if network_status_label != null:
 		network_status_label.visible = in_network_game
 	if network_ready_label != null:
 		network_ready_label.visible = in_network_game
+	_update_end_turn_button()
 
 func _on_network_host_pressed() -> void:
 	if network_game_service != null:
@@ -1459,6 +1479,8 @@ func _on_network_status_changed(text: String) -> void:
 		network_status_label.text = text
 	debug_label.text = text
 	_update_network_ready_label()
+	_update_end_turn_button()
+	_refresh_unit_skill_bar()
 
 
 func _get_network_address() -> String:
@@ -1501,6 +1523,8 @@ func _on_network_local_faction_changed(player: int) -> void:
 	_update_ap_status_label(player)
 	_update_wall_blueprint_ui(player, "")
 	_update_network_ready_label()
+	_update_end_turn_button()
+	_refresh_unit_skill_bar()
 
 
 func _on_network_snapshot_received(snapshot: Dictionary) -> void:
@@ -1518,16 +1542,22 @@ func _on_network_snapshot_received(snapshot: Dictionary) -> void:
 	unit_manager.queue_redraw()
 	$GameBoard/FogOfWar2D.queue_redraw()
 	_update_network_ready_label()
+	_update_end_turn_button()
+	_refresh_unit_skill_bar()
 	if network_status_label != null:
 		network_status_label.text = "LAN snapshot round %d" % int(snapshot.get("round", 0))
 
 
 func _on_player_ready_changed(_player: int, _ready: bool) -> void:
 	_update_network_ready_label()
+	_update_end_turn_button()
+	_refresh_unit_skill_bar()
 
 
 func _on_sync_round_action_started(_round: int) -> void:
 	_update_network_ready_label()
+	_update_end_turn_button()
+	_refresh_unit_skill_bar()
 
 
 func _update_network_ready_label() -> void:

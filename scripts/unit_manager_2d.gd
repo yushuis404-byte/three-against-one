@@ -6,6 +6,8 @@ const ORC_BLOOD_AXE_HURT_TEXTURE: Texture2D = preload("res://assets/texture/char
 const ORC_BLOOD_AXE_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Attack01.png")
 const ORC_BLOOD_AXE_DEATH_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Blood Axe Warrior/Orc-Death.png")
 const ORC_HUNTING_BEAST_TEXTURE: Texture2D = preload("res://assets/texture/character/Hunter-Beast/Hunter-tooth Beast.png")
+const ORC_SLINGER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Orc-Slinger-Idle.png")
+const ORC_SLINGER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Orc-Slinger-Walk.png")
 const ELF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png")
 const ELF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Walk.png")
 const DWARF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png")
@@ -161,6 +163,10 @@ const ORC_HUNTING_BEAST_FRAMES := 6
 const ORC_HUNTING_BEAST_FRAME_SIZE := Vector2(629.0 / 6.0, 55.0)
 const ORC_HUNTING_BEAST_DRAW_SIZE := Vector2(48.0, 25.2)
 const ORC_HUNTING_BEAST_FRAME_SECONDS := 0.12
+const ORC_SLINGER_WALK_FRAMES := 10
+const ORC_SLINGER_FRAME_SIZE := Vector2(252.0, 255.0)
+const ORC_SLINGER_DRAW_SIZE := Vector2(40.0, 40.5)
+const ORC_SLINGER_FRAME_SECONDS := 0.14
 const ELF_WORKER_IDLE_FRAMES := 2
 const ELF_WORKER_WALK_FRAMES := 10
 const ELF_WORKER_IDLE_FRAME_SIZE := Vector2(320.0, 320.0)
@@ -739,6 +745,8 @@ func _draw() -> void:
 
 		if _is_orc_blood_axe(u):
 			_draw_orc_blood_axe(u, draw_pos)
+		elif _is_orc_slinger(u):
+			_draw_orc_slinger(u, draw_pos)
 		elif _is_orc_beast(u):
 			_draw_orc_hunting_beast(u, draw_pos)
 		elif _is_elf_worker(u):
@@ -2407,13 +2415,13 @@ func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
 
 func _has_orc_blood_axe_units() -> bool:
 	for unit in _units:
-		if _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
+		if _is_orc_blood_axe(unit) or _is_orc_slinger(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
 			return true
 	return false
 
 
 func _uses_orc_sprite(unit: Dictionary) -> bool:
-	return _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
+	return _is_orc_blood_axe(unit) or _is_orc_slinger(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
 
 
 func _is_orc_blood_axe(unit: Dictionary) -> bool:
@@ -2580,6 +2588,27 @@ func _draw_orc_hunting_beast(unit: Dictionary, draw_pos: Vector2) -> void:
 		flip_x = bool(move_visual.get("flip_x", flip_x))
 	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
 	draw_texture_rect_region(ORC_HUNTING_BEAST_TEXTURE, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_orc_slinger(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var texture: Texture2D = ORC_SLINGER_IDLE_TEXTURE
+	var frame: int = 0
+	if is_moving:
+		texture = ORC_SLINGER_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(ORC_SLINGER_WALK_FRAMES))), 0, ORC_SLINGER_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(ORC_SLINGER_FRAME_SIZE.x * frame, 0.0), ORC_SLINGER_FRAME_SIZE)
+	var dst := Rect2(-ORC_SLINGER_DRAW_SIZE * 0.5 + Vector2(0.0, -5.0), ORC_SLINGER_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -4257,6 +4286,10 @@ func _make_fog_skill_action(unit: Dictionary, action_id: String, label: String, 
 		enabled = false
 		status = "非当前回合"
 		reason = "只能在该单位所属玩家的回合使用。"
+	elif not _can_current_player_act():
+		enabled = false
+		status = "????"
+		reason = "??????????????????"
 	elif cooldown > 0:
 		enabled = false
 		status = "冷却 %d 回合" % cooldown
@@ -4288,6 +4321,10 @@ func _make_throw_skill_action(unit: Dictionary) -> Dictionary:
 		enabled = false
 		status = "非当前回合"
 		reason = "只能在该单位所属玩家的回合使用。"
+	elif not _can_current_player_act():
+		enabled = false
+		status = "????"
+		reason = "??????????????????"
 	elif used:
 		enabled = false
 		status = "冷却 1 回合"
@@ -4349,7 +4386,7 @@ func _append_warband_skill_actions(actions: Array, unit: Dictionary) -> void:
 			"id": "warband_disband",
 			"unit_id": unit_id,
 			"label": "解散战团",
-			"enabled": int(unit.get("faction", -1)) == _current_player_id(),
+			"enabled": int(unit.get("faction", -1)) == _current_player_id() and _can_current_player_act(),
 			"active": false,
 			"cooldown": 0,
 			"status": "已编组",
@@ -4362,6 +4399,9 @@ func _append_warband_skill_actions(actions: Array, unit: Dictionary) -> void:
 	if int(unit.get("faction", -1)) != _current_player_id():
 		can_form = false
 		form_status = "非当前回合"
+	elif not _can_current_player_act():
+		can_form = false
+		form_status = "????"
 	elif not _has_ap(WARBAND_AP_COST):
 		can_form = false
 		form_status = "AP 不足"
@@ -4399,6 +4439,12 @@ func _current_player_id() -> int:
 	if _turn_manager == null:
 		return -1
 	return int(_turn_manager.current_player)
+
+
+func _can_current_player_act() -> bool:
+	if _turn_manager == null or not _turn_manager.has_method("can_player_act"):
+		return true
+	return bool(_turn_manager.call("can_player_act", _current_player_id()))
 
 
 func _view_player_id() -> int:
