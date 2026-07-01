@@ -267,7 +267,7 @@ func _count_resource_zone_capacity(zone_grid: Array, terrain_grid: Array, grid_s
 			if zone_grid[y][x] != zone_tag:
 				continue
 			var terrain: int = terrain_grid[y][x]
-			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER:
+			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC:
 				continue
 			capacity += 1
 	return capacity
@@ -306,7 +306,7 @@ func _collect_resource_candidates(zone_grid: Array, terrain_grid: Array, grid_si
 			if resource_grid[y][x] != ResourceType.NONE:
 				continue
 			var terrain: int = terrain_grid[y][x]
-			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER:
+			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC:
 				continue
 			if require_compatible_terrain and compat_terrains.size() > 0 and not (terrain in compat_terrains):
 				continue
