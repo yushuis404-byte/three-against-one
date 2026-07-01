@@ -204,6 +204,18 @@ func spend_ap(player: int, amount: int) -> bool:
 	return false
 
 
+func add_ap(player: int, amount: int) -> void:
+	if player < 0 or player >= PLAYER_COUNT:
+		return
+	if amount <= 0:
+		return
+	if creative_mode_enabled:
+		ap_changed.emit(player, get_ap(player))
+		return
+	player_ap[player] = mini(player_ap[player] + amount, AP_MAX)
+	ap_changed.emit(player, player_ap[player])
+
+
 func get_ap(player: int) -> int:
 	if creative_mode_enabled:
 		return CREATIVE_AP_VALUE

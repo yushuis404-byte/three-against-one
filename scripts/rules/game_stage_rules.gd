@@ -9,7 +9,7 @@ const ROUNDS_PER_STAGE := 15
 const TOTAL_STAGES := 5
 const FIRST_STAGE := 1
 const LAST_STAGE := TOTAL_STAGES
-const FIRST_GOBLIN_MARKET_STAGE := 2
+const GOBLIN_HEX_TRIGGER_ROUNDS := [7, 22, 37]
 
 
 static func get_stage_for_round(round_number: int) -> int:
@@ -48,6 +48,4 @@ static func is_within_total_stages(round_number: int) -> bool:
 static func is_goblin_market_stage_start(round_number: int) -> bool:
 	if not is_within_total_stages(round_number):
 		return false
-	if not is_stage_start_round(round_number):
-		return false
-	return get_stage_for_round(round_number) >= FIRST_GOBLIN_MARKET_STAGE
+	return round_number in GOBLIN_HEX_TRIGGER_ROUNDS

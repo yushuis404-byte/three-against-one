@@ -1249,7 +1249,9 @@ func _is_fog_talent_on_cooldown(unit: Dictionary, cooldown_key: String) -> bool:
 
 
 func _set_fog_talent_cooldown(unit: Dictionary, cooldown_key: String) -> void:
-	unit[cooldown_key] = 1
+	var faction: int = int(unit.get("faction", -1))
+	var discount: int = _get_technology_modifier_for_player(faction, "elf_fog_cooldown_discount")
+	unit[cooldown_key] = maxi(0, 1 - discount)
 
 
 func _tick_fog_talent_cooldowns(unit: Dictionary) -> void:
@@ -1281,7 +1283,8 @@ func _update_fog_reveal_preview() -> void:
 	if not _in_bounds(target.x, target.y):
 		_fog_reveal_tiles.clear()
 		return
-	_fog_reveal_tiles = _get_tiles_in_manhattan_radius(target, FOG_REVEAL_RADIUS)
+	var reveal_radius: int = FOG_REVEAL_RADIUS + _get_technology_modifier_for_player(int(caster.get("faction", -1)), "elf_fog_radius_bonus")
+	_fog_reveal_tiles = _get_tiles_in_manhattan_radius(target, reveal_radius)
 
 
 func _update_fog_conceal_preview() -> void:
@@ -1304,7 +1307,8 @@ func _update_fog_conceal_preview() -> void:
 	if _grid_distance(caster_pos, target) > FOG_CONCEAL_RANGE:
 		_fog_conceal_tiles.clear()
 		return
-	_fog_conceal_tiles = _get_tiles_in_manhattan_radius(target, FOG_CONCEAL_RADIUS)
+	var conceal_radius: int = FOG_CONCEAL_RADIUS + _get_technology_modifier_for_player(int(caster.get("faction", -1)), "elf_fog_radius_bonus")
+	_fog_conceal_tiles = _get_tiles_in_manhattan_radius(target, conceal_radius)
 
 
 func _try_reveal_fog_at(target: Vector2i) -> bool:
@@ -1323,7 +1327,8 @@ func _try_reveal_fog_at(target: Vector2i) -> bool:
 		if not ok:
 			print("[Fog] Not enough AP to reveal fog.")
 			return false
-	_fog_manager.call("reveal_area", int(_turn_manager.current_player), target.x, target.y, FOG_REVEAL_RADIUS)
+	var reveal_radius: int = FOG_REVEAL_RADIUS + _get_technology_modifier_for_player(int(caster.get("faction", -1)), "elf_fog_radius_bonus")
+	_fog_manager.call("reveal_area", int(_turn_manager.current_player), target.x, target.y, reveal_radius)
 	_set_fog_talent_cooldown(caster, FOG_REVEAL_COOLDOWN_KEY)
 	_cancel_fog_reveal_mode()
 	_emit_selected_unit_view()
@@ -1351,7 +1356,9 @@ func _try_conceal_fog_at(target: Vector2i) -> bool:
 		if not ok:
 			print("[Fog] Not enough AP to conceal fog.")
 			return false
-	_fog_manager.call("add_magic_fog", int(_turn_manager.current_player), target.x, target.y, FOG_CONCEAL_RADIUS, FOG_CONCEAL_DURATION_ROUNDS)
+	var conceal_radius: int = FOG_CONCEAL_RADIUS + _get_technology_modifier_for_player(int(caster.get("faction", -1)), "elf_fog_radius_bonus")
+	var duration_rounds: int = FOG_CONCEAL_DURATION_ROUNDS + _get_technology_modifier_for_player(int(caster.get("faction", -1)), "elf_fog_duration_bonus")
+	_fog_manager.call("add_magic_fog", int(_turn_manager.current_player), target.x, target.y, conceal_radius, duration_rounds)
 	_set_fog_talent_cooldown(caster, FOG_CONCEAL_COOLDOWN_KEY)
 	_cancel_fog_conceal_mode()
 	_emit_selected_unit_view()
@@ -2550,7 +2557,8 @@ func _get_warband_move_limit(warband_id: int) -> int:
 	var limit: int = 999
 	for member in _get_warband_members(warband_id):
 		var data: UnitData = _get_unit_data(member)
-		limit = mini(limit, data.move_max)
+		var move_value: int = data.move_max + _get_technology_modifier_for_unit(member, "unit_move_bonus")
+		limit = mini(limit, move_value)
 	return 0 if limit == 999 else limit
 
 
@@ -2622,7 +2630,7 @@ func _calc_reachable(unit: Dictionary) -> Array:
 	## BFS 从单位位置出发，max_depth = move_max
 	var from: Vector2i = unit["grid_pos"]
 	var data: UnitData = _get_unit_data(unit)
-	var max_steps: int = data.move_max
+	var max_steps: int = maxi(0, data.move_max + _get_technology_modifier_for_unit(unit, "unit_move_bonus"))
 	var result: Array = []
 
 	var visited := {}
@@ -3718,6 +3726,7 @@ func _get_unit_vision_value(unit: Dictionary) -> int:
 func _get_unit_attack_value(unit: Dictionary) -> int:
 	var data: UnitData = _get_unit_data(unit)
 	var bonus: int = _get_building_effect_modifier(unit, BuildingEffectService.MOD_ATTACK_BONUS)
+	bonus += _get_technology_modifier_for_unit(unit, "unit_attack_bonus")
 	if data.category == UnitData.UnitCategory.GUARD or "melee" in data.tags:
 		bonus += _get_technology_modifier_for_unit(unit, "melee_attack_bonus")
 	if "light" in data.tags or data.category == UnitData.UnitCategory.SCOUT:
@@ -3770,6 +3779,7 @@ func _apply_elven_first_strike_followup(attacker: Dictionary, defender: Dictiona
 	if normal_damage <= 0:
 		return false
 	var followup_damage: int = maxi(1, int(ceil(float(normal_damage) * ELVEN_FIRST_STRIKE_SECOND_HIT_RATIO)))
+	followup_damage += _get_technology_modifier_for_unit(attacker, "elf_first_strike_damage_bonus")
 	defender["hp"] = int(defender.get("hp", 0)) - followup_damage
 	attacker["has_first_struck"] = true
 	_play_hit_effect(int(defender.get("id", -1)), defender.get("grid_pos", Vector2i.ZERO), followup_damage)
@@ -3788,6 +3798,7 @@ func _get_movement_ap_cost(unit: Dictionary, steps: int) -> int:
 
 func _apply_kill_food_reward(winner: Dictionary) -> void:
 	var reward: int = _get_technology_modifier_for_unit(winner, "kill_food_reward")
+	reward += _get_technology_modifier_for_unit(winner, "orc_kill_reward_bonus")
 	if reward <= 0:
 		return
 	var faction: int = int(winner.get("faction", -1))

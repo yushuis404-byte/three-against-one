@@ -223,14 +223,15 @@ func is_creative_mode_enabled() -> bool:
 
 
 func _get_production_bonus(player: int, key: String) -> int:
+	var bonus: int = _get_technology_modifier(player, "resource_production_bonus")
 	match key:
 		"iron":
-			return _get_technology_modifier(player, "iron_production_bonus")
+			bonus += _get_technology_modifier(player, "iron_production_bonus")
 		"ancient_wood":
-			return _get_technology_modifier(player, "ancient_wood_production_bonus")
+			bonus += _get_technology_modifier(player, "ancient_wood_production_bonus")
 		"gold_ore":
-			return _get_technology_modifier(player, "gold_ore_production_bonus")
-	return 0
+			bonus += _get_technology_modifier(player, "gold_ore_production_bonus")
+	return bonus
 
 
 func _get_garrison_production_bonus(player: int) -> int:
