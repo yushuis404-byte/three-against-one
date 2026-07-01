@@ -20,6 +20,7 @@ enum TurnPhase { ROUND_START, PLAYER_TURN, ROUND_ACTION, ROUND_RESOLVE, ROUND_EN
 
 var round_number := 0
 var current_player := 0
+var view_player := 0
 var turn_phase: TurnPhase = TurnPhase.ROUND_START
 var player_ap := [6, 6, 6]
 var player_finished := [false, false, false]
@@ -76,6 +77,8 @@ func _start_player_turn(player: int) -> void:
 	if game_stopped:
 		return
 	current_player = player
+	view_player = player
+	view_player_changed.emit(player)
 	turn_phase = TurnPhase.PLAYER_TURN
 	player_turn_started.emit(player)
 
@@ -148,7 +151,7 @@ func can_player_act(player: int) -> bool:
 func set_view_player(player: int) -> void:
 	if player < 0 or player >= PLAYER_COUNT:
 		return
-	current_player = player
+	view_player = player
 	view_player_changed.emit(player)
 
 
@@ -249,10 +252,6 @@ func apply_network_snapshot(snapshot: Dictionary) -> void:
 		round_number = int(snapshot.get("round", round_number))
 	if snapshot.has("turn_phase"):
 		turn_phase = int(snapshot.get("turn_phase", turn_phase))
-	if snapshot.has("player"):
-		current_player = int(snapshot.get("player", current_player))
-	elif snapshot.has("current_player"):
-		current_player = int(snapshot.get("current_player", current_player))
 	if snapshot.has("player") and snapshot.has("ap"):
 		var snapshot_player: int = int(snapshot.get("player", -1))
 		if snapshot_player >= 0 and snapshot_player < PLAYER_COUNT:

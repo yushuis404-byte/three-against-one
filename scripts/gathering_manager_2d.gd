@@ -101,8 +101,6 @@ func is_unit_gathering(unit_id: int) -> bool:
 
 func apply_network_gather_complete(player: int, unit_id: int, pos: Vector2i, results: Array) -> void:
 	cancel_gather(unit_id)
-	if _turn_mgr != null and _turn_mgr.has_method("spend_ap"):
-		_turn_mgr.call("spend_ap", player, GATHER_AP_COST)
 	if _tracker != null:
 		for result_variant in results:
 			var entry: Dictionary = result_variant
@@ -186,7 +184,7 @@ func _draw() -> void:
 func _is_unit_visible(unit: Dictionary) -> bool:
 	if _turn_mgr == null:
 		return true
-	var viewer: int = int(_turn_mgr.get("current_player"))
+	var viewer: int = int(_turn_mgr.get("view_player"))
 	if int(unit.get("faction", -1)) == viewer:
 		return true
 	if _unit_mgr != null and _unit_mgr.has_method("get_visible_unit_at"):

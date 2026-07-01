@@ -37,13 +37,21 @@ func set_turn_manager(tm: Node) -> void:
 
 
 func _on_player_turn_started(player: int) -> void:
-	current_player = player
+	current_player = _get_view_player(player)
 	queue_redraw()
 
 
 func _on_view_player_changed(player: int) -> void:
 	current_player = player
 	queue_redraw()
+
+
+func _get_view_player(fallback: int) -> int:
+	if _turn_manager != null:
+		var value: int = int(_turn_manager.get("view_player"))
+		if value >= 0 and value < fog_grids.size():
+			return value
+	return fallback
 
 # 渐隐动画追踪 [player]{Vector2i: elapsed}
 var _fading_out: Array = [{}, {}, {}]

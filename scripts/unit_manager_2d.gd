@@ -8,6 +8,8 @@ const ORC_BLOOD_AXE_DEATH_TEXTURE: Texture2D = preload("res://assets/texture/cha
 const ORC_HUNTING_BEAST_TEXTURE: Texture2D = preload("res://assets/texture/character/Hunter-Beast/Hunter-tooth Beast.png")
 const ELF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png")
 const ELF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Walk.png")
+const DWARF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png")
+const DWARF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Walk.png")
 const ELF_RANGER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Ranger/Elf-Ranger-Idle.png")
 const ELF_RANGER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Ranger/Elf-Ranger-Walk.png")
 const ELF_ASSASSIN_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Moonshadow Assassin/Elf-Assassin-Idle.png")
@@ -111,6 +113,7 @@ const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
 const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
 const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
 const ELF_WORKER_TEMPLATE_ID := "unit.elf.worker"
+const DWARF_WORKER_TEMPLATE_ID := "unit.dwarf.worker"
 const ELF_RANGER_TEMPLATE_ID := "unit.elf.ranger"
 const ELF_ASSASSIN_TEMPLATE_ID := "unit.elf.guard"
 const ELF_FOG_REVEAL_CASTER_TEMPLATE_ID := "unit.elf.scout"
@@ -158,6 +161,10 @@ const ELF_WORKER_IDLE_FRAME_SIZE := Vector2(320.0, 320.0)
 const ELF_WORKER_WALK_FRAME_SIZE := Vector2(640.0, 640.0)
 const ELF_WORKER_DRAW_SIZE := Vector2(36.0, 36.0)
 const ELF_WORKER_IDLE_FRAME_SECONDS := 0.22
+const DWARF_WORKER_WALK_FRAMES := 10
+const DWARF_WORKER_FRAME_SIZE := Vector2(320.0, 320.0)
+const DWARF_WORKER_IDLE_DRAW_SIZE := Vector2(20.7, 20.7)
+const DWARF_WORKER_WALK_DRAW_SIZE := Vector2(25.2, 25.2)
 const ELF_RANGER_WALK_FRAMES := 9
 const ELF_RANGER_FRAME_SIZE := Vector2(320.0, 320.0)
 const ELF_RANGER_DRAW_SIZE := Vector2(28.8, 28.8)
@@ -617,7 +624,7 @@ func apply_building_damage(unit_id: int, attacker_faction: int, damage: int) -> 
 func _is_unit_visible_to_current_player(unit: Dictionary) -> bool:
 	if _turn_manager == null:
 		return true
-	var viewer: int = int(_turn_manager.current_player)
+	var viewer: int = _view_player_id()
 	return _is_unit_visible_to_player(viewer, unit)
 
 
@@ -692,6 +699,8 @@ func _draw() -> void:
 			_draw_orc_hunting_beast(u, draw_pos)
 		elif _is_elf_worker(u):
 			_draw_elf_worker(u, draw_pos)
+		elif _is_dwarf_worker(u):
+			_draw_dwarf_worker(u, draw_pos)
 		elif _is_elf_ranger(u):
 			_draw_elf_ranger(u, draw_pos)
 		elif _is_elf_assassin(u):
@@ -2230,13 +2239,13 @@ func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
 
 func _has_orc_blood_axe_units() -> bool:
 	for unit in _units:
-		if _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
+		if _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
 			return true
 	return false
 
 
 func _uses_orc_sprite(unit: Dictionary) -> bool:
-	return _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
+	return _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
 
 
 func _is_orc_blood_axe(unit: Dictionary) -> bool:
@@ -2253,6 +2262,10 @@ func _is_orc_beast(unit: Dictionary) -> bool:
 
 func _is_elf_worker(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == ELF_WORKER_TEMPLATE_ID
+
+
+func _is_dwarf_worker(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == DWARF_WORKER_TEMPLATE_ID
 
 
 func _is_elf_ranger(unit: Dictionary) -> bool:
@@ -2282,6 +2295,29 @@ func _draw_elf_worker(unit: Dictionary, draw_pos: Vector2) -> void:
 		frame = int(floor(seconds / ELF_WORKER_IDLE_FRAME_SECONDS)) % frame_count
 	var src := Rect2(Vector2(frame_size.x * frame, 0.0), frame_size)
 	var dst := Rect2(-ELF_WORKER_DRAW_SIZE * 0.5, ELF_WORKER_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_dwarf_worker(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var frame: int = 0
+	var texture: Texture2D = DWARF_WORKER_IDLE_TEXTURE
+	var draw_size: Vector2 = DWARF_WORKER_IDLE_DRAW_SIZE
+	if is_moving:
+		texture = DWARF_WORKER_WALK_TEXTURE
+		draw_size = DWARF_WORKER_WALK_DRAW_SIZE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(DWARF_WORKER_WALK_FRAMES))), 0, DWARF_WORKER_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(DWARF_WORKER_FRAME_SIZE.x * frame, 0.0), DWARF_WORKER_FRAME_SIZE)
+	var dst := Rect2(-draw_size * 0.5, draw_size)
 	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
 	if is_moving:
 		var move_visual: Dictionary = _move_visuals.get(uid, {})
@@ -4163,6 +4199,14 @@ func _current_player_id() -> int:
 	if _turn_manager == null:
 		return -1
 	return int(_turn_manager.current_player)
+
+
+func _view_player_id() -> int:
+	if _turn_manager == null:
+		return _current_player_id()
+	if _turn_manager.get("view_player") != null:
+		return int(_turn_manager.get("view_player"))
+	return _current_player_id()
 
 
 func _can_unit_gather(data: UnitData, gather_info: Array) -> bool:
