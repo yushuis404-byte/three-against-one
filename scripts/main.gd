@@ -586,15 +586,41 @@ func _init_achievement_tree_panel() -> void:
 
 
 func _init_achievement_tree_button() -> void:
+	var acontainer := VBoxContainer.new()
+	acontainer.name = "AchievementTreeContainer"
+	acontainer.position = Vector2(16.0, 168.0)
+	acontainer.z_index = 90
 	achievement_tree_button = Button.new()
 	achievement_tree_button.name = "AchievementTreeButton"
-	achievement_tree_button.text = "\u6210\u5c31\u6811"
-	achievement_tree_button.position = Vector2(16.0, 176.0)
-	achievement_tree_button.size = Vector2(96.0, 30.0)
+	achievement_tree_button.icon = load("res://assets/icon_achievement.png")
+	achievement_tree_button.expand_icon = true
+	achievement_tree_button.custom_minimum_size = Vector2(56.0, 56.0)
+	achievement_tree_button.size = Vector2(56.0, 56.0)
+	var abg := StyleBoxFlat.new()
+	abg.bg_color = Color(0.08, 0.08, 0.10, 0.85)
+	abg.set_corner_radius_all(28)
+	achievement_tree_button.add_theme_stylebox_override("normal", abg)
+	var ahover := StyleBoxFlat.new()
+	ahover.bg_color = Color(0.15, 0.15, 0.18, 0.9)
+	ahover.set_corner_radius_all(28)
+	achievement_tree_button.add_theme_stylebox_override("hover", ahover)
+	var apressed := StyleBoxFlat.new()
+	apressed.bg_color = Color(0.35, 0.30, 0.22, 0.95)
+	apressed.set_corner_radius_all(28)
+	apressed.border_width_bottom = 2
+	apressed.border_color = Color(0.82, 0.72, 0.38, 0.6)
+	achievement_tree_button.add_theme_stylebox_override("pressed", apressed)
 	achievement_tree_button.focus_mode = Control.FOCUS_NONE
-	achievement_tree_button.z_index = 90
 	achievement_tree_button.pressed.connect(_on_achievement_tree_button_pressed)
-	$UI.add_child(achievement_tree_button)
+	acontainer.add_child(achievement_tree_button)
+	var alabel := Label.new()
+	alabel.name = "AchievementTreeLabel"
+	alabel.text = "\u6210\u5c31\u6811"
+	alabel.add_theme_font_size_override("font_size", 13)
+	alabel.add_theme_color_override("font_color", Color(0.82, 0.78, 0.65))
+	alabel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	acontainer.add_child(alabel)
+	$UI.add_child(acontainer)
 
 
 func _on_achievement_tree_button_pressed() -> void:
@@ -622,15 +648,41 @@ func _init_technology_tree_panel() -> void:
 
 
 func _init_technology_tree_button() -> void:
+	var tcontainer := VBoxContainer.new()
+	tcontainer.name = "TechnologyTreeContainer"
+	tcontainer.position = Vector2(92.0, 168.0)
+	tcontainer.z_index = 90
 	technology_tree_button = Button.new()
 	technology_tree_button.name = "TechnologyTreeButton"
-	technology_tree_button.text = "\u79d1\u6280\u6811"
-	technology_tree_button.position = Vector2(118.0, 176.0)
-	technology_tree_button.size = Vector2(96.0, 30.0)
+	technology_tree_button.icon = load("res://assets/icon_technology.png")
+	technology_tree_button.expand_icon = true
+	technology_tree_button.custom_minimum_size = Vector2(56.0, 56.0)
+	technology_tree_button.size = Vector2(56.0, 56.0)
+	var tbg := StyleBoxFlat.new()
+	tbg.bg_color = Color(0.08, 0.08, 0.10, 0.85)
+	tbg.set_corner_radius_all(28)
+	technology_tree_button.add_theme_stylebox_override("normal", tbg)
+	var thover := StyleBoxFlat.new()
+	thover.bg_color = Color(0.15, 0.15, 0.18, 0.9)
+	thover.set_corner_radius_all(28)
+	technology_tree_button.add_theme_stylebox_override("hover", thover)
+	var tpressed := StyleBoxFlat.new()
+	tpressed.bg_color = Color(0.35, 0.30, 0.22, 0.95)
+	tpressed.set_corner_radius_all(28)
+	tpressed.border_width_bottom = 2
+	tpressed.border_color = Color(0.82, 0.72, 0.38, 0.6)
+	technology_tree_button.add_theme_stylebox_override("pressed", tpressed)
 	technology_tree_button.focus_mode = Control.FOCUS_NONE
-	technology_tree_button.z_index = 90
 	technology_tree_button.pressed.connect(_on_technology_tree_button_pressed)
-	$UI.add_child(technology_tree_button)
+	tcontainer.add_child(technology_tree_button)
+	var tlabel := Label.new()
+	tlabel.name = "TechnologyTreeLabel"
+	tlabel.text = "\u79d1\u6280\u6811"
+	tlabel.add_theme_font_size_override("font_size", 13)
+	tlabel.add_theme_color_override("font_color", Color(0.82, 0.78, 0.65))
+	tlabel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tcontainer.add_child(tlabel)
+	$UI.add_child(tcontainer)
 
 
 func _on_technology_tree_button_pressed() -> void:
@@ -660,7 +712,7 @@ func _init_score_rule_button() -> void:
 	score_rule_button = Button.new()
 	score_rule_button.name = "ScoreRuleButton"
 	score_rule_button.text = "\u8ba1\u5206"
-	score_rule_button.position = Vector2(220.0, 176.0)
+	score_rule_button.position = Vector2(1800.0, 56.0)
 	score_rule_button.size = Vector2(76.0, 30.0)
 	score_rule_button.focus_mode = Control.FOCUS_NONE
 	score_rule_button.z_index = 90
@@ -696,7 +748,7 @@ func _init_civilization_route_button() -> void:
 	civilization_route_button = Button.new()
 	civilization_route_button.name = "CivilizationRouteButton"
 	civilization_route_button.text = "\u8def\u7ebf"
-	civilization_route_button.position = Vector2(302.0, 176.0)
+	civilization_route_button.position = Vector2(1800.0, 90.0)
 	civilization_route_button.size = Vector2(76.0, 30.0)
 	civilization_route_button.focus_mode = Control.FOCUS_NONE
 	civilization_route_button.z_index = 90
