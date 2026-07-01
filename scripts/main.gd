@@ -264,8 +264,8 @@ func _init_hover_info_card() -> void:
 	hover_info_card = TextureRect.new()
 	hover_info_card.name = "HoverInfoCard"
 	hover_info_card.texture = load("res://assets/小信息.png")
-	hover_info_card.position = Vector2((1920.0 - 360.0) * 0.5, 58.0)
-	hover_info_card.size = Vector2(360.0, 102.0)
+	hover_info_card.position = Vector2((1920.0 - 180.0) * 0.5, 58.0)
+	hover_info_card.size = Vector2(180.0, 52.0)
 	hover_info_card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	hover_info_card.stretch_mode = TextureRect.STRETCH_SCALE
 	hover_info_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -275,13 +275,13 @@ func _init_hover_info_card() -> void:
 
 	hover_info_label = Label.new()
 	hover_info_label.name = "HoverInfoLabel"
-	hover_info_label.position = Vector2(40.0, 30.0)
-	hover_info_label.size = Vector2(280.0, 42.0)
+	hover_info_label.position = Vector2(16.0, 8.0)
+	hover_info_label.size = Vector2(144.0, 26.0)
 	hover_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hover_info_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hover_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hover_info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hover_info_label.add_theme_font_size_override("font_size", 16)
+	hover_info_label.add_theme_font_size_override("font_size", 12)
 	hover_info_label.add_theme_color_override("font_color", Color(0.28, 0.16, 0.06, 1.0))
 	hover_info_label.add_theme_color_override("font_shadow_color", Color(1.0, 0.92, 0.72, 0.45))
 	hover_info_label.add_theme_constant_override("shadow_offset_x", 1)

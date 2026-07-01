@@ -1555,40 +1555,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not building.is_empty():
 			_set_hovered_building(int(building["id"]))
 			var data: BuildingData = building["data"]
-			var fname := GameCatalog.faction_name(int(building["faction"]))
 			var building_name: String = data.name
 			if int(building.get("level", 1)) > 1 and data.max_level > 1:
 				building_name = "%s Lv%d" % [data.name, int(building.get("level", 1))]
-			var hover_text := "%s - %s (HP:%d/%d)" % [fname, building_name, building["hp"], _get_building_hp_max_from_instance(building)]
-			if bool(building.get("pending_demolition", false)):
-				hover_text += " - 待拆除"
-			if BuildingRules.is_defense_building(data):
-				hover_text += " - 防御建筑"
-			if BuildingRules.is_forge(data):
-				hover_text += " - 配方:2铁+1石=>1精钢; 2铁+1魔尘=>1秘银"
-			if data.effect_radius > 0:
-				hover_text += " - Range:%d" % data.effect_radius
-			if data.defense_attack_range > 0:
-				hover_text += " - Tower:%d格/%d伤/%.1fs" % [data.defense_attack_range, data.defense_attack_damage, data.defense_attack_cooldown]
-			hover_text += " - %s" % data.get_garrison_rule_text()
-			var network_info: Dictionary = get_building_network_info(int(building["id"]))
-			if _should_draw_network_range(building):
-				var linked_count: int = int(network_info.get("linked_count", 0))
-				var network_bonus: int = int(network_info.get("production_bonus", 0))
-				if linked_count > 0:
-					hover_text += " - 建筑网络:%d" % linked_count
-					if network_bonus > 0:
-						hover_text += " 产出+%d" % network_bonus
-				else:
-					hover_text += " - 建筑网络:未连接"
-			var garr: Array = building.get("garrison", [])
-			if not garr.is_empty():
-				hover_text += " - Garrison:%d/%d" % [garr.size(), max_garrison(building)]
-			if _turn_manager != null:
-				if int(building.get("faction", -1)) == _turn_manager.current_player and int(building.get("hp", 0)) < _get_building_hp_max_from_instance(building):
-					hover_text += " - H修复:%d石料+%dAP" % [REPAIR_STONE_COST, REPAIR_AP_COST]
-				elif int(building.get("faction", -1)) != _turn_manager.current_player:
-					hover_text += " - 可攻击"
+			var hover_text := "%s\nHP:%d/%d" % [building_name, building["hp"], _get_building_hp_max_from_instance(building)]
 			building_hovered.emit(hover_text)
 		else:
 			_set_hovered_building(-1)
