@@ -146,6 +146,8 @@ func _enable_sync_turns() -> void:
 		_turn_manager.call("set_synchronous_mode_enabled", true)
 	if _turn_manager != null and _turn_manager.has_method("set_view_player"):
 		_turn_manager.call("set_view_player", local_faction)
+	if _turn_manager != null:
+		_turn_manager.current_player = local_faction
 
 
 func _on_peer_connected(peer_id: int) -> void:
