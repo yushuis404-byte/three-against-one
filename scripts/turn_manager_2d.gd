@@ -22,15 +22,15 @@ var round_number := 0
 var current_player := 0
 var view_player := 0
 var turn_phase: TurnPhase = TurnPhase.ROUND_START
-var player_ap := [6, 6, 6]
+var player_ap := [25, 25, 25]
 var player_finished := [false, false, false]
 var player_ready := [false, false, false]
 var game_stopped := false
 var creative_mode_enabled := false
 var synchronous_mode_enabled := false
 
-const AP_PER_ROUND := 12
-const AP_MAX := 12
+const AP_PER_ROUND := 25
+const AP_MAX := 25
 const CREATIVE_AP_VALUE := 999
 const PLAYER_COUNT := 3
 
