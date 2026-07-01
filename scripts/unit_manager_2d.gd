@@ -10,6 +10,8 @@ const ELF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/charact
 const ELF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Walk.png")
 const DWARF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png")
 const DWARF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Walk.png")
+const ELF_SCOUT_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Scout/Elf-Scout-Idle.png")
+const ELF_SCOUT_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Scout/Elf-Scout-Walk.png")
 const ELF_RANGER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Ranger/Elf-Ranger-Idle.png")
 const ELF_RANGER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Ranger/Elf-Ranger-Walk.png")
 const ELF_ASSASSIN_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Moonshadow Assassin/Elf-Assassin-Idle.png")
@@ -114,6 +116,7 @@ const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
 const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
 const ELF_WORKER_TEMPLATE_ID := "unit.elf.worker"
 const DWARF_WORKER_TEMPLATE_ID := "unit.dwarf.worker"
+const ELF_SCOUT_TEMPLATE_ID := "unit.elf.scout"
 const ELF_RANGER_TEMPLATE_ID := "unit.elf.ranger"
 const ELF_ASSASSIN_TEMPLATE_ID := "unit.elf.guard"
 const ELF_FOG_REVEAL_CASTER_TEMPLATE_ID := "unit.elf.scout"
@@ -165,6 +168,9 @@ const DWARF_WORKER_WALK_FRAMES := 10
 const DWARF_WORKER_FRAME_SIZE := Vector2(320.0, 320.0)
 const DWARF_WORKER_IDLE_DRAW_SIZE := Vector2(20.7, 20.7)
 const DWARF_WORKER_WALK_DRAW_SIZE := Vector2(25.2, 25.2)
+const ELF_SCOUT_WALK_FRAMES := 9
+const ELF_SCOUT_FRAME_SIZE := Vector2(320.0, 320.0)
+const ELF_SCOUT_DRAW_SIZE := Vector2(28.8, 28.8)
 const ELF_RANGER_WALK_FRAMES := 9
 const ELF_RANGER_FRAME_SIZE := Vector2(320.0, 320.0)
 const ELF_RANGER_DRAW_SIZE := Vector2(28.8, 28.8)
@@ -679,13 +685,10 @@ func _draw() -> void:
 			continue
 		var world_pos: Vector2 = _get_unit_draw_world_pos(u)
 		var faction: int = u["faction"]
-		var data: UnitData = _get_unit_data(u)
-		var hp: int = u["hp"]
 		var uid: int = u["id"]
 		var is_selected := uid == _selected_id or uid in _selected_unit_ids
 		var is_primary_selected := uid == _selected_id
 		var draw_pos: Vector2 = world_pos + _shake_offsets.get(uid, Vector2.ZERO)
-		var uses_orc_sprite: bool = _uses_orc_sprite(u)
 
 		if is_selected:
 			var ring_color: Color = SELECT_COLOR
@@ -701,6 +704,8 @@ func _draw() -> void:
 			_draw_elf_worker(u, draw_pos)
 		elif _is_dwarf_worker(u):
 			_draw_dwarf_worker(u, draw_pos)
+		elif _is_elf_scout(u):
+			_draw_elf_scout(u, draw_pos)
 		elif _is_elf_ranger(u):
 			_draw_elf_ranger(u, draw_pos)
 		elif _is_elf_assassin(u):
@@ -711,20 +716,6 @@ func _draw() -> void:
 				color = Color(1.0, 0.9, 0.85)
 			draw_circle(draw_pos, UNIT_RADIUS, color)
 			draw_arc(draw_pos, UNIT_RADIUS, 0, TAU, 16, Color.BLACK, 1.5)
-
-		var font: Font = ThemeDB.fallback_font
-		var fsize := 11
-		var label := data.unit_name
-		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var name_offset_y: float = -30.0 if uses_orc_sprite else -UNIT_RADIUS - 4.0
-		var name_pos := Vector2(draw_pos.x - text_size.x / 2.0, draw_pos.y + name_offset_y)
-		draw_string(font, name_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
-
-		var hp_label := str(hp)
-		var hp_size := font.get_string_size(hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var hp_offset_y: float = 32.0 if uses_orc_sprite else UNIT_RADIUS + 14.0
-		var hp_pos := Vector2(draw_pos.x - hp_size.x / 2.0, draw_pos.y + hp_offset_y)
-		draw_string(font, hp_pos, hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
 
 	for unit_id_variant in _death_visuals.keys():
 		var unit_id: int = int(unit_id_variant)
@@ -2246,13 +2237,13 @@ func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
 
 func _has_orc_blood_axe_units() -> bool:
 	for unit in _units:
-		if _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
+		if _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
 			return true
 	return false
 
 
 func _uses_orc_sprite(unit: Dictionary) -> bool:
-	return _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
+	return _is_orc_blood_axe(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
 
 
 func _is_orc_blood_axe(unit: Dictionary) -> bool:
@@ -2273,6 +2264,10 @@ func _is_elf_worker(unit: Dictionary) -> bool:
 
 func _is_dwarf_worker(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == DWARF_WORKER_TEMPLATE_ID
+
+
+func _is_elf_scout(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ELF_SCOUT_TEMPLATE_ID
 
 
 func _is_elf_ranger(unit: Dictionary) -> bool:
@@ -2325,6 +2320,27 @@ func _draw_dwarf_worker(unit: Dictionary, draw_pos: Vector2) -> void:
 		frame = clampi(int(floor(t * float(DWARF_WORKER_WALK_FRAMES))), 0, DWARF_WORKER_WALK_FRAMES - 1)
 	var src := Rect2(Vector2(DWARF_WORKER_FRAME_SIZE.x * frame, 0.0), DWARF_WORKER_FRAME_SIZE)
 	var dst := Rect2(-draw_size * 0.5, draw_size)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_elf_scout(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var frame: int = 0
+	var texture: Texture2D = ELF_SCOUT_IDLE_TEXTURE
+	if is_moving:
+		texture = ELF_SCOUT_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(ELF_SCOUT_WALK_FRAMES))), 0, ELF_SCOUT_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(ELF_SCOUT_FRAME_SIZE.x * frame, 0.0), ELF_SCOUT_FRAME_SIZE)
+	var dst := Rect2(-ELF_SCOUT_DRAW_SIZE * 0.5, ELF_SCOUT_DRAW_SIZE)
 	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
 	if is_moving:
 		var move_visual: Dictionary = _move_visuals.get(uid, {})
