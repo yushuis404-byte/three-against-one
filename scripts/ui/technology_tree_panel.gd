@@ -77,6 +77,7 @@ var _effect_names: Dictionary = {
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true
 	_build_static_layout()
 
 

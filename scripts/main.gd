@@ -54,6 +54,7 @@ var victory_service: Node = null
 var game_over_label: Label = null
 var score_rule_panel: Control = null
 var score_rule_button: Button = null
+var score_label: Label = null
 var civilization_route_panel: Control = null
 var civilization_route_button: Button = null
 var creative_mode_button: Button = null
@@ -151,6 +152,7 @@ func _setup_game() -> void:
 	turn_manager.round_ended.connect(_on_round_ended)
 	turn_manager.ap_changed.connect(_on_ap_changed)
 	_init_ap_status_label()
+	_init_score_label()
 	_init_zoom_status_label()
 	_init_stage_event_service()
 
@@ -248,6 +250,11 @@ func _restyle_top_bar() -> void:
 		sep.name = "TopBarSep"
 		hbox.add_child(sep)
 		hbox.move_child(sep, 1)
+
+		# Extra spacing between gold and wood
+		var gold_vbox: VBoxContainer = hbox.get_node_or_null("ResGold") as VBoxContainer
+		if gold_vbox:
+			gold_vbox.add_theme_constant_override("separation", 30)
 
 		var spacer := Control.new()
 		spacer.name = "TopBarSpacer"
@@ -390,6 +397,7 @@ func _on_player_turn_started(player: int) -> void:
 	turn_label.label_settings = _make_label_settings(GameCatalog.faction_color(player))
 	debug_label.text = _format_ap_debug_text(player)
 	_update_ap_status_label(player)
+	_update_score_label(player)
 	resource_tracker.update_display(player)
 	_update_progress_bars(player)
 	_update_wall_blueprint_ui(player, "")
@@ -978,6 +986,7 @@ func _init_stage_label() -> void:
 	stage_label.add_theme_font_size_override("font_size", 14)
 	stage_label.add_theme_color_override("font_color", Color.WHITE)
 	stage_label.position = Vector2(1700, 12)
+	stage_label.size = Vector2(200, 24)
 	$UI.add_child(stage_label)
 	_update_stage_label(maxi(turn_manager.round_number, 1))
 
@@ -1022,7 +1031,7 @@ func _init_ap_status_label() -> void:
 	ap_status_label = Label.new()
 	ap_status_label.name = "APStatusLabel"
 	ap_status_label.position = Vector2(1470, 12)
-	ap_status_label.size = Vector2(220, 24)
+	ap_status_label.size = Vector2(100, 24)
 	ap_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ap_status_label.add_theme_font_size_override("font_size", 14)
 	ap_status_label.add_theme_color_override("font_color", Color.WHITE)
@@ -1041,6 +1050,31 @@ func _update_ap_status_label(player: int) -> void:
 		ap_status_label.text = "AP:∞"
 		return
 	ap_status_label.text = "AP:%d/%d" % [turn_manager.get_ap(player), turn_manager.AP_MAX]
+
+
+func _init_score_label() -> void:
+	score_label = Label.new()
+	score_label.name = "ScoreLabel"
+	score_label.position = Vector2(1580, 12)
+	score_label.size = Vector2(110, 24)
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	score_label.add_theme_font_size_override("font_size", 14)
+	score_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.58))
+	score_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	score_label.add_theme_constant_override("shadow_offset_x", 1)
+	score_label.add_theme_constant_override("shadow_offset_y", 1)
+	$UI.add_child(score_label)
+	_update_score_label(turn_manager.current_player)
+
+
+func _update_score_label(player: int) -> void:
+	if not score_label or not victory_service:
+		return
+	var scores: Array = victory_service.calculate_scores()
+	if player >= 0 and player < scores.size():
+		var entry: Dictionary = scores[player]
+		score_label.text = "计分: %d" % int(entry.get("score", 0))
 
 
 func _init_zoom_status_label() -> void:
