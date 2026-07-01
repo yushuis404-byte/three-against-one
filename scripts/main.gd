@@ -357,11 +357,12 @@ func _on_round_ended(round: int) -> void:
 
 
 func _on_ap_changed(player: int, ap: int) -> void:
-	debug_label.text = _format_ap_debug_text(player)
-	_update_ap_status_label(player)
-	_update_wall_blueprint_ui(player, "")
-	resource_tracker.update_display(player)
-	building_ui.refresh(player)
+	var display_player: int = _get_display_player()
+	debug_label.text = _format_ap_debug_text(display_player)
+	_update_ap_status_label(display_player)
+	_update_wall_blueprint_ui(display_player, "")
+	resource_tracker.update_display(display_player)
+	building_ui.refresh(display_player)
 	_refresh_unit_skill_bar()
 
 
@@ -460,7 +461,7 @@ func _init_resource_labels() -> void:
 
 
 func _on_resources_updated(_player: int) -> void:
-	var cp: int = turn_manager.current_player
+	var cp: int = _get_display_player()
 	resource_tracker.update_display(cp)
 	for rkey in _resource_progress_bars:
 		var cur: int = resource_tracker.get_resource(cp, rkey)
@@ -468,6 +469,14 @@ func _on_resources_updated(_player: int) -> void:
 		var bar: ProgressBar = _resource_progress_bars[rkey]
 		bar.max_value = float(maxi(cap, 1))
 		bar.value = float(clampi(cur, 0, cap))
+
+
+func _get_display_player() -> int:
+	if turn_manager == null:
+		return 0
+	if turn_manager.get("view_player") != null:
+		return int(turn_manager.get("view_player"))
+	return int(turn_manager.current_player)
 
 
 func _init_creative_mode_button() -> void:

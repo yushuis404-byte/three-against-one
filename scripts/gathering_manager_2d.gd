@@ -122,6 +122,8 @@ func _complete_gather(unit_id: int) -> void:
 	_active_gathers.erase(unit_id)
 	var player: int = int(gather.get("faction", -1))
 	var pos: Vector2i = gather.get("pos", Vector2i(-1, -1))
+	var previous_current_player: int = int(_turn_mgr.get("current_player")) if _turn_mgr != null else -1
+	var previous_view_player: int = int(_turn_mgr.get("view_player")) if _turn_mgr != null else -1
 	if _is_network_client():
 		queue_redraw()
 		return
@@ -145,7 +147,19 @@ func _complete_gather(unit_id: int) -> void:
 	_show_gather_text(pos, results)
 	if _network_game_service != null and _network_game_service.has_method("broadcast_gather_complete"):
 		_network_game_service.call("broadcast_gather_complete", player, unit_id, pos, results)
+	_restore_turn_view_after_gather(previous_current_player, previous_view_player)
 	queue_redraw()
+
+
+func _restore_turn_view_after_gather(previous_current_player: int, previous_view_player: int) -> void:
+	if _turn_mgr == null:
+		return
+	if previous_current_player >= 0:
+		_turn_mgr.set("current_player", previous_current_player)
+	if previous_view_player >= 0:
+		_turn_mgr.set("view_player", previous_view_player)
+		if _turn_mgr.has_signal("view_player_changed"):
+			_turn_mgr.emit_signal("view_player_changed", previous_view_player)
 
 
 func _can_complete_gather(unit_id: int, player: int, pos: Vector2i) -> bool:
