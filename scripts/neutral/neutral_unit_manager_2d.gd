@@ -272,33 +272,25 @@ func _draw() -> void:
 
 		# 颜色按行为类型
 		var color: Color = NEUTRAL_COLOR
-		var label: String = u.get("display_name", "")
 		match behavior:
 			"guard":
 				match u.get("template_id", ""):
 					"neutral.wyvern.fire":
 						color = Color(0.8, 0.3, 0.1)  # 火焰橙红
-						label = "🔥龙"
 					"neutral.wyvern.frost":
 						color = Color(0.3, 0.6, 0.9)  # 冰霜蓝
-						label = "❄龙"
 					"neutral.wyvern.toxic":
 						color = Color(0.5, 0.2, 0.7)  # 毒液紫
-						label = "☠龙"
 					_:
-						label = "龙"
+						pass
 			"ancient_dragon":
 				color = Color(0.45, 0.16, 0.12)
-				label = "古龙"
 			"progenitor_dragon":
 				color = Color(0.68, 0.05, 0.05)
-				label = "史祖"
 			"hidden_trader":
 				color = HIDDEN_TRADER_COLOR
-				label = "商"
 			"revenge":
 				color = REVENGE_COLOR
-				label = "哥"
 
 		# 填充圆
 		draw_circle(world_pos, UNIT_RADIUS, color)
@@ -307,20 +299,10 @@ func _draw() -> void:
 		draw_arc(world_pos, UNIT_RADIUS, 0, TAU, 16, Color.BLACK, 1.5)
 
 		# 标签文字（圆上方）
-		var font: Font = ThemeDB.fallback_font
-		var fsize := 11
-		var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var name_pos := Vector2(world_pos.x - text_size.x / 2.0, world_pos.y - UNIT_RADIUS - 4.0)
-		draw_string(font, name_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
-
-		# HP 数字（圆下方）
-		var hp_str := str(u["hp"])
-		var hp_size := font.get_string_size(hp_str, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
-		var hp_pos := Vector2(world_pos.x - hp_size.x / 2.0, world_pos.y + UNIT_RADIUS + 14.0)
-		draw_string(font, hp_pos, hp_str, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color.WHITE)
-
 
 # ========== 玩家交互（点击检查） ==========
+
+
 
 func get_unit_at_world(world_pos: Vector2) -> Dictionary:
 	var gpos: Vector2i = _world_to_grid(world_pos)
