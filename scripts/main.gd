@@ -1391,19 +1391,25 @@ func _init_network_ui() -> void:
 	network_ready_label.add_theme_constant_override("shadow_offset_y", 1)
 	$UI.add_child(network_ready_label)
 	_update_network_ready_label()
+	_sync_network_ui_visibility()
 
 
-
-
-	if network_game_service != null and network_game_service.is_network_game():
-		if network_host_button != null:
-			network_host_button.visible = false
-		if network_join_button != null:
-			network_join_button.visible = false
-		if network_address_input != null:
-			network_address_input.visible = false
-		if network_port_input != null:
-			network_port_input.visible = false
+func _sync_network_ui_visibility() -> void:
+	var in_network_game: bool = network_game_service != null and network_game_service.is_network_game()
+	if network_host_button != null:
+		network_host_button.visible = false
+	if network_join_button != null:
+		network_join_button.visible = false
+	if network_address_input != null:
+		network_address_input.visible = false
+	if network_port_input != null:
+		network_port_input.visible = false
+	if network_ready_button != null:
+		network_ready_button.visible = in_network_game
+	if network_status_label != null:
+		network_status_label.visible = in_network_game
+	if network_ready_label != null:
+		network_ready_label.visible = in_network_game
 
 func _on_network_host_pressed() -> void:
 	if network_game_service != null:
@@ -1424,6 +1430,7 @@ func _on_network_ready_pressed() -> void:
 
 
 func _on_network_status_changed(text: String) -> void:
+	_sync_network_ui_visibility()
 	if network_status_label != null:
 		network_status_label.text = text
 	debug_label.text = text

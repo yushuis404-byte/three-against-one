@@ -8,7 +8,7 @@ signal remote_snapshot_received(snapshot: Dictionary)
 const DEFAULT_PORT := 24531
 const MAX_PLAYERS := 3
 
-var local_faction := 0
+var local_faction := -1
 var peer_to_faction: Dictionary = {}
 var faction_to_peer: Dictionary = {}
 
@@ -135,6 +135,7 @@ func adopt_existing_peer() -> void:
 	_enable_sync_turns()
 	if multiplayer.is_server():
 		local_faction = 0
+		_enable_sync_turns()
 		peer_to_faction.clear()
 		faction_to_peer.clear()
 		peer_to_faction[1] = 0
@@ -152,10 +153,14 @@ func adopt_existing_peer() -> void:
 		multiplayer.connection_failed.connect(_on_connection_failed)
 		multiplayer.server_disconnected.connect(_on_server_disconnected)
 		network_status_changed.emit("已连接，等待主机分配阵营")
+		_request_assignment_from_host()
 
 
 func request_action(action_type: String, payload: Dictionary) -> void:
 	if not _is_network_game:
+		return
+	if local_faction < 0:
+		network_status_changed.emit("等待主机分配阵营")
 		return
 	if is_host():
 		_handle_action_request(local_faction, action_type, payload)
@@ -170,6 +175,8 @@ func request_end_round() -> void:
 func _enable_sync_turns() -> void:
 	if _turn_manager != null and _turn_manager.has_method("set_synchronous_mode_enabled"):
 		_turn_manager.call("set_synchronous_mode_enabled", true)
+	if local_faction < 0:
+		return
 	if _turn_manager != null and _turn_manager.has_method("set_view_player"):
 		_turn_manager.call("set_view_player", local_faction)
 	if _turn_manager != null:
@@ -179,16 +186,24 @@ func _enable_sync_turns() -> void:
 func _on_peer_connected(peer_id: int) -> void:
 	if not is_host():
 		return
+	_assign_peer_faction(peer_id)
+	_broadcast_snapshots()
+
+
+func _assign_peer_faction(peer_id: int) -> int:
+	if peer_to_faction.has(peer_id):
+		var existing_faction: int = int(peer_to_faction[peer_id])
+		rpc_id(peer_id, "_rpc_assign_faction", existing_faction)
+		return existing_faction
 	var faction := _get_next_free_faction()
 	if faction < 0:
 		multiplayer.multiplayer_peer.disconnect_peer(peer_id)
-		return
+		return -1
 	peer_to_faction[peer_id] = faction
 	faction_to_peer[faction] = peer_id
 	rpc_id(peer_id, "_rpc_assign_faction", faction)
-	network_status_changed.emit("玩家加入: peer %d -> 阵营 %d" % [peer_id, faction])
-	_broadcast_snapshots()
-
+	network_status_changed.emit("????: peer %d -> ?? %d" % [peer_id, faction])
+	return faction
 
 func _on_peer_disconnected(peer_id: int) -> void:
 	if peer_to_faction.has(peer_id):
@@ -200,8 +215,27 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _on_connected_to_server() -> void:
-	network_status_changed.emit("已连接，等待主机分配阵营")
+	network_status_changed.emit("????????????")
+	_request_assignment_from_host()
 
+
+func _request_assignment_from_host() -> void:
+	if is_host():
+		return
+	if multiplayer.multiplayer_peer == null:
+		return
+	rpc_id(1, "_rpc_request_faction_assignment")
+
+
+@rpc("any_peer", "reliable")
+func _rpc_request_faction_assignment() -> void:
+	if not is_host():
+		return
+	var sender: int = multiplayer.get_remote_sender_id()
+	if sender <= 1:
+		return
+	_assign_peer_faction(sender)
+	_broadcast_snapshots()
 
 func _on_connection_failed() -> void:
 	_is_network_game = false
