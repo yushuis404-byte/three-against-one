@@ -2,56 +2,29 @@ extends Control
 
 signal skill_requested(action_id: String, unit_id: int)
 
-const PANEL_SIZE: Vector2 = Vector2(236.0, 280.0)
-const PANEL_POS: Vector2 = Vector2(1680.0, 795.0)
-const BUTTON_SIZE: Vector2 = Vector2(212.0, 52.0)
+const BUTTON_SIZE: Vector2 = Vector2(180.0, 36.0)
 const READY_COLOR: Color = Color(0.86, 1.0, 0.78, 1.0)
 const DISABLED_COLOR: Color = Color(0.42, 0.42, 0.42, 0.78)
 const ACTIVE_COLOR: Color = Color(0.78, 0.90, 1.0, 1.0)
 
-var _panel: PanelContainer
-var _list: VBoxContainer
+var _list: HBoxContainer
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	position = Vector2(4, 810)
+	size = Vector2(690, 44)
 	_build_ui()
 	hide()
 
 
 func _build_ui() -> void:
-	_panel = PanelContainer.new()
-	_panel.position = PANEL_POS
-	_panel.size = PANEL_SIZE
-	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(_panel)
-
-	var style: StyleBoxFlat = StyleBoxFlat.new()
-	style.bg_color = Color(0.045, 0.05, 0.055, 0.92)
-	style.border_color = Color(0.42, 0.50, 0.58, 0.72)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(6)
-	_panel.add_theme_stylebox_override("panel", style)
-
-	var margin: MarginContainer = MarginContainer.new()
-	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_theme_constant_override("margin_left", 10)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_right", 10)
-	margin.add_theme_constant_override("margin_bottom", 10)
-	_panel.add_child(margin)
-
-	_list = VBoxContainer.new()
+	_list = HBoxContainer.new()
 	_list.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_list.add_theme_constant_override("separation", 7)
-	margin.add_child(_list)
-
-	var title: Label = Label.new()
-	title.text = "技能"
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.add_theme_font_size_override("font_size", 16)
-	title.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0))
-	_list.add_child(title)
+	_list.add_theme_constant_override("separation", 8)
+	_list.position = Vector2.ZERO
+	_list.size = size
+	add_child(_list)
 
 
 func show_skills(skills: Array) -> void:
@@ -73,9 +46,7 @@ func clear_skills() -> void:
 func _clear_buttons() -> void:
 	if _list == null:
 		return
-	var children: Array = _list.get_children()
-	for i in range(children.size()):
-		var child: Node = children[i]
+	for child in _list.get_children():
 		if child is Button:
 			_list.remove_child(child)
 			child.queue_free()
@@ -97,6 +68,7 @@ func _add_skill_button(skill: Dictionary) -> void:
 	button.disabled = not enabled
 	button.text = _format_button_text(label, status)
 	button.tooltip_text = reason
+	button.add_theme_font_size_override("font_size", 13)
 	button.modulate = DISABLED_COLOR
 	if enabled:
 		button.modulate = ACTIVE_COLOR if active else READY_COLOR
@@ -107,7 +79,7 @@ func _add_skill_button(skill: Dictionary) -> void:
 func _format_button_text(label: String, status: String) -> String:
 	if status.is_empty():
 		return label
-	return "%s\n%s" % [label, status]
+	return "%s (%s)" % [label, status]
 
 
 func _on_skill_pressed(action_id: String, unit_id: int) -> void:

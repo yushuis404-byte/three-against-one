@@ -58,6 +58,7 @@ var score_label: Label = null
 var civilization_route_panel: Control = null
 var civilization_route_button: Button = null
 var creative_mode_button: Button = null
+var end_turn_button: Button = null
 var wall_blueprint_button: Button = null
 var wall_blueprint_status_label: Label = null
 var zoom_status_label: Label = null
@@ -179,6 +180,7 @@ func _setup_game() -> void:
 	_restyle_top_bar()
 	_init_hover_info_card()
 	_init_creative_mode_button()
+	_init_end_turn_button()
 	_init_achievement_service()
 	_init_technology_service()
 	_init_goblin_hex_service()
@@ -588,6 +590,28 @@ func _on_creative_mode_toggled(enabled: bool) -> void:
 	resource_tracker.update_display(cp)
 	building_ui.refresh(cp)
 	debug_label.text = "创造模式已开启：资源与 AP 不消耗" if enabled else _format_ap_debug_text(cp)
+
+
+func _init_end_turn_button() -> void:
+	end_turn_button = Button.new()
+	end_turn_button.name = "EndTurnButton"
+	end_turn_button.text = "结束回合"
+	end_turn_button.position = Vector2(1780, 1030)
+	end_turn_button.size = Vector2(120, 36)
+	end_turn_button.focus_mode = Control.FOCUS_NONE
+	end_turn_button.z_index = 90
+	end_turn_button.add_theme_font_size_override("font_size", 15)
+	end_turn_button.pressed.connect(_on_end_turn_button_pressed)
+	$UI.add_child(end_turn_button)
+
+
+func _on_end_turn_button_pressed() -> void:
+	if current_state != GameState.PLAYING:
+		return
+	if network_game_service != null and network_game_service.is_network_game():
+		network_game_service.request_end_round()
+	else:
+		_on_end_turn()
 
 
 func _update_creative_mode_button() -> void:

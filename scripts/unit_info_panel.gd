@@ -59,7 +59,7 @@ const CATEGORY_LETTERS := {
 
 # ── 尺寸常量 ──
 const PANEL_LEFT := 4.0
-const PANEL_TOP := 880.0
+const PANEL_TOP := 860.0
 const PANEL_RIGHT := 694.0
 const PANEL_BOTTOM := 1148.0
 const PANEL_W := 690.0
