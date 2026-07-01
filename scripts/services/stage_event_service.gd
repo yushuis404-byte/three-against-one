@@ -33,6 +33,11 @@ func is_stage_start_round(round_number: int) -> bool:
 
 
 func _on_round_started(round_number: int) -> void:
+	if GameStageRulesScript.is_goblin_market_stage_start(round_number) and _last_goblin_market_round != round_number:
+		_last_goblin_market_round = round_number
+		var market_stage: int = GameStageRulesScript.get_stage_for_round(round_number)
+		goblin_market_started.emit(market_stage, round_number)
+
 	if not GameStageRulesScript.is_stage_start_round(round_number):
 		return
 
@@ -40,7 +45,3 @@ func _on_round_started(round_number: int) -> void:
 	if _last_stage_round != round_number:
 		_last_stage_round = round_number
 		stage_started.emit(stage, round_number)
-
-	if GameStageRulesScript.is_goblin_market_stage_start(round_number) and _last_goblin_market_round != round_number:
-		_last_goblin_market_round = round_number
-		goblin_market_started.emit(stage, round_number)

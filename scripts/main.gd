@@ -5,6 +5,8 @@ const AchievementServiceScript = preload("res://scripts/services/achievement_ser
 const AchievementTreePanelScript = preload("res://scripts/ui/achievement_tree_panel.gd")
 const TechnologyServiceScript = preload("res://scripts/services/technology_service.gd")
 const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_panel.gd")
+const GoblinHexServiceScript = preload("res://scripts/services/goblin_hex_service.gd")
+const GoblinHexPanelScript = preload("res://scripts/ui/goblin_hex_panel.gd")
 const VictoryServiceScript = preload("res://scripts/services/victory_service.gd")
 const ScoreRulePanelScript = preload("res://scripts/ui/score_rule_panel.gd")
 const CivilizationRoutePanelScript = preload("res://scripts/ui/civilization_route_panel.gd")
@@ -46,6 +48,8 @@ var achievement_tree_button: Button = null
 var technology_service: Node = null
 var technology_tree_panel: Control = null
 var technology_tree_button: Button = null
+var goblin_hex_service: Node = null
+var goblin_hex_panel: Control = null
 var victory_service: Node = null
 var game_over_label: Label = null
 var score_rule_panel: Control = null
@@ -168,6 +172,7 @@ func _setup_game() -> void:
 	_init_creative_mode_button()
 	_init_achievement_service()
 	_init_technology_service()
+	_init_goblin_hex_service()
 	_init_victory_service()
 
 	# 建造面板初始化
@@ -185,6 +190,7 @@ func _setup_game() -> void:
 	goblin_market_ui.set_resource_tracker(resource_tracker)
 	goblin_market_ui.set_neutral_manager(neutral_unit_manager)
 	goblin_market_ui.hide()
+	_init_goblin_hex_panel()
 	unit_manager.hidden_trader_discovered.connect(_on_hidden_trader_discovered)
 
 		# 单位信息面板初始化
@@ -340,9 +346,9 @@ func _on_player_turn_started(player: int) -> void:
 	_update_wall_blueprint_ui(player, "")
 	# 海克斯商队触发检查
 	if _goblin_market_round == turn_manager.round_number:
-		if neutral_unit_manager.should_caravan_visit(player):
-			var mult: float = neutral_unit_manager.get_price_multiplier(player)
-			goblin_market_ui.show_market(player, mult)
+		if goblin_hex_service != null and goblin_hex_panel != null:
+			if bool(goblin_hex_service.call("can_player_choose", player, turn_manager.round_number)):
+				goblin_hex_panel.call("show_hex", player, turn_manager.round_number)
 	building_ui.refresh(player)
 	_selected_unit_skill_view = {}
 	_refresh_unit_skill_bar()
@@ -528,6 +534,24 @@ func _init_technology_service() -> void:
 		building_manager.set_technology_service(technology_service)
 	if resource_tracker != null and resource_tracker.has_method("set_technology_service"):
 		resource_tracker.set_technology_service(technology_service)
+
+
+func _init_goblin_hex_service() -> void:
+	goblin_hex_service = GoblinHexServiceScript.new()
+	goblin_hex_service.name = "GoblinHexService"
+	$GameBoard.add_child(goblin_hex_service)
+	if goblin_hex_service.has_method("setup"):
+		goblin_hex_service.call("setup", resource_tracker, turn_manager, technology_service)
+	if goblin_hex_service.has_signal("card_selected"):
+		goblin_hex_service.card_selected.connect(_on_goblin_hex_card_selected)
+
+
+func _init_goblin_hex_panel() -> void:
+	goblin_hex_panel = GoblinHexPanelScript.new()
+	goblin_hex_panel.name = "GoblinHexPanel"
+	$UI.add_child(goblin_hex_panel)
+	goblin_hex_panel.setup(goblin_hex_service)
+	goblin_hex_panel.hide()
 
 
 func _init_victory_service() -> void:
@@ -802,8 +826,18 @@ func _on_stage_started(stage: int, round_number: int) -> void:
 
 func _on_goblin_market_started(stage: int, round_number: int) -> void:
 	_goblin_market_round = round_number
-	debug_label.text = "第 %d 阶段开始：哥布林商队出现" % stage
-	print("[阶段事件] 哥布林商队出现：阶段 %d，回合 %d" % [stage, round_number])
+	var rarity := ""
+	if goblin_hex_service != null:
+		rarity = str(goblin_hex_service.call("prepare_round", round_number))
+	debug_label.text = "第 %d 阶段：哥布林海克斯出现（%s）" % [stage, rarity]
+	print("[阶段事件] 哥布林海克斯出现：阶段 %d，回合 %d，品质 %s" % [stage, round_number, rarity])
+
+
+func _on_goblin_hex_card_selected(player: int, round_number: int, card: Dictionary) -> void:
+	var card_name: String = str(card.get("name", ""))
+	var rarity_name: String = str(card.get("rarity_name", ""))
+	debug_label.text = "%s 选择了%s海克斯：%s" % [GameCatalog.faction_name(player), rarity_name, card_name]
+	print("[哥布林海克斯] 回合 %d 阵营 %d 选择 %s %s" % [round_number, player, rarity_name, card_name])
 
 
 func _init_stage_label() -> void:

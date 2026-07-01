@@ -627,6 +627,7 @@ func _on_neutral_defeated(neutral_unit_id: int, killer_player: int) -> void:
 
 func _apply_kill_food_reward(killer_player: int) -> void:
 	var reward: int = _get_technology_modifier(killer_player, "kill_food_reward")
+	reward += _get_technology_modifier(killer_player, "orc_kill_reward_bonus")
 	if reward <= 0:
 		return
 	if _resource_tracker != null and _resource_tracker.has_method("add_resource"):

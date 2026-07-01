@@ -2,6 +2,7 @@ class_name TechnologyService
 extends Node
 
 const TechnologyLibraryScript := preload("res://scripts/technologies/technology_library.gd")
+const GoblinHexCardLibraryScript := preload("res://scripts/rules/goblin_hex_card_library.gd")
 
 signal technology_researched(player: int, technology_id: String, title: String)
 signal technology_state_changed(player: int)
@@ -10,6 +11,7 @@ var _definitions: Array = []
 var _by_id: Dictionary = {}
 var _researched: Array = [{}, {}, {}]
 var _active_effects: Array = [{}, {}, {}]
+var _modifier_sources: Array[Node] = []
 var _achievement_service: Node = null
 var _civilization_rules: Node = null
 var _network_game_service: Node = null
@@ -226,13 +228,40 @@ func get_effective_cost(player: int, technology_id: String) -> int:
 func get_modifier(player: int, key: String, default_value: int = 0) -> int:
 	if not _is_valid_player(player):
 		return default_value
-	return int(_active_effects[player].get(key, default_value))
+	var total: int = int(_active_effects[player].get(key, 0))
+	for source in _modifier_sources:
+		if source == null or not is_instance_valid(source):
+			continue
+		if source.has_method("get_modifier"):
+			total += int(source.call("get_modifier", player, key, 0))
+	if total == 0:
+		return default_value
+	return total
 
 
 func get_all_modifiers(player: int) -> Dictionary:
 	if not _is_valid_player(player):
 		return {}
-	return _active_effects[player].duplicate(true)
+	var result: Dictionary = _active_effects[player].duplicate(true)
+	for source in _modifier_sources:
+		if source == null or not is_instance_valid(source):
+			continue
+		if not source.has_method("get_modifier"):
+			continue
+		for key in GoblinHexCardLibraryScript.MODIFIER_NAMES.keys():
+			var modifier_key: String = str(key)
+			var value: int = int(source.call("get_modifier", player, modifier_key, 0))
+			if value != 0:
+				result[modifier_key] = int(result.get(modifier_key, 0)) + value
+	return result
+
+
+func register_modifier_source(source: Node) -> void:
+	if source == null:
+		return
+	if source in _modifier_sources:
+		return
+	_modifier_sources.append(source)
 
 
 func has_any(player: int, technology_ids: Array) -> bool:
