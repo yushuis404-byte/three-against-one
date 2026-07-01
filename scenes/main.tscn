@@ -21,6 +21,7 @@
 [ext_resource type="Script" uid="uid://bfxk3wx0fa53k" path="res://scripts/civilization/civilization_rule_service.gd" id="18_civ_rules"]
 [ext_resource type="Script" uid="uid://cl0hntk8pko77" path="res://scripts/ui/civilization_debug_panel.gd" id="19_civ_debug"]
 [ext_resource type="Script" uid="uid://dae2vyax8jsmr" path="res://scripts/wall_blueprint_manager_2d.gd" id="20_wall"]
+[ext_resource type="AudioStreamMP3" path="res://assets/audio/Eternal River-8bit.mp3" id="21_bgm"]
 
 [sub_resource type="Image" id="Image_yc10j"]
 data = {
@@ -205,3 +206,7 @@ visible = false
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("16_market")
+
+[node name="BGMPlayer" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("21_bgm")
+autoplay = true
