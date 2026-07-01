@@ -39,6 +39,7 @@ var _goblin_market_round := -1
 var action_preview_panel: Control = null
 var unit_skill_bar: Control = null
 var ap_status_label: Label = null
+var _resource_progress_bars: Dictionary = {}
 var achievement_service: AchievementService = null
 var achievement_tree_panel: Control = null
 var achievement_tree_button: Button = null
@@ -218,17 +219,17 @@ func _restyle_top_bar() -> void:
 	resource_panel.offset_left = 0.0
 	resource_panel.offset_top = 0.0
 	resource_panel.offset_right = 1920.0
-	resource_panel.offset_bottom = 36.0
+	resource_panel.offset_bottom = 48.0
 
 	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.65, 0.06, 0.06, 0.94)
-	bar_style.border_color = Color(0.35, 0.04, 0.04, 0.8)
-	bar_style.border_width_bottom = 1
+	bar_style.bg_color = Color(0.08, 0.09, 0.12, 0.95)
+	bar_style.border_color = Color(0.30, 0.35, 0.42, 0.65)
+	bar_style.border_width_bottom = 2
 	resource_panel.add_theme_stylebox_override("panel", bar_style)
 
 	var hbox: HBoxContainer = resource_panel.get_node("HBox") as HBoxContainer
 	if hbox:
-		hbox.add_theme_constant_override("separation", 18)
+		hbox.add_theme_constant_override("separation", 24)
 		# Separator between faction label and resources
 		var sep := VSeparator.new()
 		sep.name = "TopBarSep"
@@ -372,14 +373,81 @@ func _init_resource_labels() -> void:
 	var hbox: HBoxContainer = panel.get_node("HBox") as HBoxContainer
 	var key_map := {"Gold": "gold", "Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore", "Mithril": "mithril", "Steel": "steel"}
 	for node_name in key_map:
-		var label: Label = hbox.get_node_or_null("Label" + node_name) as Label
-		if label == null:
+		var rkey: String = str(key_map[node_name])
+		# Remove pre-existing label from scene file so we can recreate with icon
+		var old_label: Label = hbox.get_node_or_null("Label" + node_name) as Label
+		if old_label:
+			old_label.get_parent().remove_child(old_label)
+			old_label.queue_free()
+		var label: Label = null
+		var res_icon_map := {
+			"gold": "res://assets/icon_gold.png",
+			"wood": "res://assets/icon_wood.png",
+			"stone": "res://assets/icon_stone.png",
+			"food": "res://assets/icon_food.png",
+			"iron": "res://assets/icon_iron.png",
+			"magic_dust": "res://assets/icon_magic_dust.png",
+		}
+		if res_icon_map.has(rkey):
+				# VBox with icon+name on top, progress bar below
+				var vbox := VBoxContainer.new()
+				vbox.name = "Res" + node_name
+				vbox.add_theme_constant_override("separation", 1)
+				var top_row := HBoxContainer.new()
+				top_row.add_theme_constant_override("separation", 4)
+				var icon := TextureRect.new()
+				icon.texture = load(res_icon_map[rkey])
+				icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				icon.custom_minimum_size = Vector2(31, 31) if rkey == "food" else Vector2(26, 26)
+				icon.size = Vector2(31, 31) if rkey == "food" else Vector2(26, 26)
+				icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				top_row.add_child(icon)
+				label = Label.new()
+				label.name = "Label" + node_name
+				label.add_theme_font_size_override("font_size", 15)
+				label.offset_top = -2
+				top_row.add_child(label)
+				vbox.add_child(top_row)
+				if rkey != "gold":
+					var progress := ProgressBar.new()
+					progress.name = "Progress" + node_name
+					progress.custom_minimum_size = Vector2(72, 8)
+					progress.show_percentage = false
+					var bar_bg := StyleBoxFlat.new()
+					bar_bg.bg_color = Color(0.12, 0.12, 0.15, 0.8)
+					bar_bg.set_corner_radius_all(2)
+					progress.add_theme_stylebox_override("background", bar_bg)
+					var bar_fill := StyleBoxFlat.new()
+					var progress_colors := {
+						"wood": Color(0.55, 0.78, 0.42, 0.9),
+						"stone": Color(0.65, 0.63, 0.58, 0.9),
+						"food": Color(0.92, 0.62, 0.28, 0.9),
+						"iron": Color(0.60, 0.70, 0.80, 0.9),
+						"magic_dust": Color(0.72, 0.50, 0.88, 0.9),
+					}
+					bar_fill.bg_color = progress_colors.get(rkey, Color(0.6, 0.6, 0.6, 0.9))
+					bar_fill.set_corner_radius_all(2)
+					progress.add_theme_stylebox_override("fill", bar_fill)
+					vbox.add_child(progress)
+					_resource_progress_bars[rkey] = progress
+				hbox.add_child(vbox)
+		else:
 			label = Label.new()
 			label.name = "Label" + node_name
-			label.add_theme_font_size_override("font_size", 13)
+			label.add_theme_font_size_override("font_size", 15)
 			hbox.add_child(label)
-		label.add_theme_color_override("font_color", Color.WHITE)
-		resource_tracker.set_resource_label(str(key_map[node_name]), label)
+		# Frostpunk-style: color-coded resource text
+		var res_colors := {
+			"gold": Color(0.95, 0.78, 0.20),
+			"wood": Color(0.55, 0.78, 0.42),
+			"stone": Color(0.72, 0.70, 0.65),
+			"food": Color(0.92, 0.62, 0.28),
+			"iron": Color(0.68, 0.75, 0.82),
+			"magic_dust": Color(0.72, 0.50, 0.88),
+		}
+		label.add_theme_color_override("font_color", res_colors.get(rkey, Color.WHITE))
+		resource_tracker.set_resource_label(rkey, label)
 	resource_tracker.set_faction_label(panel.get_node("HBox/FactionLabel") as Label)
 
 	# hide labels not in top bar visible set
@@ -394,6 +462,12 @@ func _init_resource_labels() -> void:
 func _on_resources_updated(_player: int) -> void:
 	var cp: int = turn_manager.current_player
 	resource_tracker.update_display(cp)
+	for rkey in _resource_progress_bars:
+		var cur: int = resource_tracker.get_resource(cp, rkey)
+		var cap: int = resource_tracker.get_resource_cap(cp, rkey)
+		var bar: ProgressBar = _resource_progress_bars[rkey]
+		bar.max_value = float(maxi(cap, 1))
+		bar.value = float(clampi(cur, 0, cap))
 
 
 func _init_creative_mode_button() -> void:
@@ -739,7 +813,7 @@ func _init_stage_label() -> void:
 	stage_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stage_label.add_theme_font_size_override("font_size", 14)
 	stage_label.add_theme_color_override("font_color", Color.WHITE)
-	stage_label.position = Vector2(1700, 8)
+	stage_label.position = Vector2(1700, 12)
 	$UI.add_child(stage_label)
 	_update_stage_label(maxi(turn_manager.round_number, 1))
 
@@ -783,10 +857,10 @@ func _update_stage_label(round_number: int) -> void:
 func _init_ap_status_label() -> void:
 	ap_status_label = Label.new()
 	ap_status_label.name = "APStatusLabel"
-	ap_status_label.position = Vector2(16, 138)
-	ap_status_label.size = Vector2(220, 34)
+	ap_status_label.position = Vector2(1470, 12)
+	ap_status_label.size = Vector2(220, 24)
 	ap_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ap_status_label.add_theme_font_size_override("font_size", 18)
+	ap_status_label.add_theme_font_size_override("font_size", 14)
 	ap_status_label.add_theme_color_override("font_color", Color.WHITE)
 	ap_status_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 	ap_status_label.add_theme_constant_override("shadow_offset_x", 1)
@@ -798,16 +872,11 @@ func _init_ap_status_label() -> void:
 func _update_ap_status_label(player: int) -> void:
 	if not ap_status_label:
 		return
-	var color: Color = GameCatalog.faction_color(player)
-	ap_status_label.add_theme_color_override("font_color", color)
+	# white text for top bar
 	if _creative_mode_enabled:
-		ap_status_label.text = "%s AP: ∞" % GameCatalog.faction_name(player)
+		ap_status_label.text = "AP:∞"
 		return
-	ap_status_label.text = "%s AP: %d / %d" % [
-		GameCatalog.faction_name(player),
-		turn_manager.get_ap(player),
-		turn_manager.AP_MAX,
-	]
+	ap_status_label.text = "AP:%d/%d" % [turn_manager.get_ap(player), turn_manager.AP_MAX]
 
 
 func _init_zoom_status_label() -> void:

@@ -3,7 +3,7 @@ extends Control
 signal skill_requested(action_id: String, unit_id: int)
 
 const PANEL_SIZE: Vector2 = Vector2(236.0, 280.0)
-const PANEL_POS: Vector2 = Vector2(1668.0, 720.0)
+const PANEL_POS: Vector2 = Vector2(1680.0, 795.0)
 const BUTTON_SIZE: Vector2 = Vector2(212.0, 52.0)
 const READY_COLOR: Color = Color(0.86, 1.0, 0.78, 1.0)
 const DISABLED_COLOR: Color = Color(0.42, 0.42, 0.42, 0.78)
