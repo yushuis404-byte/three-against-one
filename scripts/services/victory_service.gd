@@ -197,25 +197,35 @@ func _get_building_score(building: Dictionary) -> int:
 		BuildingData.BuildingCategory.CORE:
 			base = 100
 		BuildingData.BuildingCategory.ECONOMY:
-			base = 8
-		BuildingData.BuildingCategory.STORAGE:
-			var level: int = int(building.get("level", 1))
-			if level <= 1:
-				base = 10
-			elif level == 2:
-				base = 20
+			if data.storage_level > 0:
+				var level: int = int(building.get("level", 1))
+				if level <= 1:
+					base = 10
+				elif level == 2:
+					base = 20
+				else:
+					base = 35
+			elif BuildingRules.is_mint(data):
+				base = 28
+			elif data.needs_resource_point:
+				base = 22
+			elif "expansion" in data.tags:
+				base = 12
 			else:
-				base = 35
+				base = 8
 		BuildingData.BuildingCategory.RECRUITMENT:
 			base = 15 if "barracks" in data.tags else 10
-		BuildingData.BuildingCategory.SCOUT, BuildingData.BuildingCategory.EXPANSION:
+		BuildingData.BuildingCategory.SCOUT:
 			base = 12
+		BuildingData.BuildingCategory.DEFENSE:
+			base = 14
 		BuildingData.BuildingCategory.INDUSTRY:
-			base = 16
-		BuildingData.BuildingCategory.GOLD_CHAIN:
-			base = 28 if BuildingRules.is_mint(data) else 22
-		BuildingData.BuildingCategory.RARE:
-			base = 24
+			if data.production.has("magic_dust") or data.production.has("ancient_wood"):
+				base = 24
+			elif "forge" in data.tags:
+				base = 18
+			else:
+				base = 16
 		BuildingData.BuildingCategory.LORD_SPECIAL:
 			base = 30
 	if "dragon" in data.tags or "dragon_building" in data.tags:

@@ -22,26 +22,20 @@ var _cat_buttons: Dictionary = {}  # BuildingCategory → Button
 const CATEGORY_NAMES := {
 	BuildingData.BuildingCategory.CORE: "\u6838\u5fc3",
 	BuildingData.BuildingCategory.ECONOMY: "\u7ecf\u6d4e",
-	BuildingData.BuildingCategory.STORAGE: "\u540e\u52e4",
-	BuildingData.BuildingCategory.EXPANSION: "\u6269\u5f20",
 	BuildingData.BuildingCategory.SCOUT: "\u4fa6\u5bdf",
+	BuildingData.BuildingCategory.DEFENSE: "\u9632\u5fa1",
 	BuildingData.BuildingCategory.RECRUITMENT: "\u62db\u52df",
 	BuildingData.BuildingCategory.INDUSTRY: "\u5de5\u4e1a",
-	BuildingData.BuildingCategory.GOLD_CHAIN: "\u91d1\u5e01",
-	BuildingData.BuildingCategory.RARE: "\u7a00\u6709",
 	BuildingData.BuildingCategory.LORD_SPECIAL: "\u9886\u4e3b",
 }
 
 const CATEGORY_ORDER := [
 	BuildingData.BuildingCategory.CORE,
 	BuildingData.BuildingCategory.ECONOMY,
-	BuildingData.BuildingCategory.STORAGE,
-	BuildingData.BuildingCategory.EXPANSION,
 	BuildingData.BuildingCategory.SCOUT,
+	BuildingData.BuildingCategory.DEFENSE,
 	BuildingData.BuildingCategory.RECRUITMENT,
 	BuildingData.BuildingCategory.INDUSTRY,
-	BuildingData.BuildingCategory.GOLD_CHAIN,
-	BuildingData.BuildingCategory.RARE,
 	BuildingData.BuildingCategory.LORD_SPECIAL,
 ]
 
@@ -92,7 +86,7 @@ func _build_ui() -> void:
 	# 主面板
 	var panel := Panel.new()
 	panel.name = "BuildingPanel"
-	panel.offset_left = 1400.0
+	panel.offset_left = 1580.0
 	panel.offset_top = 52.0
 	panel.offset_right = 1900.0
 	panel.offset_bottom = 700.0
@@ -151,7 +145,7 @@ func _build_ui() -> void:
 	# 右侧卡片区
 	_card_grid = GridContainer.new()
 	_card_grid.name = "CardGrid"
-	_card_grid.columns = 2
+	_card_grid.columns = 1
 	_card_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_card_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_card_grid.add_theme_constant_override("h_separation", 6)

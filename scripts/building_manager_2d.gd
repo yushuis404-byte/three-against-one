@@ -1270,8 +1270,8 @@ func _get_building_texture_key(data: BuildingData, faction: int) -> String:
 			if data.defense_attack_range > 0:
 				return "watch_tower"
 			return "scout_post"
-	if data.defense_attack_range > 0:
-		return "defense_tower"
+		BuildingData.BuildingCategory.DEFENSE:
+			return "defense_tower"
 	return ""
 
 

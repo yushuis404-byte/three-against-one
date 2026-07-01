@@ -343,6 +343,7 @@ func _on_player_turn_started(player: int) -> void:
 	debug_label.text = _format_ap_debug_text(player)
 	_update_ap_status_label(player)
 	resource_tracker.update_display(player)
+	_update_progress_bars(player)
 	_update_wall_blueprint_ui(player, "")
 	# 海克斯商队触发检查
 	if _goblin_market_round == turn_manager.round_number:
@@ -378,7 +379,7 @@ func _init_resource_labels() -> void:
 	if not panel:
 		return
 	var hbox: HBoxContainer = panel.get_node("HBox") as HBoxContainer
-	var key_map := {"Gold": "gold", "Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore", "Mithril": "mithril", "Steel": "steel"}
+	var key_map := {"Gold": "gold", "Wood": "wood", "Stone": "stone", "Food": "food", "Iron": "iron", "MagicDust": "magic_dust", "AncientWood": "ancient_wood", "GoldOre": "gold_ore", "Mithril": "mithril", "Steel": "steel", "DragonBlood": "dragon_blood", "DragonCrystal": "dragon_crystal"}
 	for node_name in key_map:
 		var rkey: String = str(key_map[node_name])
 		# Remove pre-existing label from scene file so we can recreate with icon
@@ -394,6 +395,11 @@ func _init_resource_labels() -> void:
 			"food": "res://assets/icon_food.png",
 			"iron": "res://assets/icon_iron.png",
 			"magic_dust": "res://assets/icon_magic_dust.png",
+			"ancient_wood": "res://assets/icon_ancient_wood.png",
+			"mithril": "res://assets/icon_mithril.png",
+			"steel": "res://assets/icon_steel.png",
+			"dragon_blood": "res://assets/icon_dragon_blood.png",
+			"dragon_crystal": "res://assets/icon_dragon_crystal.png",
 		}
 		if res_icon_map.has(rkey):
 				# VBox with icon+name on top, progress bar below
@@ -406,9 +412,11 @@ func _init_resource_labels() -> void:
 				icon.texture = load(res_icon_map[rkey])
 				icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-				icon.custom_minimum_size = Vector2(31, 31) if rkey == "food" else Vector2(26, 26)
-				icon.size = Vector2(31, 31) if rkey == "food" else Vector2(26, 26)
+				icon.custom_minimum_size = Vector2(26, 26)
+				icon.size = Vector2(26, 26)
 				icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				if rkey == "food":
+					icon.scale = Vector2(1.2, 1.2)
 				top_row.add_child(icon)
 				label = Label.new()
 				label.name = "Label" + node_name
@@ -422,18 +430,23 @@ func _init_resource_labels() -> void:
 					progress.custom_minimum_size = Vector2(72, 8)
 					progress.show_percentage = false
 					var bar_bg := StyleBoxFlat.new()
-					bar_bg.bg_color = Color(0.12, 0.12, 0.15, 0.8)
+					bar_bg.bg_color = Color(0.22, 0.22, 0.25, 0.85)
 					bar_bg.set_corner_radius_all(2)
 					progress.add_theme_stylebox_override("background", bar_bg)
 					var bar_fill := StyleBoxFlat.new()
 					var progress_colors := {
-						"wood": Color(0.55, 0.78, 0.42, 0.9),
-						"stone": Color(0.65, 0.63, 0.58, 0.9),
-						"food": Color(0.92, 0.62, 0.28, 0.9),
-						"iron": Color(0.60, 0.70, 0.80, 0.9),
-						"magic_dust": Color(0.72, 0.50, 0.88, 0.9),
+						"wood": Color(0.65, 0.88, 0.52, 1.0),
+						"stone": Color(0.75, 0.73, 0.68, 1.0),
+						"food": Color(1.0, 0.72, 0.38, 1.0),
+						"iron": Color(0.70, 0.80, 0.90, 1.0),
+						"magic_dust": Color(0.82, 0.60, 0.98, 1.0),
+						"ancient_wood": Color(0.60, 0.45, 0.75, 1.0),
+						"mithril": Color(0.65, 0.85, 0.90, 1.0),
+						"steel": Color(0.70, 0.72, 0.78, 1.0),
+						"dragon_blood": Color(0.90, 0.25, 0.20, 1.0),
+						"dragon_crystal": Color(0.85, 0.35, 0.85, 1.0),
 					}
-					bar_fill.bg_color = progress_colors.get(rkey, Color(0.6, 0.6, 0.6, 0.9))
+					bar_fill.bg_color = progress_colors.get(rkey, Color(0.7, 0.7, 0.7, 1.0))
 					bar_fill.set_corner_radius_all(2)
 					progress.add_theme_stylebox_override("fill", bar_fill)
 					vbox.add_child(progress)
@@ -452,13 +465,18 @@ func _init_resource_labels() -> void:
 			"food": Color(0.92, 0.62, 0.28),
 			"iron": Color(0.68, 0.75, 0.82),
 			"magic_dust": Color(0.72, 0.50, 0.88),
+			"ancient_wood": Color(0.62, 0.48, 0.78),
+			"mithril": Color(0.55, 0.85, 0.92),
+			"steel": Color(0.68, 0.70, 0.78),
+			"dragon_blood": Color(0.95, 0.30, 0.25),
+			"dragon_crystal": Color(0.88, 0.40, 0.88),
 		}
 		label.add_theme_color_override("font_color", res_colors.get(rkey, Color.WHITE))
 		resource_tracker.set_resource_label(rkey, label)
 	resource_tracker.set_faction_label(panel.get_node("HBox/FactionLabel") as Label)
 
 	# hide labels not in top bar visible set
-	var visible_keys := ["gold", "wood", "stone", "food", "iron", "magic_dust"]
+	var visible_keys := ["gold", "wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "mithril", "steel", "dragon_blood", "dragon_crystal"]
 	var all_extra := ["AncientWood", "GoldOre", "Mithril", "Steel"]
 	for node_name in all_extra:
 		var lbl: Label = hbox.get_node_or_null("Label" + node_name) as Label
@@ -466,15 +484,18 @@ func _init_resource_labels() -> void:
 			lbl.visible = false
 
 
-func _on_resources_updated(_player: int) -> void:
-	var cp: int = _get_display_player()
-	resource_tracker.update_display(cp)
+func _update_progress_bars(player: int) -> void:
 	for rkey in _resource_progress_bars:
-		var cur: int = resource_tracker.get_resource(cp, rkey)
-		var cap: int = resource_tracker.get_resource_cap(cp, rkey)
+		var cur: int = resource_tracker.get_resource(player, rkey)
+		var cap: int = resource_tracker.get_resource_cap(player, rkey)
 		var bar: ProgressBar = _resource_progress_bars[rkey]
 		bar.max_value = float(maxi(cap, 1))
 		bar.value = float(clampi(cur, 0, cap))
+
+func _on_resources_updated(_player: int) -> void:
+	var cp: int = _get_display_player()
+	resource_tracker.update_display(cp)
+	_update_progress_bars(cp)
 
 
 func _get_display_player() -> int:
@@ -736,8 +757,8 @@ func _init_score_rule_button() -> void:
 	score_rule_button = Button.new()
 	score_rule_button.name = "ScoreRuleButton"
 	score_rule_button.text = "\u8ba1\u5206"
-	score_rule_button.position = Vector2(1800.0, 56.0)
-	score_rule_button.size = Vector2(76.0, 30.0)
+	score_rule_button.position = Vector2(16.0, 256.0)
+	score_rule_button.size = Vector2(56.0, 30.0)
 	score_rule_button.focus_mode = Control.FOCUS_NONE
 	score_rule_button.z_index = 90
 	score_rule_button.pressed.connect(_on_score_rule_button_pressed)
@@ -772,8 +793,8 @@ func _init_civilization_route_button() -> void:
 	civilization_route_button = Button.new()
 	civilization_route_button.name = "CivilizationRouteButton"
 	civilization_route_button.text = "\u8def\u7ebf"
-	civilization_route_button.position = Vector2(1800.0, 90.0)
-	civilization_route_button.size = Vector2(76.0, 30.0)
+	civilization_route_button.position = Vector2(16.0, 291.0)
+	civilization_route_button.size = Vector2(56.0, 30.0)
 	civilization_route_button.focus_mode = Control.FOCUS_NONE
 	civilization_route_button.z_index = 90
 	civilization_route_button.pressed.connect(_on_civilization_route_button_pressed)
@@ -1341,6 +1362,7 @@ func _on_network_local_faction_changed(player: int) -> void:
 	if turn_manager.has_method("set_view_player"):
 		turn_manager.call("set_view_player", player)
 	resource_tracker.update_display(player)
+	_update_progress_bars(player)
 	building_ui.refresh(player)
 	_update_ap_status_label(player)
 	_update_wall_blueprint_ui(player, "")
@@ -1352,6 +1374,7 @@ func _on_network_snapshot_received(snapshot: Dictionary) -> void:
 	if turn_manager.has_method("set_view_player"):
 		turn_manager.call("set_view_player", player)
 	resource_tracker.update_display(player)
+	_update_progress_bars(player)
 	building_ui.refresh(player)
 	_update_ap_status_label(player)
 	_update_wall_blueprint_ui(player, "")

@@ -11,8 +11,8 @@ var _technology_service: Node = null
 var _civilization_rules: Node = null
 var creative_mode_enabled := false
 
-const CAPPED_RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore", "mithril", "steel"]
-const TOP_BAR_VISIBLE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "gold"]
+const CAPPED_RESOURCE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "ancient_wood", "gold_ore", "mithril", "steel", "dragon_blood", "dragon_crystal"]
+const TOP_BAR_VISIBLE_KEYS := ["wood", "stone", "food", "iron", "magic_dust", "gold", "ancient_wood", "mithril", "steel", "dragon_blood", "dragon_crystal"]
 const CREATIVE_RESOURCE_VALUE := 999
 const BASE_RESOURCE_CAPS := {
 	"wood": 50,
@@ -24,6 +24,8 @@ const BASE_RESOURCE_CAPS := {
 	"gold_ore": 40,
 	"mithril": 20,
 	"steel": 30,
+	"dragon_blood": 25,
+	"dragon_crystal": 20,
 }
 
 # UI Label 引用：_label_refs["wood"] = Label 等
