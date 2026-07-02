@@ -265,6 +265,22 @@ func _is_network_game() -> bool:
 	return _network_game_service != null and _network_game_service.has_method("is_network_game") and bool(_network_game_service.call("is_network_game"))
 
 
+func _get_network_local_faction() -> int:
+	if _network_game_service == null:
+		return _current_player_id()
+	var value = _network_game_service.get("local_faction")
+	if value == null:
+		return _current_player_id()
+	return int(value)
+
+
+func _should_show_network_combat_choice(unit_a: Dictionary, unit_b: Dictionary) -> bool:
+	if not _is_network_game():
+		return true
+	var local_faction: int = _get_network_local_faction()
+	return int(unit_a.get("faction", -1)) == local_faction or int(unit_b.get("faction", -1)) == local_faction
+
+
 func _request_network_unit_move(unit_id: int, target: Vector2i) -> bool:
 	if not _is_network_game():
 		return false
@@ -464,9 +480,16 @@ func apply_network_units_snapshot(viewer: int, unit_views: Array) -> void:
 		if int(view.get("hp", -1)) >= 0:
 			unit["hp"] = int(view.get("hp", unit.get("hp", 1)))
 		_units[index] = unit
-	for i in range(_units.size()):
+	for i in range(_units.size() - 1, -1, -1):
 		var unit: Dictionary = _units[i]
 		var unit_id: int = int(unit.get("id", -1))
+		if int(unit.get("faction", -1)) == viewer and not visible_ids.has(unit_id):
+			_move_visuals.erase(unit_id)
+			_hurt_visuals.erase(unit_id)
+			_attack_visuals.erase(unit_id)
+			_death_visuals.erase(unit_id)
+			_units.remove_at(i)
+			continue
 		if int(unit.get("faction", -1)) != viewer and not visible_ids.has(unit_id):
 			unit["network_visible"] = false
 			_units[i] = unit
@@ -3525,6 +3548,10 @@ func _begin_tactical_encounter(initiator_id: int, target_id: int) -> bool:
 	if dead:
 		_remove_unit_after_attack(int(decision_unit.get("id", -1)), first_attacker)
 		_finish_combat_state()
+		queue_redraw()
+		return true
+	if not _should_show_network_combat_choice(decision_unit, first_attacker):
+		_resolve_tactical_engage()
 		queue_redraw()
 		return true
 	_show_combat_choice_panel(decision_unit, first_attacker)

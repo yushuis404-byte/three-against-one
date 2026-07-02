@@ -38,6 +38,11 @@ func setup(turn_manager: Node, serializer: GameStateSerializer) -> void:
 
 func set_unit_manager(unit_manager: Node) -> void:
 	_unit_manager = unit_manager
+	if _unit_manager == null:
+		return
+	var combat_finished := Callable(self, "_on_authoritative_combat_finished")
+	if _unit_manager.has_signal("combat_ended") and not _unit_manager.is_connected("combat_ended", combat_finished):
+		_unit_manager.connect("combat_ended", combat_finished)
 
 
 func set_building_manager(building_manager: Node) -> void:
@@ -319,8 +324,6 @@ func _handle_unit_attack(player: int, payload: Dictionary) -> void:
 	var ok: bool = bool(_unit_manager.call("request_network_attack", player, attacker_id, target_id))
 	if not ok:
 		network_status_changed.emit("Unit attack rejected")
-	else:
-		rpc("_rpc_apply_unit_attack", player, attacker_id, target_id)
 
 
 
@@ -478,6 +481,10 @@ func _on_turn_state_changed() -> void:
 	_broadcast_snapshots()
 
 
+func _on_authoritative_combat_finished() -> void:
+	_broadcast_snapshots()
+
+
 @rpc("any_peer", "reliable")
 func _rpc_action_request(player: int, action_type: String, payload: Dictionary) -> void:
 	if not is_host():
@@ -517,11 +524,7 @@ func _rpc_apply_unit_move(player: int, unit_id: int, x: int, y: int) -> void:
 
 @rpc("authority", "reliable")
 func _rpc_apply_unit_attack(player: int, attacker_id: int, target_id: int) -> void:
-	if is_host():
-		return
-	if _unit_manager == null or not _unit_manager.has_method("request_network_attack"):
-		return
-	_unit_manager.call("request_network_attack", player, attacker_id, target_id)
+	pass
 
 @rpc("authority", "reliable")
 func _rpc_apply_unit_attack_building(player: int, attacker_id: int, building_id: int) -> void:
