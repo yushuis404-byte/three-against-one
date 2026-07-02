@@ -442,6 +442,69 @@ func get_all_units() -> Array:
 	return _units.duplicate()
 
 
+func apply_network_units_snapshot(viewer: int, unit_views: Array) -> void:
+	var visible_ids: Dictionary = {}
+	for view_variant in unit_views:
+		var view: Dictionary = view_variant
+		var unit_id: int = int(view.get("id", -1))
+		if unit_id < 0:
+			continue
+		visible_ids[unit_id] = true
+		var index: int = _find_unit_index_by_id(unit_id)
+		if index < 0:
+			var created: Dictionary = _make_unit_from_network_view(view)
+			if not created.is_empty():
+				_units.append(created)
+			continue
+		var unit: Dictionary = _units[index]
+		unit["grid_pos"] = view.get("grid_pos", unit.get("grid_pos", Vector2i.ZERO))
+		unit["faction"] = int(view.get("faction", unit.get("faction", -1)))
+		unit["template_id"] = str(view.get("template_id", unit.get("template_id", "")))
+		unit["network_visible"] = true
+		if int(view.get("hp", -1)) >= 0:
+			unit["hp"] = int(view.get("hp", unit.get("hp", 1)))
+		_units[index] = unit
+	for i in range(_units.size()):
+		var unit: Dictionary = _units[i]
+		var unit_id: int = int(unit.get("id", -1))
+		if int(unit.get("faction", -1)) != viewer and not visible_ids.has(unit_id):
+			unit["network_visible"] = false
+			_units[i] = unit
+	queue_redraw()
+
+
+func _find_unit_index_by_id(unit_id: int) -> int:
+	for i in range(_units.size()):
+		if int(_units[i].get("id", -1)) == unit_id:
+			return i
+	return -1
+
+
+func _make_unit_from_network_view(view: Dictionary) -> Dictionary:
+	var template_id: String = str(view.get("template_id", ""))
+	var template: Resource = null
+	if _template_registry != null and _template_registry.has_method("get_unit") and not template_id.is_empty():
+		template = _template_registry.call("get_unit", template_id)
+	var data := UnitData.from_template(template) if template != null else UnitData.new(str(view.get("name", "")), UnitData.UnitCategory.SPECIAL, 0, 0, maxi(1, int(view.get("hp_max", 1))), 0, 0)
+	data.template_id = template_id
+	var hp_value: int = int(view.get("hp", data.hp_max))
+	if hp_value < 0:
+		hp_value = data.hp_max
+	return {
+		"id": int(view.get("id", -1)),
+		"data": data,
+		"template_id": template_id,
+		"faction": int(view.get("faction", -1)),
+		"grid_pos": view.get("grid_pos", Vector2i.ZERO),
+		"hp": hp_value,
+		"has_moved": false,
+		"has_attacked": false,
+		"has_thrown_beast": false,
+		"statuses": {},
+		"network_visible": true,
+	}
+
+
 func get_unit_by_id(uid: int) -> Dictionary:
 	## 公开版 _get_unit_by_id
 	return _get_unit_by_id(uid)
@@ -724,6 +787,8 @@ func _is_unit_visible_to_player(viewer: int, unit: Dictionary) -> bool:
 	var faction: int = int(unit.get("faction", -1))
 	if faction == viewer:
 		return true
+	if unit.has("network_visible") and not bool(unit.get("network_visible", true)):
+		return false
 	var pos: Vector2i = unit.get("grid_pos", Vector2i(-1, -1))
 	if pos.x < 0:
 		return false

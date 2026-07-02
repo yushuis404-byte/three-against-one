@@ -1566,6 +1566,8 @@ func _on_network_snapshot_received(snapshot: Dictionary) -> void:
 	var player: int = int(snapshot.get("player", turn_manager.current_player))
 	if turn_manager.has_method("set_view_player"):
 		turn_manager.call("set_view_player", player)
+	if unit_manager.has_method("apply_network_units_snapshot"):
+		unit_manager.call("apply_network_units_snapshot", player, snapshot.get("units", []))
 	resource_tracker.update_display(player)
 	_update_progress_bars(player)
 	building_ui.refresh(player)
