@@ -47,6 +47,13 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if _is_tree_modal_open():
+		if event is InputEventKey and event.keycode == PAN_BUTTON and not event.pressed:
+			_panning = false
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			_panning = false
+		return
+
 	# Space key
 	if event is InputEventKey and event.keycode == KEY_SPACE:
 		if event.pressed and not event.echo:
@@ -98,3 +105,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.keycode == KEY_SPACE:
 		if not event.pressed:
 			_panning = false
+
+
+func _is_tree_modal_open() -> bool:
+	var current_scene := get_tree().current_scene
+	if current_scene == null:
+		return false
+	var ui := current_scene.get_node_or_null("UI")
+	if ui == null:
+		return false
+	for panel_name in ["AchievementTreePanel", "TechnologyTreePanel"]:
+		var panel := ui.get_node_or_null(panel_name)
+		if panel != null and panel is Control and panel.visible:
+			return true
+	return false

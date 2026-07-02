@@ -59,9 +59,9 @@ const CATEGORY_LETTERS := {
 
 # ── 尺寸常量 ──
 const PANEL_LEFT := 4.0
-const PANEL_TOP := 860.0
+const PANEL_TOP := 820.0
 const PANEL_RIGHT := 694.0
-const PANEL_BOTTOM := 1148.0
+const PANEL_BOTTOM := 1108.0
 const PANEL_W := 690.0
 const PANEL_H := 268.0
 
@@ -140,16 +140,14 @@ func _build_portrait_section() -> void:
 	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_panel.add_child(_portrait_rect)
 
-	var tex := load("res://assets/portrait_elf_worker.png")
-	if tex:
-		_portrait_rect.texture = tex
-	else:
-		_portrait_fallback = Label.new()
-		_portrait_fallback.position = Vector2(cx - 10, py + frame_size / 2.0 - 16)
-		_portrait_fallback.add_theme_font_size_override("font_size", 32)
-		_portrait_fallback.add_theme_color_override("font_color", CLR_GREEN)
-		_portrait_fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_panel.add_child(_portrait_fallback)
+	_portrait_fallback = Label.new()
+	_portrait_fallback.position = Vector2(cx - 10, py + frame_size / 2.0 - 16)
+	_portrait_fallback.text = "?"
+	_portrait_fallback.add_theme_font_size_override("font_size", 32)
+	_portrait_fallback.add_theme_color_override("font_color", CLR_GREEN)
+	_portrait_fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_portrait_fallback.visible = false
+	_panel.add_child(_portrait_fallback)
 
 
 func _build_stats_section() -> void:
@@ -356,6 +354,7 @@ func show_unit(unit: Dictionary) -> void:
 	var faction: int = unit["faction"]
 	_current_unit_id = int(unit.get("id", -1))
 	var color: Color = GameCatalog.faction_color(faction)
+	_update_portrait(unit)
 
 	# 阵营色条
 	if _faction_bar:
@@ -400,6 +399,81 @@ func show_unit(unit: Dictionary) -> void:
 
 	show()
 	queue_redraw()
+
+
+func _update_portrait(unit: Dictionary) -> void:
+	if _portrait_rect == null:
+		return
+	var texture: Texture2D = _make_portrait_texture(unit)
+	_portrait_rect.texture = texture
+	if _portrait_fallback != null:
+		_portrait_fallback.visible = texture == null
+
+
+func _make_portrait_texture(unit: Dictionary) -> Texture2D:
+	var spec: Dictionary = _get_portrait_spec(unit)
+	if spec.is_empty():
+		return null
+	var path: String = str(spec.get("path", ""))
+	if path.is_empty():
+		return null
+	var source: Texture2D = load(path)
+	if source == null:
+		return null
+	var frame_size: Vector2 = spec.get("frame_size", Vector2(float(source.get_width()), float(source.get_height())))
+	frame_size.x = clampf(frame_size.x, 1.0, float(source.get_width()))
+	frame_size.y = clampf(frame_size.y, 1.0, float(source.get_height()))
+
+	var atlas := AtlasTexture.new()
+	atlas.atlas = source
+	atlas.region = Rect2(Vector2.ZERO, frame_size)
+	return atlas
+
+
+func _get_portrait_spec(unit: Dictionary) -> Dictionary:
+	var template_id: String = str(unit.get("template_id", ""))
+	if template_id.is_empty() and unit.has("data") and unit["data"] is UnitData:
+		var data: UnitData = unit["data"]
+		template_id = data.template_id
+
+	var specs := {
+		"unit.elf.worker": {"path": "res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.elf.scout": {"path": "res://assets/texture/character/elf/Scout/Elf-Scout-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.elf.guard": {"path": "res://assets/texture/character/elf/Moonshadow Assassin/Elf-Assassin-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.elf.ranger": {"path": "res://assets/texture/character/elf/Ranger/Elf-Ranger-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.elf.blade_dancer": {"path": "res://assets/texture/character/elf/Moonshadow Assassin/Elf-Assassin-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.elf.root_guard": {"path": "res://assets/texture/character/elf/Ranger/Elf-Ranger-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.dwarf.worker": {"path": "res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.dwarf.scout": {"path": "res://assets/texture/character/dwarf/Prospector/Dwarf-Prospector-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.dwarf.guard": {"path": "res://assets/texture/character/dwarf/Hammer Guard/Dwarf-Hammer-Guard-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.dwarf.shieldbearer": {"path": "res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.dwarf.crossbow": {"path": "res://assets/texture/character/dwarf/Mountain Crossbow/Dwarf-Mountain-Crossbow-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.dwarf.sapper": {"path": "res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.orc.worker": {"path": "res://assets/texture/character/orc/Worker/Orc-Worker-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.orc.scout": {"path": "res://assets/texture/character/Hunter-Beast/Hunter-tooth Beast.png", "frame_size": Vector2(629.0 / 6.0, 55.0)},
+		"unit.orc.guard": {"path": "res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.orc.mob": {"path": "res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.orc.bone_shield": {"path": "res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.orc.hide_tower": {"path": "res://assets/texture/character/orc/Orc-Slinger-Idle.png", "frame_size": Vector2(252.0, 255.0)},
+		"unit.orc.slinger": {"path": "res://assets/texture/character/orc/Orc-Slinger-Idle.png", "frame_size": Vector2(252.0, 255.0)},
+		"neutral.wyvern.fire": {"path": "res://assets/texture/character/dragon/Fire-Dragon-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"neutral.wyvern.frost": {"path": "res://assets/texture/character/dragon/Ice-Dragon-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.worker": {"path": "res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.scout": {"path": "res://assets/texture/character/elf/Scout/Elf-Scout-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"unit.guard": {"path": "res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+	}
+	if specs.has(template_id):
+		return specs[template_id]
+
+	var faction: int = int(unit.get("faction", -1))
+	match faction:
+		0:
+			return specs["unit.elf.worker"]
+		1:
+			return specs["unit.dwarf.worker"]
+		2:
+			return specs["unit.orc.guard"]
+	return {}
 
 
 func hide_panel() -> void:

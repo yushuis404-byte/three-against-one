@@ -306,11 +306,11 @@ func make_unit_templates() -> Dictionary:
 		"neutral.wyvern.fire",
 		"火焰亚龙",
 		UnitTemplateScript.UnitRole.GUARD,
-		1, 3, 6, 2,
+		1, 5, 17, 3,
 		["neutral", "wyvern", "fire"]
 	)
 	wyvern_fire.ai_behavior = "guard"
-	wyvern_fire.aggro_range = 2
+	wyvern_fire.aggro_range = 3
 	wyvern_fire.can_attack_units = true
 	wyvern_fire.can_gather = false
 	wyvern_fire.can_garrison = false
@@ -319,11 +319,11 @@ func make_unit_templates() -> Dictionary:
 		"neutral.wyvern.frost",
 		"冰霜亚龙",
 		UnitTemplateScript.UnitRole.GUARD,
-		1, 2, 8, 2,
+		1, 4, 20, 3,
 		["neutral", "wyvern", "frost"]
 	)
 	wyvern_frost.ai_behavior = "guard"
-	wyvern_frost.aggro_range = 2
+	wyvern_frost.aggro_range = 3
 	wyvern_frost.can_attack_units = true
 	wyvern_frost.can_gather = false
 	wyvern_frost.can_garrison = false
@@ -332,11 +332,11 @@ func make_unit_templates() -> Dictionary:
 		"neutral.wyvern.toxic",
 		"毒液亚龙",
 		UnitTemplateScript.UnitRole.GUARD,
-		1, 3, 5, 2,
+		1, 5, 15, 3,
 		["neutral", "wyvern", "toxic"]
 	)
 	wyvern_toxic.ai_behavior = "guard"
-	wyvern_toxic.aggro_range = 2
+	wyvern_toxic.aggro_range = 3
 	wyvern_toxic.can_attack_units = true
 	wyvern_toxic.can_gather = false
 	wyvern_toxic.can_garrison = false
@@ -345,11 +345,11 @@ func make_unit_templates() -> Dictionary:
 		"neutral.dragon.ancient",
 		"古龙",
 		UnitTemplateScript.UnitRole.GUARD,
-		1, 5, 28, 4,
+		1, 7, 30, 4,
 		["neutral", "dragon", "ancient_dragon", "lair_guardian"]
 	)
 	ancient_dragon.ai_behavior = "ancient_dragon"
-	ancient_dragon.aggro_range = 3
+	ancient_dragon.aggro_range = 4
 	ancient_dragon.can_attack_units = true
 	ancient_dragon.can_gather = false
 	ancient_dragon.can_garrison = false
@@ -358,7 +358,7 @@ func make_unit_templates() -> Dictionary:
 		"neutral.dragon.progenitor",
 		"史祖龙",
 		UnitTemplateScript.UnitRole.ELITE,
-		0, 8, 70, 6,
+		0, 8, 100, 5,
 		["neutral", "dragon", "ancient_dragon", "progenitor", "boss"]
 	)
 	progenitor_dragon.ai_behavior = "progenitor_dragon"
@@ -435,18 +435,8 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	recruit_camp.hp_max = 4
 	recruit_camp.build_cost = [_amount("wood", 20), _amount("stone", 15)]
 	recruit_camp.max_per_faction = 3
-	recruit_camp.recruit_options = [unit_templates["unit.worker"]]
+	recruit_camp.recruit_options = [unit_templates["unit.worker"], unit_templates["unit.guard"], unit_templates["unit.scout"]]
 	recruit_camp.tags = ["recruit", "infra"]
-
-	var barracks = BuildingTemplateScript.new()
-	barracks.id = "building.barracks_lv1"
-	barracks.display_name = "兵营"
-	barracks.role = BuildingTemplateScript.BuildingRole.MILITARY
-	barracks.hp_max = 8
-	barracks.build_cost = [_amount("gold", 100), _amount("wood", 50), _amount("stone", 30)]
-	barracks.max_per_faction = 99
-	barracks.recruit_options = [unit_templates["unit.guard"], unit_templates["unit.scout"]]
-	barracks.tags = ["military", "recruit"]
 
 	var lumber_camp = BuildingTemplateScript.new()
 	lumber_camp.id = "building.lumber_camp"
@@ -562,7 +552,6 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 
 	return {
 		recruit_camp.id: recruit_camp,
-		barracks.id: barracks,
 		lumber_camp.id: lumber_camp,
 		watch_tower.id: watch_tower,
 		ballista_tower.id: ballista_tower,

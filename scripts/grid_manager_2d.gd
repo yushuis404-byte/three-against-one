@@ -189,7 +189,7 @@ var editor_brush_clif: int = CLIF_MIDDLE_RIGHT:
 		if Engine.is_editor_hint():
 			_update_editor_fit_texture()
 			queue_redraw()
-@export_enum("Elf Capital", "Dwarf Capital", "Orc Capital", "Gold Mine", "Stone", "Lumber Camp", "Quarry", "Farm", "Warehouse", "Iron Mine", "Forge", "Barracks", "Recruit Camp", "Scout Post", "Watch Tower")
+@export_enum("Elf Capital", "Dwarf Capital", "Orc Capital", "Gold Mine", "Stone", "Lumber Camp", "Quarry", "Farm", "Warehouse", "Iron Mine", "Forge", "Recruit Camp", "Scout Post", "Watch Tower")
 var editor_fit_preset: int = 0:
 	set(value):
 		editor_fit_preset = value
@@ -467,8 +467,6 @@ func _get_editor_fit_config_key() -> String:
 			return "iron_mine"
 		10:
 			return "forge"
-		11:
-			return "barracks"
 		12:
 			return "recruit_camp"
 		13:
@@ -1656,6 +1654,15 @@ func get_zone_at(x: int, y: int) -> int:
 	if zone_grid.is_empty():
 		return ZoneTag.UNASSIGNED
 	return int(zone_grid[y][x])
+
+
+func is_dragon_lair_walkable(x: int, y: int) -> bool:
+	var zone: int = get_zone_at(x, y)
+	if zone == ZoneTag.MOUNTAIN_NEST or zone == ZoneTag.MOUNTAIN_BODY or zone == ZoneTag.MOUNTAIN_PATH:
+		return true
+	var lair_center := Vector2(center.x + float(LAND_OFFSET_X), center.y)
+	var dist := Vector2(float(x), float(y)).distance_to(lair_center)
+	return dist <= MOUNT_RADIUS
 
 
 func grid_to_world(grid_x: int, grid_y: int) -> Vector2:

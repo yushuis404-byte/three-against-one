@@ -16,7 +16,6 @@ const PRESET_TEXTURES := [
 	{"key": "warehouse", "name": "Warehouse", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "iron_mine", "name": "Iron Mine", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "forge", "name": "Forge", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
-	{"key": "barracks", "name": "Barracks", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "recruit_camp", "name": "Recruit Camp", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "scout_post", "name": "Scout Post", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "watch_tower", "name": "Watch Tower", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},

@@ -214,7 +214,7 @@ func _get_building_score(building: Dictionary) -> int:
 			else:
 				base = 8
 		BuildingData.BuildingCategory.RECRUITMENT:
-			base = 15 if "barracks" in data.tags else 10
+			base = 10
 		BuildingData.BuildingCategory.SCOUT:
 			base = 12
 		BuildingData.BuildingCategory.DEFENSE:

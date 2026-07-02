@@ -13,6 +13,7 @@ const CivilizationRoutePanelScript = preload("res://scripts/ui/civilization_rout
 const VisibilityServiceScript = preload("res://scripts/services/visibility_service.gd")
 const GameStateSerializerScript = preload("res://scripts/services/game_state_serializer.gd")
 const NetworkGameServiceScript = preload("res://scripts/services/network_game_service.gd")
+const DragonPortalManagerScript = preload("res://scripts/dragon_portal_manager_2d.gd")
 ## 主场景控制器 — 2.5D 三人竞技棋
 
 @onready var camera: Camera2D = $GameCamera
@@ -72,6 +73,7 @@ var network_join_button: Button = null
 var network_ready_button: Button = null
 var network_address_input: LineEdit = null
 var network_port_input: LineEdit = null
+var dragon_portal_manager: Node2D = null
 var hover_info_card: TextureRect = null
 var hover_info_label: Label = null
 var _last_hover_info_text := ""
@@ -170,6 +172,7 @@ func _setup_game() -> void:
 	neutral_unit_manager.place_initial_neutral_units()
 	neutral_unit_manager.neutral_combat_started.connect(_on_neutral_combat_started)
 	neutral_unit_manager.neutral_combat_ended.connect(_on_neutral_combat_ended)
+	_init_dragon_portal_manager()
 	# 资源追踪系统初始化
 	resource_tracker.set_turn_manager(turn_manager)
 	resource_tracker.set_building_manager(building_manager)
@@ -387,6 +390,22 @@ func _place_initial_buildings() -> void:
 			print("[建筑] 阵营 %d %s 放置失败!" % [p, infra.name])
 
 
+		# 招募营：在主城旁尝试偏移位置放置
+		var camp_offsets := [
+			Vector2i(0, 2), Vector2i(1, 2),
+			Vector2i(-1, 0), Vector2i(2, 0),
+			Vector2i(0, -1), Vector2i(1, -1),
+		]
+		var camp_placed: bool = false
+		for off in camp_offsets:
+			var cand := Vector2i(origin.x + off.x, origin.y + off.y)
+			if building_manager.place_building(BuildingData.recruit_camp(), p, cand):
+				camp_placed = true
+				print("[建筑] 阵营 %d 招募营放置: true at %s" % [p, str(cand)])
+				break
+		if not camp_placed:
+			print("[建筑] 阵营 %d 招募营放置失败!" % [p])
+
 func _on_round_started(round: int) -> void:
 	var p: int = turn_manager.current_player
 	turn_label.text = "第 %d 回合 · %s" % [round, GameCatalog.faction_name(p)]
@@ -595,11 +614,15 @@ func _on_creative_mode_toggled(enabled: bool) -> void:
 func _init_end_turn_button() -> void:
 	end_turn_button = Button.new()
 	end_turn_button.name = "EndTurnButton"
-	end_turn_button.text = "结束回合"
-	end_turn_button.position = Vector2(1780, 1030)
+	end_turn_button.text = "\u7ed3\u675f\u56de\u5408"
+	end_turn_button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	end_turn_button.offset_left = -140.0
+	end_turn_button.offset_top = -50.0
+	end_turn_button.offset_right = -20.0
+	end_turn_button.offset_bottom = -14.0
 	end_turn_button.size = Vector2(120, 36)
 	end_turn_button.focus_mode = Control.FOCUS_NONE
-	end_turn_button.z_index = 90
+	end_turn_button.z_index = 130
 	end_turn_button.add_theme_font_size_override("font_size", 15)
 	end_turn_button.pressed.connect(_on_end_turn_button_pressed)
 	$UI.add_child(end_turn_button)
@@ -621,7 +644,7 @@ func _update_end_turn_button() -> void:
 		return
 	end_turn_button.visible = true
 	end_turn_button.disabled = current_state != GameState.PLAYING
-	end_turn_button.text = "结束回合"
+	end_turn_button.text = "\u7ed3\u675f\u56de\u5408"
 	if network_game_service == null or not network_game_service.is_network_game() or turn_manager == null:
 		return
 	var player: int = _get_display_player()
@@ -629,7 +652,7 @@ func _update_end_turn_button() -> void:
 	if turn_manager.has_method("is_player_ready"):
 		ready = bool(turn_manager.call("is_player_ready", player))
 	if ready:
-		end_turn_button.text = "等待其他玩家"
+		end_turn_button.text = "\u7b49\u5f85\u5176\u4ed6\u73a9\u5bb6"
 		end_turn_button.disabled = true
 
 
@@ -663,6 +686,18 @@ func _init_technology_service() -> void:
 		building_manager.set_technology_service(technology_service)
 	if resource_tracker != null and resource_tracker.has_method("set_technology_service"):
 		resource_tracker.set_technology_service(technology_service)
+
+
+func _init_dragon_portal_manager() -> void:
+	if dragon_portal_manager != null:
+		return
+	dragon_portal_manager = DragonPortalManagerScript.new()
+	dragon_portal_manager.name = "DragonPortalManager2D"
+	$GameBoard.add_child(dragon_portal_manager)
+	if dragon_portal_manager.has_method("set_turn_manager"):
+		dragon_portal_manager.call("set_turn_manager", turn_manager)
+	if dragon_portal_manager.has_signal("portal_hovered"):
+		dragon_portal_manager.portal_hovered.connect(_on_resource_hovered)
 
 
 func _init_goblin_hex_service() -> void:
@@ -721,8 +756,8 @@ func _on_achievement_completed(player: int, _achievement_id: String, title: Stri
 func _init_achievement_tree_panel() -> void:
 	achievement_tree_panel = AchievementTreePanelScript.new()
 	achievement_tree_panel.name = "AchievementTreePanel"
-	achievement_tree_panel.position = Vector2(48.0, 64.0)
-	achievement_tree_panel.size = Vector2(1824.0, 936.0)
+	achievement_tree_panel.position = Vector2.ZERO
+	achievement_tree_panel.size = Vector2(1920.0, 1080.0)
 	achievement_tree_panel.visible = false
 	achievement_tree_panel.z_index = 100
 	$UI.add_child(achievement_tree_panel)
@@ -783,8 +818,8 @@ func _on_achievement_tree_button_pressed() -> void:
 func _init_technology_tree_panel() -> void:
 	technology_tree_panel = TechnologyTreePanelScript.new()
 	technology_tree_panel.name = "TechnologyTreePanel"
-	technology_tree_panel.position = Vector2(48.0, 64.0)
-	technology_tree_panel.size = Vector2(1824.0, 936.0)
+	technology_tree_panel.position = Vector2.ZERO
+	technology_tree_panel.size = Vector2(1920.0, 1080.0)
 	technology_tree_panel.visible = false
 	technology_tree_panel.z_index = 101
 	$UI.add_child(technology_tree_panel)

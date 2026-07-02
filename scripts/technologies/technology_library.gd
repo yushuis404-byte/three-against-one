@@ -17,7 +17,7 @@ static func get_definitions() -> Array:
 		_def("tech.common.metal_parts", "\u91d1\u5c5e\u6784\u4ef6", "common", 2, ["tech.common.basic_forging", "tech.common.iron_mining"], [], [], _effects({"building_hp_bonus": 2})),
 
 		_def("tech.common.grain_ration", "\u519b\u7cae\u5236\u5ea6", "common", 1, ["tech.root.civilization"], ["foundation.farm.first"], [], _effects({"recruit_food_discount": 1})),
-		_def("tech.common.recruitment_rules", "\u62db\u52df\u89c4\u7a0b", "common", 1, ["tech.common.grain_ration"], ["military.barracks.first"], [], _effects({"recruit_turn_discount": 1})),
+		_def("tech.common.recruitment_rules", "\u62db\u52df\u89c4\u7a0b", "common", 1, ["tech.common.grain_ration"], ["military.recruit_camp.first"], [], _effects({"recruit_turn_discount": 1})),
 		_def("tech.common.war_drum_mobilization", "\u6218\u9f13\u52a8\u5458", "common", 2, ["tech.common.recruitment_rules"], ["military.recruit.first"], [], _effects({"first_recruit_ap_discount": 1})),
 
 		_def("tech.common.storage_system", "\u4ed3\u50a8\u5236\u5ea6", "common", 1, ["tech.root.civilization"], ["foundation.storage.first"], [], _effects({"storage_flat_bonus": 20})),

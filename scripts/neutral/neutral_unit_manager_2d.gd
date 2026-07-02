@@ -1,5 +1,9 @@
 extends Node2D
 const GameStageRulesScript = preload("res://scripts/rules/game_stage_rules.gd")
+const FIRE_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Fire-Dragon-Idle.png")
+const FIRE_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Fire-Dragon-Attack.png")
+const ICE_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ice-Dragon-Idle.png")
+const ICE_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ice-Dragon-Attack.png")
 ## 中立生物管理器 — 亚龙、流浪商队、哥布林复仇队
 ##
 ## 独立于 UnitManager2D，作为 GameBoard 同级子节点
@@ -34,9 +38,15 @@ const ZONE_MOUNTAIN_BODY := 2
 const ZONE_MOUNTAIN_PATH := 3
 const ANCIENT_DRAGON_TEMPLATE_ID := "neutral.dragon.ancient"
 const PROGENITOR_DRAGON_TEMPLATE_ID := "neutral.dragon.progenitor"
+const FIRE_WYVERN_TEMPLATE_ID := "neutral.wyvern.fire"
+const FROST_WYVERN_TEMPLATE_ID := "neutral.wyvern.frost"
 const ANCIENT_DRAGON_TERRITORY_RADIUS := 5
-const ANCIENT_DRAGON_AGGRO_RANGE := 3
-const ANCIENT_DRAGON_REST_HEAL := 2
+const ANCIENT_DRAGON_AGGRO_RANGE := 4
+const FIRE_DRAGON_ATTACK_FRAMES := 10
+const ICE_DRAGON_ATTACK_FRAMES := 9
+const FIRE_DRAGON_FRAME_SIZE := Vector2(320.0, 320.0)
+const FIRE_DRAGON_DRAW_SIZE := Vector2(70.0, 70.0)
+const FIRE_DRAGON_ATTACK_DURATION := 0.55
 const MIN_WYVERN_SPACING := 3  # 亚龙之间最小曼哈顿间距
 
 # ========== 数据存储 ==========
@@ -60,6 +70,7 @@ var _combat_timer: Timer = null
 var _combat_data: Dictionary = {}  # { player_unit_id, neutral_unit_id, next_is_player }
 var _hit_flash: Dictionary = {}    # unit_id -> true
 var _shake_offsets: Dictionary = {} # unit_id -> Vector2
+var _attack_visuals: Dictionary = {} # unit_id -> { t: float, flip_x: bool }
 
 # ========== 外部引用 ==========
 var _grid_manager: Node = null
@@ -140,6 +151,7 @@ func remove_neutral_unit(uid: int) -> void:
 			_neutral_units.remove_at(i)
 			break
 	_ai_data.erase(uid)
+	_attack_visuals.erase(uid)
 	if _selected_id == uid:
 		_selected_id = -1
 		selection_cleared.emit()
@@ -270,6 +282,10 @@ func _draw() -> void:
 		if is_selected:
 			draw_circle(world_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
 
+		if _is_dragon_sprite(u):
+			_draw_dragon_sprite(u, world_pos)
+			continue
+
 		# 颜色按行为类型
 		var color: Color = NEUTRAL_COLOR
 		match behavior:
@@ -304,6 +320,53 @@ func _draw() -> void:
 
 
 
+func _is_dragon_sprite(unit: Dictionary) -> bool:
+	return not _get_dragon_sprite_spec(unit).is_empty()
+
+
+func _get_dragon_sprite_spec(unit: Dictionary) -> Dictionary:
+	match str(unit.get("template_id", "")):
+		FIRE_WYVERN_TEMPLATE_ID:
+			return {
+				"idle": FIRE_DRAGON_IDLE_TEXTURE,
+				"attack": FIRE_DRAGON_ATTACK_TEXTURE,
+				"attack_frames": FIRE_DRAGON_ATTACK_FRAMES,
+			}
+		FROST_WYVERN_TEMPLATE_ID:
+			return {
+				"idle": ICE_DRAGON_IDLE_TEXTURE,
+				"attack": ICE_DRAGON_ATTACK_TEXTURE,
+				"attack_frames": ICE_DRAGON_ATTACK_FRAMES,
+			}
+	return {}
+
+
+func _draw_dragon_sprite(unit: Dictionary, world_pos: Vector2) -> void:
+	var uid: int = int(unit.get("id", -1))
+	var spec: Dictionary = _get_dragon_sprite_spec(unit)
+	if spec.is_empty():
+		return
+	var texture: Texture2D = spec.get("idle", FIRE_DRAGON_IDLE_TEXTURE)
+	var frame: int = 0
+	var flip_x := false
+	if _attack_visuals.has(uid):
+		texture = spec.get("attack", texture)
+		var visual: Dictionary = _attack_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		var frame_count: int = int(spec.get("attack_frames", FIRE_DRAGON_ATTACK_FRAMES))
+		frame = clampi(int(floor(t * float(frame_count))), 0, frame_count - 1)
+		flip_x = bool(visual.get("flip_x", false))
+	var offset: Vector2 = _shake_offsets.get(uid, Vector2.ZERO)
+	var tint := Color.WHITE
+	if _hit_flash.has(uid):
+		tint = Color(1.0, 0.55, 0.45, 1.0)
+	var src := Rect2(Vector2(FIRE_DRAGON_FRAME_SIZE.x * frame, 0.0), FIRE_DRAGON_FRAME_SIZE)
+	var dst := Rect2(-FIRE_DRAGON_DRAW_SIZE * 0.5 + Vector2(0.0, -10.0), FIRE_DRAGON_DRAW_SIZE)
+	draw_set_transform(world_pos + offset, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, tint)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func get_unit_at_world(world_pos: Vector2) -> Dictionary:
 	var gpos: Vector2i = _world_to_grid(world_pos)
 	if not _in_bounds(gpos.x, gpos.y):
@@ -313,6 +376,19 @@ func get_unit_at_world(world_pos: Vector2) -> Dictionary:
 		var viewer: int = _turn_manager.current_player
 		if _fog_manager.get_fog(viewer, gpos.x, gpos.y) > 0.0:
 			return {}
+	for i in range(_neutral_units.size() - 1, -1, -1):
+		var unit: Dictionary = _neutral_units[i]
+		if not _is_dragon_sprite(unit):
+			continue
+		var unit_pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+		if _fog_manager and _turn_manager:
+			var viewer2: int = _turn_manager.current_player
+			if _fog_manager.get_fog(viewer2, unit_pos.x, unit_pos.y) > 0.0:
+				continue
+		var center: Vector2 = _grid_to_world(unit_pos.x, unit_pos.y) + Vector2(0.0, -10.0)
+		var rect := Rect2(center - FIRE_DRAGON_DRAW_SIZE * 0.5, FIRE_DRAGON_DRAW_SIZE)
+		if rect.has_point(world_pos):
+			return unit
 	return get_neutral_unit_at(gpos)
 
 
@@ -541,6 +617,7 @@ func _combat_tick() -> void:
 	else:
 		# 中立攻击玩家
 		var dmg: int = neutral_unit.get("atk", 1)
+		_start_neutral_attack_visual(neutral_unit, player_unit)
 		player_unit["hp"] -= dmg
 
 		# 完整受击效果（闪白 + shake + 飘字）
@@ -601,6 +678,11 @@ func _on_neutral_defeated(neutral_unit_id: int, killer_player: int) -> void:
 		_resource_tracker.add_resource(killer_player, blood_key, 1)
 		print("[中立] 阵营 %d 击杀 %s，获得 %s ×1" % [killer_player, template_id, blood_key])
 
+		# 检查是否是龙类（掉落龙晶）
+		if template_id.begins_with("neutral.") and ("dragon." in template_id or "wyvern." in template_id):
+			if _resource_tracker:
+				_resource_tracker.add_resource(killer_player, "dragon_crystal", 1)
+				print("[中立] 阵营 %d 击杀 %s，获得 龙晶 x1" % [killer_player, template_id])
 	if not defeated_unit.is_empty():
 		neutral_unit_killed.emit(killer_player, defeated_unit)
 		_apply_kill_food_reward(killer_player)
@@ -654,6 +736,34 @@ func _start_ai_combat(neutral_unit_id: int, player_unit_id: int) -> void:
 
 
 # ========== 战斗视觉效果 ==========
+
+func _start_neutral_attack_visual(neutral_unit: Dictionary, target_unit: Dictionary) -> void:
+	if not _is_dragon_sprite(neutral_unit):
+		return
+	var uid: int = int(neutral_unit.get("id", -1))
+	var from_pos: Vector2i = neutral_unit.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = target_unit.get("grid_pos", Vector2i.ZERO)
+	var flip_x := target_pos.x < from_pos.x
+	_attack_visuals[uid] = {"t": 0.0, "flip_x": flip_x}
+	queue_redraw()
+	var tween := create_tween()
+	tween.tween_method(_set_attack_visual_t.bind(uid), 0.0, 1.0, FIRE_DRAGON_ATTACK_DURATION)
+	tween.tween_callback(_finish_attack_visual.bind(uid))
+
+
+func _set_attack_visual_t(t: float, unit_id: int) -> void:
+	if not _attack_visuals.has(unit_id):
+		return
+	var visual: Dictionary = _attack_visuals[unit_id]
+	visual["t"] = t
+	_attack_visuals[unit_id] = visual
+	queue_redraw()
+
+
+func _finish_attack_visual(unit_id: int) -> void:
+	_attack_visuals.erase(unit_id)
+	queue_redraw()
+
 
 func _play_hit_effect(unit_id: int, grid_pos: Vector2i, damage: int) -> void:
 	## 触发中立单位的受击视觉效果
@@ -834,7 +944,6 @@ func _place_dragon_lair_units() -> void:
 		if uid >= 0:
 			var ancient_ai: Dictionary = _ai_data.get(uid, {})
 			ancient_ai["territory_radius"] = ANCIENT_DRAGON_TERRITORY_RADIUS
-			ancient_ai["rest_heal"] = ANCIENT_DRAGON_REST_HEAL
 			_ai_data[uid] = ancient_ai
 			used_positions.append(pos)
 
@@ -1019,7 +1128,11 @@ func _is_valid_placement_for_behavior(pos: Vector2i, behavior: String) -> bool:
 
 
 func _is_dragon_lair_zone(pos: Vector2i) -> bool:
-	if _grid_manager == null or not _grid_manager.has_method("get_zone_at"):
+	if _grid_manager == null:
+		return false
+	if _grid_manager.has_method("is_dragon_lair_walkable"):
+		return bool(_grid_manager.call("is_dragon_lair_walkable", pos.x, pos.y))
+	if not _grid_manager.has_method("get_zone_at"):
 		return false
 	var zt: int = int(_grid_manager.get_zone_at(pos.x, pos.y))
 	return zt == ZONE_MOUNTAIN_NEST or zt == ZONE_MOUNTAIN_BODY or zt == ZONE_MOUNTAIN_PATH
@@ -1033,10 +1146,6 @@ func _move_ancient_dragon_idle(unit: Dictionary, ai: Dictionary, home: Vector2i,
 		return
 	var hp: int = int(unit.get("hp", 0))
 	var hp_max: int = int(unit.get("hp_max", hp))
-	if hp < hp_max:
-		var heal: int = int(ai.get("rest_heal", ANCIENT_DRAGON_REST_HEAL))
-		unit["hp"] = mini(hp_max, hp + heal)
-		return
 	_patrol_ancient_dragon(unit, uid, home, territory_radius)
 
 
@@ -1161,6 +1270,8 @@ func _is_valid_placement(pos: Vector2i) -> bool:
 
 func _is_passable(gx: int, gy: int) -> bool:
 	if _grid_manager and _grid_manager.has_method("get_terrain_at"):
+		if _grid_manager.has_method("is_dragon_lair_walkable") and bool(_grid_manager.call("is_dragon_lair_walkable", gx, gy)):
+			return true
 		var t: int = _grid_manager.get_terrain_at(gx, gy)
 		return TerrainData.is_passable(t)
 	return true

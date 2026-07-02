@@ -142,11 +142,16 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 			accept_event()
 			return
+		accept_event()
+		return
 	if event is InputEventMouseMotion and _dragging:
 		var mm: InputEventMouseMotion = event
 		_pan += mm.position - _last_mouse
 		_last_mouse = mm.position
 		queue_redraw()
+		accept_event()
+		return
+	if event is InputEventMouseMotion:
 		accept_event()
 
 

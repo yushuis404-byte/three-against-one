@@ -945,14 +945,6 @@ func _draw_buildings() -> void:
 			draw_string(font, Vector2(star_pos.x + 1, star_pos.y + 1), star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0, 0, 0, 0.7))
 			draw_string(font, star_pos, star_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.9, 0.3))
 
-		# HP 标签（右下角小字）
-		var hp_label := "HP:%d/%d" % [b["hp"], _get_building_hp_max_from_instance(b)]
-		var hp_size := font.get_string_size(hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9)
-		var hp_pos := Vector2(
-			top_left.x + w - hp_size.x - 2,
-			top_left.y + h - 3
-		)
-		draw_string(font, hp_pos, hp_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
 
 		# 驻兵圆点（建筑上方）
 		var garrison: Array = b.get("garrison", [])
@@ -1245,8 +1237,6 @@ func _get_building_texture_key(data: BuildingData, faction: int) -> String:
 		return _get_capital_fit_key(faction)
 	if data.unique_effect_id != "":
 		return data.unique_effect_id.replace(".", "_")
-	if data.tags.has("barracks"):
-		return "barracks"
 	if data.tags.has("forge"):
 		return "forge"
 	if data.storage_level > 0:
@@ -1280,7 +1270,6 @@ func _resolve_building_texture_key(key: String) -> String:
 		return key
 	var aliases := {
 		"gold_mine_shaft": "gold_mine",
-		"barracks": "barracks_lv1",
 	}
 	var alias: String = str(aliases.get(key, ""))
 	if not alias.is_empty() and _building_texture_fit_config.has(alias):

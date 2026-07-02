@@ -179,9 +179,7 @@ func get_recruit_template_ids_for_building(building: Dictionary) -> Array:
 
 	var data: BuildingData = building["data"]
 	if "recruit_camp" in data.tags:
-		return ["unit.worker"]
-	if "barracks" in data.tags:
-		return ["unit.guard", "unit.scout"]
+		return ["unit.worker", "unit.guard", "unit.scout"]
 	return []
 
 

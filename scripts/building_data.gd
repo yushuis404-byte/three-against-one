@@ -221,20 +221,6 @@ static func t1_ancient_wood_harvest() -> BuildingData:
 	b.preferred_worker_tag = "elf"
 	b.tech_tier = 3
 	return b
-static func barracks_lv1() -> BuildingData:
-	var b := BuildingData.new(
-		"\u5175\u8425", BuildingCategory.RECRUITMENT, Vector2i(1, 1),
-		0, 40, 25, 0, 10,
-		8, {},
-		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
-		 TerrainData.Terrain.GLADE_ELF, TerrainData.Terrain.WASTELAND_ORC],
-		99, "Lv1 \u53ef\u62db\u52df\u5b88\u536b\u3001\u65a5\u5019"
-	)
-	b.tech_tier = 1
-	b.garrison_capacity = 2
-	b.tags = ["recruit", "military", "barracks"]
-	return b
-
 static func scout_post() -> BuildingData:
 	var b := BuildingData.new(
 		"\u4fa6\u5bdf\u54e8", BuildingCategory.SCOUT, Vector2i(1, 1),
@@ -539,7 +525,7 @@ static func get_templates() -> Dictionary:
 		BuildingCategory.ECONOMY: [infra_lumber_camp(), infra_quarry(), infra_farm(), infra_warehouse(), outpost(), gold_mine_shaft(), mint()],
 		BuildingCategory.SCOUT: [scout_post(), watch_tower()],
 		BuildingCategory.DEFENSE: [ballista_tower(), heavy_ballista_tower(), stone_cannon_tower()],
-		BuildingCategory.RECRUITMENT: [recruit_camp(), barracks_lv1()],
+		BuildingCategory.RECRUITMENT: [recruit_camp()],
 		BuildingCategory.INDUSTRY: [t1_mine(), forge(), t1_extraction_tower(), t1_ancient_wood_harvest()],
 		BuildingCategory.LORD_SPECIAL: [lord_wind_speaking_tree(), lord_rootweb_shrine(), lord_moonshadow_watchtower(), lord_deep_forge_workshop(), lord_iron_oath_fortress(), lord_vein_lift(), lord_war_drum_camp(), lord_plunder_banner(), lord_flesh_pen()],
 	}

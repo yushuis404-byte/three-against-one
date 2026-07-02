@@ -254,9 +254,9 @@ func _show_gather_text(grid_pos: Vector2i, results: Array) -> void:
 		var display: String = GameCatalog.resource_name(str(entry.get("key", "")))
 		parts.append("+%d %s" % [int(entry.get("amount", 0)), display])
 	label.text = "\n".join(parts)
-	label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
-	label.add_theme_font_size_override("font_size", 14)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_font_size_override("font_size", 10)
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
 
 	var world_pos := _grid_to_world(grid_pos.x, grid_pos.y)
 	label.position = Vector2(world_pos.x - 40, world_pos.y - 30)

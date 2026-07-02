@@ -8,10 +8,18 @@ const ORC_BLOOD_AXE_DEATH_TEXTURE: Texture2D = preload("res://assets/texture/cha
 const ORC_HUNTING_BEAST_TEXTURE: Texture2D = preload("res://assets/texture/character/Hunter-Beast/Hunter-tooth Beast.png")
 const ORC_SLINGER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Orc-Slinger-Idle.png")
 const ORC_SLINGER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Orc-Slinger-Walk.png")
+const ORC_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Worker/Orc-Worker-Idle.png")
+const ORC_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/orc/Worker/Orc-Worker-Walk.png")
 const ELF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png")
 const ELF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Worker/Elf-Worker-Walk.png")
 const DWARF_WORKER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png")
 const DWARF_WORKER_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Walk.png")
+const DWARF_PROSPECTOR_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Prospector/Dwarf-Prospector-Idle.png")
+const DWARF_PROSPECTOR_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Prospector/Dwarf-Prospector-Walk.png")
+const DWARF_HAMMER_GUARD_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Hammer Guard/Dwarf-Hammer-Guard-Idle.png")
+const DWARF_HAMMER_GUARD_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Hammer Guard/Dwarf-Hammer-Guard-Walk.png")
+const DWARF_MOUNTAIN_CROSSBOW_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Mountain Crossbow/Dwarf-Mountain-Crossbow-Idle.png")
+const DWARF_MOUNTAIN_CROSSBOW_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/dwarf/Mountain Crossbow/Dwarf-Mountain-Crossbow-Walk.png")
 const ELF_SCOUT_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Scout/Elf-Scout-Idle.png")
 const ELF_SCOUT_WALK_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Scout/Elf-Scout-Walk.png")
 const ELF_RANGER_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/elf/Ranger/Elf-Ranger-Idle.png")
@@ -54,6 +62,7 @@ var _wall_manager: Node = null
 var _technology_service: Node = null
 var _gathering_manager: Node = null
 var _building_effect_service = BuildingEffectServiceScript.new()
+var _dragon_lair_miasma_elapsed := 0.0
 
 # 战斗系统
 var _in_combat := false
@@ -88,6 +97,7 @@ var _selection_drag_start: Vector2 = Vector2.ZERO
 var _selection_drag_current: Vector2 = Vector2.ZERO
 var _selection_drag_moved: bool = false
 var _last_hovered_unit_text := ""
+var _hovered_unit_id: int = -1
 
 # 战斗视觉效果
 var _hit_flash: Dictionary = {}  # unit_id -> true（闪白状态）
@@ -111,6 +121,12 @@ const WARBAND_SELECTION_COLOR := Color(0.1, 0.55, 1.0, 0.55)
 const ATTACK_APPROACH_OK_COLOR := Color(0.2, 1.0, 0.35, 0.38)
 const ATTACK_APPROACH_BLOCKED_COLOR := Color(1.0, 0.35, 0.18, 0.42)
 const UNIT_RADIUS := 8.0
+const HP_BAR_W := 5.0          # 每格宽度
+const HP_BAR_H := 6.0          # 总条高度
+const HP_BAR_OFFSET_Y := 24.0  # 距离 draw_pos (单位中心) 的 Y 偏移，血条在 sprite 上方
+const HP_BAR_FILL := Color(0.9, 0.15, 0.1)
+const HP_BAR_EMPTY := Color(0.15, 0.15, 0.15)
+const HP_BAR_OUTLINE := Color.BLACK
 const SPAWN_SEARCH_RADIUS := 8
 const TELEPORT_SEARCH_RADIUS := 12
 const SELECTION_DRAG_THRESHOLD := 10.0
@@ -119,8 +135,12 @@ const UNIT_ATTACK_INTERVAL := 1.0
 const ORC_BLOOD_AXE_TEMPLATE_ID := "unit.orc.guard"
 const ORC_SLINGER_TEMPLATE_ID := "unit.orc.slinger"
 const ORC_BEAST_TEMPLATE_ID := "unit.orc.scout"
+const ORC_WORKER_TEMPLATE_ID := "unit.orc.worker"
 const ELF_WORKER_TEMPLATE_ID := "unit.elf.worker"
 const DWARF_WORKER_TEMPLATE_ID := "unit.dwarf.worker"
+const DWARF_PROSPECTOR_TEMPLATE_ID := "unit.dwarf.scout"
+const DWARF_HAMMER_GUARD_TEMPLATE_ID := "unit.dwarf.guard"
+const DWARF_MOUNTAIN_CROSSBOW_TEMPLATE_ID := "unit.dwarf.crossbow"
 const ELF_SCOUT_TEMPLATE_ID := "unit.elf.scout"
 const ELF_RANGER_TEMPLATE_ID := "unit.elf.ranger"
 const ELF_ASSASSIN_TEMPLATE_ID := "unit.elf.guard"
@@ -135,6 +155,7 @@ const FOG_CONCEAL_RADIUS := 2
 const FOG_CONCEAL_AP_COST := 1
 const FOG_CONCEAL_DURATION_ROUNDS := 5
 const DRAGON_LAIR_MIASMA_DAMAGE := 1
+const DRAGON_LAIR_MIASMA_TICK_SECONDS := 1.0
 const ZONE_MOUNTAIN_NEST := 1
 const ZONE_MOUNTAIN_BODY := 2
 const ZONE_MOUNTAIN_PATH := 3
@@ -167,6 +188,10 @@ const ORC_SLINGER_WALK_FRAMES := 10
 const ORC_SLINGER_FRAME_SIZE := Vector2(252.0, 255.0)
 const ORC_SLINGER_DRAW_SIZE := Vector2(40.0, 40.5)
 const ORC_SLINGER_FRAME_SECONDS := 0.14
+const ORC_WORKER_WALK_FRAMES := 10
+const ORC_WORKER_FRAME_SIZE := Vector2(320.0, 320.0)
+const ORC_WORKER_DRAW_SIZE := Vector2(38.0, 38.0)
+const ORC_WORKER_FRAME_SECONDS := 0.14
 const ELF_WORKER_IDLE_FRAMES := 2
 const ELF_WORKER_WALK_FRAMES := 10
 const ELF_WORKER_IDLE_FRAME_SIZE := Vector2(320.0, 320.0)
@@ -177,6 +202,15 @@ const DWARF_WORKER_WALK_FRAMES := 10
 const DWARF_WORKER_FRAME_SIZE := Vector2(320.0, 320.0)
 const DWARF_WORKER_IDLE_DRAW_SIZE := Vector2(20.7, 20.7)
 const DWARF_WORKER_WALK_DRAW_SIZE := Vector2(25.2, 25.2)
+const DWARF_PROSPECTOR_WALK_FRAMES := 10
+const DWARF_PROSPECTOR_FRAME_SIZE := Vector2(320.0, 320.0)
+const DWARF_PROSPECTOR_DRAW_SIZE := Vector2(30.0, 30.0)
+const DWARF_HAMMER_GUARD_WALK_FRAMES := 13
+const DWARF_HAMMER_GUARD_FRAME_SIZE := Vector2(320.0, 320.0)
+const DWARF_HAMMER_GUARD_DRAW_SIZE := Vector2(35.0, 35.0)
+const DWARF_MOUNTAIN_CROSSBOW_WALK_FRAMES := 10
+const DWARF_MOUNTAIN_CROSSBOW_FRAME_SIZE := Vector2(320.0, 320.0)
+const DWARF_MOUNTAIN_CROSSBOW_DRAW_SIZE := Vector2(35.0, 35.0)
 const ELF_SCOUT_WALK_FRAMES := 9
 const ELF_SCOUT_FRAME_SIZE := Vector2(320.0, 320.0)
 const ELF_SCOUT_DRAW_SIZE := Vector2(28.8, 28.8)
@@ -207,7 +241,8 @@ func _ready() -> void:
 	set_process(true)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_process_dragon_lair_miasma(delta)
 	_update_action_preview()
 	_update_fog_reveal_preview()
 	_update_fog_conceal_preview()
@@ -743,7 +778,9 @@ func _draw() -> void:
 				ring_color = MULTI_SELECT_COLOR
 			draw_circle(draw_pos, UNIT_RADIUS + 3.0, ring_color)
 
-		if _is_orc_blood_axe(u):
+		if _is_orc_worker(u):
+			_draw_orc_worker(u, draw_pos)
+		elif _is_orc_blood_axe(u):
 			_draw_orc_blood_axe(u, draw_pos)
 		elif _is_orc_slinger(u):
 			_draw_orc_slinger(u, draw_pos)
@@ -751,6 +788,12 @@ func _draw() -> void:
 			_draw_orc_hunting_beast(u, draw_pos)
 		elif _is_elf_worker(u):
 			_draw_elf_worker(u, draw_pos)
+		elif _is_dwarf_prospector(u):
+			_draw_dwarf_prospector(u, draw_pos)
+		elif _is_dwarf_hammer_guard(u):
+			_draw_dwarf_hammer_guard(u, draw_pos)
+		elif _is_dwarf_mountain_crossbow(u):
+			_draw_dwarf_mountain_crossbow(u, draw_pos)
 		elif _is_dwarf_worker(u):
 			_draw_dwarf_worker(u, draw_pos)
 		elif _is_elf_scout(u):
@@ -765,6 +808,7 @@ func _draw() -> void:
 				color = Color(1.0, 0.9, 0.85)
 			draw_circle(draw_pos, UNIT_RADIUS, color)
 			draw_arc(draw_pos, UNIT_RADIUS, 0, TAU, 16, Color.BLACK, 1.5)
+		_draw_unit_health_bar(u, draw_pos)
 
 	for unit_id_variant in _death_visuals.keys():
 		var unit_id: int = int(unit_id_variant)
@@ -814,8 +858,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_selection_drag_moved = false
 			var press_grid := _world_to_grid(_selection_drag_start)
 			var press_unit := get_visible_unit_at(press_grid)
+			var press_neutral := {}
+			var press_numgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+			if press_numgr != null and press_numgr.has_method("get_unit_at_world"):
+				press_neutral = press_numgr.call("get_unit_at_world", _selection_drag_start)
 			var is_reachable_click: bool = _selected_id >= 0 and press_grid in _reachable_tiles
-			if press_unit.is_empty() and not is_reachable_click:
+			if press_unit.is_empty() and press_neutral.is_empty() and not is_reachable_click:
 				return
 			_selection_drag_active = false
 	else:
@@ -926,8 +974,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 			# 追加：检查中立单位
 			if target.is_empty():
-				if numgr and numgr.has_method("get_neutral_unit_at"):
-					var ntarget: Dictionary = numgr.get_neutral_unit_at(gpos)
+				if numgr and numgr.has_method("get_unit_at_world"):
+					var ntarget: Dictionary = numgr.call("get_unit_at_world", cursor)
 					if not ntarget.is_empty() and _can_ranged_attack(src, ntarget):
 						_initiate_ranged_neutral_combat(int(src.get("id", -1)), int(ntarget.get("id", -1)), numgr)
 						return
@@ -2384,17 +2432,22 @@ func _finish_move_visual(unit_id: int) -> void:
 
 func _update_hovered_unit_info(world_pos: Vector2) -> void:
 	var text := ""
+	var new_hovered_id := -1
 	var grid_pos: Vector2i = _world_to_grid(world_pos)
 	if _in_bounds(grid_pos.x, grid_pos.y):
 		var unit: Dictionary = get_visible_unit_at(grid_pos)
 		if not unit.is_empty():
 			text = _get_unit_data(unit).unit_name
+			new_hovered_id = unit.get("id", -1)
 		else:
 			var neutral_mgr := get_parent().get_node_or_null("NeutralUnitManager2D")
 			if neutral_mgr != null and neutral_mgr.has_method("get_unit_at_world"):
 				var neutral: Dictionary = neutral_mgr.call("get_unit_at_world", world_pos)
 				if not neutral.is_empty():
 					text = str(neutral.get("display_name", "中立单位"))
+	if new_hovered_id != _hovered_unit_id:
+		_hovered_unit_id = new_hovered_id
+		queue_redraw()
 	if text == _last_hovered_unit_text:
 		return
 	_last_hovered_unit_text = text
@@ -2415,13 +2468,13 @@ func _get_unit_draw_world_pos(unit: Dictionary) -> Vector2:
 
 func _has_orc_blood_axe_units() -> bool:
 	for unit in _units:
-		if _is_orc_blood_axe(unit) or _is_orc_slinger(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
+		if _is_orc_worker(unit) or _is_orc_blood_axe(unit) or _is_orc_slinger(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_dwarf_prospector(unit) or _is_dwarf_hammer_guard(unit) or _is_dwarf_mountain_crossbow(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit):
 			return true
 	return false
 
 
 func _uses_orc_sprite(unit: Dictionary) -> bool:
-	return _is_orc_blood_axe(unit) or _is_orc_slinger(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
+	return _is_orc_worker(unit) or _is_orc_blood_axe(unit) or _is_orc_slinger(unit) or _is_orc_beast(unit) or _is_elf_worker(unit) or _is_dwarf_worker(unit) or _is_dwarf_prospector(unit) or _is_dwarf_hammer_guard(unit) or _is_dwarf_mountain_crossbow(unit) or _is_elf_scout(unit) or _is_elf_ranger(unit) or _is_elf_assassin(unit)
 
 
 func _is_orc_blood_axe(unit: Dictionary) -> bool:
@@ -2436,12 +2489,28 @@ func _is_orc_beast(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == ORC_BEAST_TEMPLATE_ID
 
 
+func _is_orc_worker(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == ORC_WORKER_TEMPLATE_ID
+
+
 func _is_elf_worker(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == ELF_WORKER_TEMPLATE_ID
 
 
 func _is_dwarf_worker(unit: Dictionary) -> bool:
 	return str(unit.get("template_id", "")) == DWARF_WORKER_TEMPLATE_ID
+
+
+func _is_dwarf_prospector(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == DWARF_PROSPECTOR_TEMPLATE_ID
+
+
+func _is_dwarf_hammer_guard(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == DWARF_HAMMER_GUARD_TEMPLATE_ID
+
+
+func _is_dwarf_mountain_crossbow(unit: Dictionary) -> bool:
+	return str(unit.get("template_id", "")) == DWARF_MOUNTAIN_CROSSBOW_TEMPLATE_ID
 
 
 func _is_elf_scout(unit: Dictionary) -> bool:
@@ -2498,6 +2567,69 @@ func _draw_dwarf_worker(unit: Dictionary, draw_pos: Vector2) -> void:
 		frame = clampi(int(floor(t * float(DWARF_WORKER_WALK_FRAMES))), 0, DWARF_WORKER_WALK_FRAMES - 1)
 	var src := Rect2(Vector2(DWARF_WORKER_FRAME_SIZE.x * frame, 0.0), DWARF_WORKER_FRAME_SIZE)
 	var dst := Rect2(-draw_size * 0.5, draw_size)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_dwarf_prospector(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var texture: Texture2D = DWARF_PROSPECTOR_IDLE_TEXTURE
+	var frame: int = 0
+	if is_moving:
+		texture = DWARF_PROSPECTOR_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(DWARF_PROSPECTOR_WALK_FRAMES))), 0, DWARF_PROSPECTOR_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(DWARF_PROSPECTOR_FRAME_SIZE.x * frame, 0.0), DWARF_PROSPECTOR_FRAME_SIZE)
+	var dst := Rect2(-DWARF_PROSPECTOR_DRAW_SIZE * 0.5 + Vector2(0.0, -3.0), DWARF_PROSPECTOR_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_dwarf_hammer_guard(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var texture: Texture2D = DWARF_HAMMER_GUARD_IDLE_TEXTURE
+	var frame: int = 0
+	if is_moving:
+		texture = DWARF_HAMMER_GUARD_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(DWARF_HAMMER_GUARD_WALK_FRAMES))), 0, DWARF_HAMMER_GUARD_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(DWARF_HAMMER_GUARD_FRAME_SIZE.x * frame, 0.0), DWARF_HAMMER_GUARD_FRAME_SIZE)
+	var dst := Rect2(-DWARF_HAMMER_GUARD_DRAW_SIZE * 0.5 + Vector2(0.0, -4.0), DWARF_HAMMER_GUARD_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_dwarf_mountain_crossbow(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var texture: Texture2D = DWARF_MOUNTAIN_CROSSBOW_IDLE_TEXTURE
+	var frame: int = 0
+	if is_moving:
+		texture = DWARF_MOUNTAIN_CROSSBOW_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(DWARF_MOUNTAIN_CROSSBOW_WALK_FRAMES))), 0, DWARF_MOUNTAIN_CROSSBOW_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(DWARF_MOUNTAIN_CROSSBOW_FRAME_SIZE.x * frame, 0.0), DWARF_MOUNTAIN_CROSSBOW_FRAME_SIZE)
+	var dst := Rect2(-DWARF_MOUNTAIN_CROSSBOW_DRAW_SIZE * 0.5 + Vector2(0.0, -4.0), DWARF_MOUNTAIN_CROSSBOW_DRAW_SIZE)
 	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
 	if is_moving:
 		var move_visual: Dictionary = _move_visuals.get(uid, {})
@@ -2603,6 +2735,27 @@ func _draw_orc_slinger(unit: Dictionary, draw_pos: Vector2) -> void:
 		frame = clampi(int(floor(t * float(ORC_SLINGER_WALK_FRAMES))), 0, ORC_SLINGER_WALK_FRAMES - 1)
 	var src := Rect2(Vector2(ORC_SLINGER_FRAME_SIZE.x * frame, 0.0), ORC_SLINGER_FRAME_SIZE)
 	var dst := Rect2(-ORC_SLINGER_DRAW_SIZE * 0.5 + Vector2(0.0, -5.0), ORC_SLINGER_DRAW_SIZE)
+	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
+	if is_moving:
+		var move_visual: Dictionary = _move_visuals.get(uid, {})
+		flip_x = bool(move_visual.get("flip_x", flip_x))
+	draw_set_transform(draw_pos, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
+	draw_texture_rect_region(texture, dst, src, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_orc_worker(unit: Dictionary, draw_pos: Vector2) -> void:
+	var uid: int = unit.get("id", -1)
+	var is_moving: bool = _move_visuals.has(uid)
+	var texture: Texture2D = ORC_WORKER_IDLE_TEXTURE
+	var frame: int = 0
+	if is_moving:
+		texture = ORC_WORKER_WALK_TEXTURE
+		var visual: Dictionary = _move_visuals.get(uid, {})
+		var t: float = float(visual.get("t", 0.0))
+		frame = clampi(int(floor(t * float(ORC_WORKER_WALK_FRAMES))), 0, ORC_WORKER_WALK_FRAMES - 1)
+	var src := Rect2(Vector2(ORC_WORKER_FRAME_SIZE.x * frame, 0.0), ORC_WORKER_FRAME_SIZE)
+	var dst := Rect2(-ORC_WORKER_DRAW_SIZE * 0.5 + Vector2(0.0, -2.0), ORC_WORKER_DRAW_SIZE)
 	var flip_x: bool = bool(_unit_facing_flip.get(uid, false))
 	if is_moving:
 		var move_visual: Dictionary = _move_visuals.get(uid, {})
@@ -3097,8 +3250,34 @@ func _on_player_turn_started(player: int) -> void:
 			_tick_fog_talent_cooldowns(u)
 			_tick_unit_statuses(u)
 
-	_apply_dragon_lair_miasma(player)
 	_clear_selection()
+
+
+func _process_dragon_lair_miasma(delta: float) -> void:
+	_dragon_lair_miasma_elapsed += delta
+	if _dragon_lair_miasma_elapsed < DRAGON_LAIR_MIASMA_TICK_SECONDS:
+		return
+	while _dragon_lair_miasma_elapsed >= DRAGON_LAIR_MIASMA_TICK_SECONDS:
+		_dragon_lair_miasma_elapsed -= DRAGON_LAIR_MIASMA_TICK_SECONDS
+		_apply_dragon_lair_miasma_to_all_units()
+
+
+func _apply_dragon_lair_miasma_to_all_units() -> void:
+	for i in range(_units.size() - 1, -1, -1):
+		var unit: Dictionary = _units[i]
+		var player: int = int(unit.get("faction", -1))
+		if _has_miasma_immunity(player):
+			continue
+		var pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+		if not _is_dragon_lair_miasma_tile(pos):
+			continue
+		unit["hp"] = int(unit.get("hp", 0)) - DRAGON_LAIR_MIASMA_DAMAGE
+		_show_damage_text(pos, DRAGON_LAIR_MIASMA_DAMAGE)
+		if int(unit.get("hp", 0)) <= 0:
+			_remove_unit_from_miasma(i)
+		else:
+			_units[i] = unit
+	queue_redraw()
 
 
 func _apply_dragon_lair_miasma(player: int) -> void:
@@ -3121,11 +3300,17 @@ func _apply_dragon_lair_miasma(player: int) -> void:
 
 
 func _has_miasma_immunity(player: int) -> bool:
+	if player < 0:
+		return false
 	return _get_technology_modifier_for_player(player, "miasma_immunity") > 0
 
 
 func _is_dragon_lair_miasma_tile(pos: Vector2i) -> bool:
-	if _grid_manager == null or not _grid_manager.has_method("get_zone_at"):
+	if _grid_manager == null:
+		return false
+	if _grid_manager.has_method("is_dragon_lair_walkable"):
+		return bool(_grid_manager.call("is_dragon_lair_walkable", pos.x, pos.y))
+	if not _grid_manager.has_method("get_zone_at"):
 		return false
 	var zone: int = int(_grid_manager.call("get_zone_at", pos.x, pos.y))
 	return zone == ZONE_MOUNTAIN_NEST or zone == ZONE_MOUNTAIN_BODY or zone == ZONE_MOUNTAIN_PATH
@@ -4157,7 +4342,7 @@ func get_selected_units_near_cells(unit_ids: Array, cells: Array, max_distance: 
 	return result
 
 
-func teleport_units_to_nearest_empty(unit_ids: Array, target_anchor: Vector2i) -> Dictionary:
+func teleport_units_to_nearest_empty(unit_ids: Array, target_anchor: Vector2i, scatter_seed: int = 0, forbidden_cells: Array = []) -> Dictionary:
 	var moving_ids: Array[int] = []
 	for id_variant in unit_ids:
 		var unit_id: int = int(id_variant)
@@ -4171,8 +4356,9 @@ func teleport_units_to_nearest_empty(unit_ids: Array, target_anchor: Vector2i) -
 
 	var reserved: Array[Vector2i] = []
 	var targets: Dictionary = {}
+	var target_is_dragon_lair := _is_dragon_lair_walkable(target_anchor.x, target_anchor.y)
 	for unit_id in moving_ids:
-		var target: Vector2i = _find_teleport_destination(target_anchor, reserved, moving_ids)
+		var target: Vector2i = _find_teleport_destination(target_anchor, reserved, moving_ids, scatter_seed + unit_id * 37, target_is_dragon_lair, forbidden_cells)
 		if target.x < 0:
 			return {"success": false, "reason": "not_enough_space"}
 		reserved.append(target)
@@ -4183,6 +4369,10 @@ func teleport_units_to_nearest_empty(unit_ids: Array, target_anchor: Vector2i) -
 		if unit.is_empty():
 			continue
 		var target_pos: Vector2i = targets[unit_id]
+		_cancel_gather_for_unit(unit_id)
+		_move_visuals.erase(unit_id)
+		_pending_attack_after_move.erase(unit_id)
+		_pending_building_attack_after_move.erase(unit_id)
 		unit["grid_pos"] = target_pos
 		unit["has_moved"] = true
 		_sync_dragon_lair_location_state(unit)
@@ -4205,8 +4395,14 @@ func _is_tile_passable_for_unit(unit: Dictionary, gx: int, gy: int) -> bool:
 	if _is_tile_passable(gx, gy):
 		return true
 	if bool(unit.get(INSIDE_DRAGON_LAIR_KEY, false)):
-		return _is_dragon_lair_miasma_tile(Vector2i(gx, gy))
+		return _is_dragon_lair_walkable(gx, gy)
 	return false
+
+
+func _is_dragon_lair_walkable(gx: int, gy: int) -> bool:
+	if _grid_manager != null and _grid_manager.has_method("is_dragon_lair_walkable"):
+		return bool(_grid_manager.call("is_dragon_lair_walkable", gx, gy))
+	return _is_dragon_lair_miasma_tile(Vector2i(gx, gy))
 
 
 func _sync_dragon_lair_location_state(unit: Dictionary) -> void:
@@ -4500,9 +4696,12 @@ func _sort_by_distance(a: Dictionary, b: Dictionary) -> bool:
 	return distance_a < distance_b
 
 
-func _find_teleport_destination(anchor: Vector2i, reserved: Array[Vector2i], ignored_unit_ids: Array[int]) -> Vector2i:
-	if _is_valid_teleport_tile(anchor, reserved, ignored_unit_ids):
-		return anchor
+func _find_teleport_destination(anchor: Vector2i, reserved: Array[Vector2i], ignored_unit_ids: Array[int], scatter_seed: int = 0, require_dragon_lair: bool = false, forbidden_cells: Array = []) -> Vector2i:
+	var best_pos := Vector2i(-1, -1)
+	var best_score := 2147483647
+	if _is_valid_teleport_tile(anchor, reserved, ignored_unit_ids, require_dragon_lair, forbidden_cells):
+		best_pos = anchor
+		best_score = _teleport_candidate_score(anchor, anchor, scatter_seed)
 	for radius in range(1, TELEPORT_SEARCH_RADIUS + 1):
 		for dx in range(-radius, radius + 1):
 			var dy_abs: int = radius - absi(dx)
@@ -4510,15 +4709,30 @@ func _find_teleport_destination(anchor: Vector2i, reserved: Array[Vector2i], ign
 			if dy_abs != 0:
 				candidates.append(Vector2i(anchor.x + dx, anchor.y - dy_abs))
 			for candidate in candidates:
-				if _is_valid_teleport_tile(candidate, reserved, ignored_unit_ids):
-					return candidate
-	return Vector2i(-1, -1)
+				if _is_valid_teleport_tile(candidate, reserved, ignored_unit_ids, require_dragon_lair, forbidden_cells):
+					var score: int = _teleport_candidate_score(candidate, anchor, scatter_seed)
+					if score < best_score:
+						best_score = score
+						best_pos = candidate
+		if best_pos.x >= 0:
+			return best_pos
+	return best_pos
 
 
-func _is_valid_teleport_tile(pos: Vector2i, reserved: Array[Vector2i], ignored_unit_ids: Array[int]) -> bool:
+func _teleport_candidate_score(pos: Vector2i, anchor: Vector2i, scatter_seed: int) -> int:
+	var distance: int = absi(pos.x - anchor.x) + absi(pos.y - anchor.y)
+	var hash_value: int = int(abs((pos.x * 73856093) ^ (pos.y * 19349663) ^ (scatter_seed * 83492791)))
+	return distance * 1000 + hash_value % 997
+
+
+func _is_valid_teleport_tile(pos: Vector2i, reserved: Array[Vector2i], ignored_unit_ids: Array[int], require_dragon_lair: bool = false, forbidden_cells: Array = []) -> bool:
 	if pos in reserved:
 		return false
+	if pos in forbidden_cells:
+		return false
 	if not _in_bounds(pos.x, pos.y):
+		return false
+	if require_dragon_lair and not _is_dragon_lair_walkable(pos.x, pos.y):
 		return false
 	if not _is_tile_passable(pos.x, pos.y) and not _is_dragon_lair_miasma_tile(pos):
 		return false
@@ -4614,3 +4828,25 @@ func _world_to_grid(world_pos: Vector2) -> Vector2i:
 	var gx := int(roundf((world_pos.x - offset.x) / tile_size))
 	var gy := int(roundf((world_pos.y - offset.y) / tile_size))
 	return Vector2i(gx, gy)
+
+
+func _draw_unit_health_bar(unit: Dictionary, draw_pos: Vector2) -> void:
+	if unit.get("id", -1) != _hovered_unit_id or _hovered_unit_id < 0:
+		return
+	var unit_data = unit.get("data")
+	if unit_data == null:
+		return
+	var hp: int = int(unit.get("hp", 0))
+	var hp_max: int = unit_data.hp_max
+	if hp_max <= 0:
+		return
+	var total_w := hp_max * HP_BAR_W
+	var ox := draw_pos.x - total_w * 0.5
+	var oy := draw_pos.y - HP_BAR_OFFSET_Y
+	for i in range(hp_max):
+		var rx := ox + i * HP_BAR_W
+		# 黑色边框
+		draw_rect(Rect2(rx, oy, HP_BAR_W, HP_BAR_H), HP_BAR_OUTLINE)
+		# 内部填充
+		var fill := HP_BAR_FILL if i < hp else HP_BAR_EMPTY
+		draw_rect(Rect2(rx + 1.0, oy + 1.0, HP_BAR_W - 2.0, HP_BAR_H - 2.0), fill)

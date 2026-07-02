@@ -5,18 +5,19 @@ const DragonPortalConfirmPanelScript := preload("res://scripts/ui/dragon_portal_
 signal portal_hovered(text: String)
 
 const MAX_UNITS_PER_TELEPORT := 6
-const INTERACTION_RANGE := 1
-const PORTAL_SIZE := Vector2i(2, 2)
+const INTERACTION_RANGE := 5
+const EXIT_AP_COST_PER_UNIT := 1
+const PORTAL_SIZE := Vector2i(1, 1)
 const TILE_SIZE := 32.0
+const PORTAL_TEXTURE: Texture2D = preload("res://assets/texture/dragon door.png")
 
 var _grid_manager: Node = null
 var _unit_manager: Node = null
 var _turn_manager: Node = null
-var _fog_manager: Node = null
 var _confirm_panel: DragonPortalConfirmPanel = null
-var _portal_used_this_turn: Array[bool] = [false, false, false]
 var _portals: Array[Dictionary] = []
 var _last_hover_text := ""
+var _fog_of_war: Node = null
 
 
 func _ready() -> void:
@@ -29,17 +30,7 @@ func _ready() -> void:
 
 
 func set_turn_manager(turn_manager: Node) -> void:
-	if _turn_manager == turn_manager:
-		return
-	if _turn_manager != null and _turn_manager.has_signal("player_turn_started"):
-		var old_callable := Callable(self, "_on_player_turn_started")
-		if _turn_manager.player_turn_started.is_connected(old_callable):
-			_turn_manager.player_turn_started.disconnect(old_callable)
 	_turn_manager = turn_manager
-	if _turn_manager != null and _turn_manager.has_signal("player_turn_started"):
-		var new_callable := Callable(self, "_on_player_turn_started")
-		if not _turn_manager.player_turn_started.is_connected(new_callable):
-			_turn_manager.player_turn_started.connect(new_callable)
 
 
 func _process(_delta: float) -> void:
@@ -63,9 +54,14 @@ func _input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
+	var viewer: int = int(_turn_manager.get("current_player")) if _turn_manager != null else -1
 	for portal in _portals:
-		_draw_portal_end(portal, "outer")
-		_draw_portal_end(portal, "inner")
+		var outer_anchor: Vector2i = portal.get("outer_anchor", Vector2i.ZERO)
+		var inner_anchor: Vector2i = portal.get("inner_anchor", Vector2i.ZERO)
+		if viewer < 0 or _is_cell_visible(viewer, outer_anchor):
+			_draw_portal_end(portal, "outer")
+		if viewer < 0 or _is_cell_visible(viewer, inner_anchor):
+			_draw_portal_end(portal, "inner")
 
 
 func _bind_siblings() -> void:
@@ -73,26 +69,27 @@ func _bind_siblings() -> void:
 		return
 	_grid_manager = get_parent().get_node_or_null("GridManager2D")
 	_unit_manager = get_parent().get_node_or_null("UnitManager2D")
-	_fog_manager = get_parent().get_node_or_null("FogOfWar2D")
 	set_turn_manager(get_parent().get_node_or_null("TurnManager2D"))
+	_fog_of_war = get_parent().get_node_or_null("FogOfWar2D")
 
 
 func _build_portals() -> void:
 	_portals = [
-		_make_portal("north", "北侧龙门", Vector2i(49, 18), Vector2i(49, 23)),
-		_make_portal("west", "西南龙门", Vector2i(40, 32), Vector2i(45, 29)),
-		_make_portal("east", "东南龙门", Vector2i(58, 32), Vector2i(53, 29)),
+		_make_portal("elf", "精灵龙门", 0, Vector2i(50, 21), Vector2i(50, 24)),
+		_make_portal("dwarf", "矮人龙门", 1, Vector2i(44, 33), Vector2i(46, 30)),
+		_make_portal("orc", "兽人龙门", 2, Vector2i(56, 33), Vector2i(53, 30)),
 	]
 
 
-func _make_portal(id: String, display_name: String, outer_origin: Vector2i, inner_origin: Vector2i) -> Dictionary:
+func _make_portal(id: String, display_name: String, faction: int, outer_origin: Vector2i, inner_origin: Vector2i) -> Dictionary:
 	return {
 		"id": id,
 		"display_name": display_name,
+		"faction": faction,
 		"outer_cells": _rect_cells(outer_origin, PORTAL_SIZE),
 		"inner_cells": _rect_cells(inner_origin, PORTAL_SIZE),
-		"outer_anchor": outer_origin + Vector2i(1, 1),
-		"inner_anchor": inner_origin + Vector2i(1, 1),
+		"outer_anchor": outer_origin,
+		"inner_anchor": inner_origin,
 	}
 
 
@@ -122,24 +119,28 @@ func _ensure_confirm_panel() -> void:
 func _request_portal_use(portal_end: Dictionary) -> void:
 	_bind_siblings()
 	if _turn_manager == null or _unit_manager == null:
-		_show_notice("无法使用巨龙传送门", "传送门系统尚未连接回合或单位系统。")
+		_show_notice("无法使用巨龙传送门", "传送门系统还没有连接回合或单位系统。")
 		return
+
 	var player: int = int(_turn_manager.get("current_player"))
-	if player < 0 or player >= _portal_used_this_turn.size():
+	var portal_faction: int = int(portal_end.get("faction", -1))
+	if player != portal_faction:
+		_show_notice("无法使用巨龙传送门", "每个阵营只能使用自己对应的巨龙传送门。")
 		return
-	if _portal_used_this_turn[player]:
-		_show_notice("无法使用巨龙传送门", "本回合已经使用过巨龙传送门。每回合只能传入或传出一次。")
+
+	if _turn_manager.has_method("can_player_act") and not bool(_turn_manager.call("can_player_act", player)):
+		_show_notice("无法使用巨龙传送门", "当前阵营已经结束行动，不能再使用传送门。")
 		return
 
 	var source_cells: Array = portal_end.get("source_cells", [])
 	var selected_ids: Array = _unit_manager.call("get_selected_unit_ids")
 	if selected_ids.is_empty():
-		_show_notice("无法使用巨龙传送门", "请先点选、追加点选或框选需要传送的己方单位。")
+		_show_notice("无法使用巨龙传送门", "请先选择需要传送的己方单位。")
 		return
 
 	var eligible_ids: Array = _unit_manager.call("get_selected_units_near_cells", selected_ids, source_cells, INTERACTION_RANGE, 0)
 	if eligible_ids.is_empty():
-		_show_notice("无法使用巨龙传送门", "选中的单位不在传送门附近。单位需要站在传送门 1 格范围内。")
+		_show_notice("无法使用巨龙传送门", "选中的单位不在传送门 5 格范围内。")
 		return
 
 	var teleport_ids: Array[int] = []
@@ -148,15 +149,23 @@ func _request_portal_use(portal_end: Dictionary) -> void:
 		teleport_ids.append(int(eligible_ids[i]))
 
 	var direction: String = str(portal_end.get("direction", "enter"))
+	var ap_cost := 0
+	if direction == "exit":
+		ap_cost = teleport_ids.size() * EXIT_AP_COST_PER_UNIT
+		if _turn_manager.has_method("get_ap") and int(_turn_manager.call("get_ap", player)) < ap_cost:
+			_show_notice("无法传出巨龙巢穴", "传出每个单位需要 1 AP，当前 AP 不足。")
+			return
+
 	var target_anchor: Vector2i = portal_end.get("target_anchor", Vector2i.ZERO)
-	var title := "使用巨龙传送门"
-	var body := _build_confirm_body(direction, selected_ids.size(), eligible_ids.size(), teleport_ids.size())
 	var payload := {
 		"player": player,
 		"unit_ids": teleport_ids,
 		"target_anchor": target_anchor,
 		"direction": direction,
+		"ap_cost": ap_cost,
 	}
+	var title := "使用巨龙传送门"
+	var body := _build_confirm_body(direction, selected_ids.size(), eligible_ids.size(), teleport_ids.size(), ap_cost)
 	if _confirm_panel == null:
 		_ensure_confirm_panel()
 	if _confirm_panel == null:
@@ -165,21 +174,20 @@ func _request_portal_use(portal_end: Dictionary) -> void:
 	_confirm_panel.show_request(title, body, payload, true)
 
 
-func _build_confirm_body(direction: String, selected_count: int, eligible_count: int, teleport_count: int) -> String:
-	var target_text := "进入巨龙巢穴内部边缘"
-	if direction != "enter":
-		target_text = "返回巨龙巢穴外围"
+func _build_confirm_body(direction: String, selected_count: int, eligible_count: int, teleport_count: int, ap_cost: int) -> String:
+	var target_text := "进入巨龙巢穴内部"
+	if direction == "exit":
+		target_text = "返回阵营外部入口"
 	var lines: Array[String] = []
-	lines.append("将传送 %d 个单位%s。" % [teleport_count, target_text])
+	lines.append("将传送 %d 个单位：%s。" % [teleport_count, target_text])
 	if selected_count > eligible_count:
-		lines.append("已选择 %d 个单位，其中 %d 个在传送门附近。" % [selected_count, eligible_count])
+		lines.append("已选择 %d 个单位，其中 %d 个在传送门 5 格范围内。" % [selected_count, eligible_count])
 	if eligible_count > MAX_UNITS_PER_TELEPORT:
 		lines.append("一次最多传送 %d 个单位，本次会传送距离最近的 %d 个。" % [MAX_UNITS_PER_TELEPORT, teleport_count])
 	if direction == "enter":
-		lines.append("巢穴内存在瘴气，没有迷障护盾时，回合开始会持续扣血并可能死亡。")
+		lines.append("没有点出瘴气护盾科技时，巢穴内会持续受到瘴气伤害。")
 	else:
-		lines.append("返回外围后不会再受到巢穴瘴气影响。")
-	lines.append("本回合传送门使用后，不能再进行传入或传出。")
+		lines.append("传出需要消耗 %d AP，每个单位 1 AP。" % ap_cost)
 	return "\n".join(lines)
 
 
@@ -191,21 +199,30 @@ func _execute_portal_payload(payload: Dictionary) -> void:
 	if _turn_manager == null or _unit_manager == null:
 		return
 	var player: int = int(payload.get("player", -1))
-	if player < 0 or player >= _portal_used_this_turn.size():
-		return
-	if _portal_used_this_turn[player]:
-		_show_notice("无法使用巨龙传送门", "本回合已经使用过巨龙传送门。每回合只能传入或传出一次。")
-		return
 	if player != int(_turn_manager.get("current_player")):
 		_show_notice("无法使用巨龙传送门", "当前已经不是发起传送的玩家回合。")
 		return
+	if _turn_manager.has_method("can_player_act") and not bool(_turn_manager.call("can_player_act", player)):
+		_show_notice("无法使用巨龙传送门", "当前阵营已经结束行动，不能再使用传送门。")
+		return
+
+	var ap_cost: int = int(payload.get("ap_cost", 0))
+	if ap_cost > 0:
+		if not _turn_manager.has_method("spend_ap") or not bool(_turn_manager.call("spend_ap", player, ap_cost)):
+			_show_notice("无法传出巨龙巢穴", "传出所需 AP 不足。")
+			return
+
 	var unit_ids: Array = payload.get("unit_ids", [])
 	var target_anchor: Vector2i = payload.get("target_anchor", Vector2i.ZERO)
-	var result: Dictionary = _unit_manager.call("teleport_units_to_nearest_empty", unit_ids, target_anchor)
+	var forbidden_cells: Array[Vector2i] = []
+	if str(payload.get("direction", "enter")) == "enter":
+		forbidden_cells.append(target_anchor)
+	var result: Dictionary = _unit_manager.call("teleport_units_to_nearest_empty", unit_ids, target_anchor, randi(), forbidden_cells)
 	if not bool(result.get("success", false)):
 		_show_notice("无法使用巨龙传送门", "出口附近没有足够空格，传送没有执行。")
+		if ap_cost > 0 and _turn_manager.has_method("add_ap"):
+			_turn_manager.call("add_ap", player, ap_cost)
 		return
-	_portal_used_this_turn[player] = true
 	queue_redraw()
 
 
@@ -224,6 +241,7 @@ func _get_portal_end_at(grid_pos: Vector2i) -> Dictionary:
 		if grid_pos in outer_cells:
 			return {
 				"portal_id": str(portal.get("id", "")),
+				"faction": int(portal.get("faction", -1)),
 				"source_cells": outer_cells,
 				"target_anchor": portal.get("inner_anchor", Vector2i.ZERO),
 				"direction": "enter",
@@ -232,6 +250,7 @@ func _get_portal_end_at(grid_pos: Vector2i) -> Dictionary:
 		if grid_pos in inner_cells:
 			return {
 				"portal_id": str(portal.get("id", "")),
+				"faction": int(portal.get("faction", -1)),
 				"source_cells": inner_cells,
 				"target_anchor": portal.get("outer_anchor", Vector2i.ZERO),
 				"direction": "exit",
@@ -240,26 +259,17 @@ func _get_portal_end_at(grid_pos: Vector2i) -> Dictionary:
 
 
 func _draw_portal_end(portal: Dictionary, side: String) -> void:
-	var cells: Array = portal.get("%s_cells" % side, [])
 	var anchor: Vector2i = portal.get("%s_anchor" % side, Vector2i.ZERO)
-	var color := Color(0.20, 0.78, 1.0, 0.72)
-	var border := Color(0.80, 0.95, 1.0, 0.92)
-	if side != "outer":
-		color = Color(0.72, 0.40, 1.0, 0.72)
-		border = Color(0.92, 0.82, 1.0, 0.92)
-	for cell_variant in cells:
-		var cell: Vector2i = cell_variant
-		var center := _grid_to_world(cell.x, cell.y)
-		var rect := Rect2(center - Vector2(TILE_SIZE, TILE_SIZE) * 0.5, Vector2(TILE_SIZE, TILE_SIZE))
-		draw_rect(rect.grow(-3.0), Color(color.r, color.g, color.b, 0.28), true)
-		draw_rect(rect.grow(-3.0), border, false, 1.4)
-	var portal_center := _grid_to_world(anchor.x, anchor.y) - Vector2(TILE_SIZE * 0.5, TILE_SIZE * 0.5)
-	draw_circle(portal_center, 19.0, Color(color.r, color.g, color.b, 0.24))
-	draw_arc(portal_center, 19.0, 0.0, TAU, 48, border, 2.5, true)
-	var font: Font = ThemeDB.fallback_font
-	var label := "龙门"
-	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
-	draw_string(font, portal_center - Vector2(text_size.x * 0.5, -4.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.94, 0.97, 1.0, 0.95))
+	var portal_center := _grid_to_world(anchor.x, anchor.y)
+	var tex_size := 48.0
+	draw_texture_rect(PORTAL_TEXTURE, Rect2(portal_center - Vector2(tex_size, tex_size) * 0.5, Vector2(tex_size, tex_size)), false)
+
+
+func _is_cell_visible(player: int, cell: Vector2i) -> bool:
+	if _fog_of_war == null or not _fog_of_war.has_method("get_fog"):
+		return true
+	return _fog_of_war.get_fog(player, cell.x, cell.y) <= 0.0
+
 
 
 func _update_hover_text() -> void:
@@ -267,17 +277,15 @@ func _update_hover_text() -> void:
 	var portal_end: Dictionary = _get_portal_end_at(grid_pos)
 	var text := ""
 	if not portal_end.is_empty():
-		text = "巨龙传送门：点击后传送选中的附近单位"
+		var direction: String = str(portal_end.get("direction", "enter"))
+		if direction == "enter":
+			text = "巨龙传送门：选择 5 格内单位进入巢穴"
+		else:
+			text = "巨龙传送门：选择 5 格内单位传出，每个单位 1 AP"
 	if text == _last_hover_text:
 		return
 	_last_hover_text = text
 	portal_hovered.emit(text)
-
-
-func _on_player_turn_started(player: int) -> void:
-	if player < 0 or player >= _portal_used_this_turn.size():
-		return
-	_portal_used_this_turn[player] = false
 
 
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:

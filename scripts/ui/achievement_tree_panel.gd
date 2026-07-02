@@ -117,10 +117,14 @@ func _draw() -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		accept_event()
+		return
 	if not (event is InputEventMouseButton):
 		return
 	var mb: InputEventMouseButton = event
 	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		accept_event()
 		return
 	var pos: Vector2 = mb.position
 	var close_rect := Rect2(size.x - 86.0, 7.0, CLOSE_RECT.size.x, CLOSE_RECT.size.y)
@@ -135,6 +139,7 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 			accept_event()
 			return
+	accept_event()
 
 
 func _on_state_changed(_player: int) -> void:
@@ -395,8 +400,8 @@ func _icon_label(key: String) -> String:
 			return "矮"
 		"orc":
 			return "兽"
-		"barracks":
-			return "营"
+		"recruit_camp":
+			return "招"
 		"gold_shaft":
 			return "井"
 		"mint":
@@ -481,8 +486,8 @@ func _resource_name(key: String) -> String:
 
 func _tag_name(tag: String) -> String:
 	match tag:
-		"barracks":
-			return "兵营"
+		"recruit_camp":
+			return "招募营"
 	return tag
 
 

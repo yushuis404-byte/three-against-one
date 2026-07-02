@@ -9,7 +9,6 @@ const WATCH_TOWER_NAME := "\u77ad\u671b\u5854"
 const FORGE_NAME := "\u7194\u7089"
 
 const TEMPLATE_RECRUIT_CAMP := "building.recruit_camp"
-const TEMPLATE_BARRACKS_LV1 := "building.barracks_lv1"
 const TEMPLATE_WATCH_TOWER := "building.watch_tower"
 const TEMPLATE_FORGE := "building.forge"
 
@@ -54,15 +53,13 @@ static func get_faction_recruit_template_ids(data: BuildingData, faction: int) -
 	if prefix.is_empty() or data == null:
 		return []
 	if "recruit_camp" in data.tags:
-		return ["%s.worker" % prefix]
-	if "barracks" in data.tags:
 		if faction == 0:
-			return ["%s.guard" % prefix, "%s.scout" % prefix, "%s.ranger" % prefix, "%s.blade_dancer" % prefix, "%s.root_guard" % prefix]
+			return ["%s.worker" % prefix, "%s.guard" % prefix, "%s.scout" % prefix, "%s.ranger" % prefix, "%s.blade_dancer" % prefix, "%s.root_guard" % prefix]
 		if faction == 1:
-			return ["%s.guard" % prefix, "%s.scout" % prefix, "%s.shieldbearer" % prefix, "%s.crossbow" % prefix, "%s.sapper" % prefix]
+			return ["%s.worker" % prefix, "%s.guard" % prefix, "%s.scout" % prefix, "%s.shieldbearer" % prefix, "%s.crossbow" % prefix, "%s.sapper" % prefix]
 		if faction == 2:
-			return ["%s.mob" % prefix, "%s.guard" % prefix, "%s.bone_shield" % prefix, "%s.hide_tower" % prefix, "%s.scout" % prefix, "%s.slinger" % prefix]
-		return ["%s.guard" % prefix, "%s.scout" % prefix]
+			return ["%s.worker" % prefix, "%s.mob" % prefix, "%s.guard" % prefix, "%s.bone_shield" % prefix, "%s.hide_tower" % prefix, "%s.scout" % prefix, "%s.slinger" % prefix]
+		return ["%s.guard" % prefix, "%s.scout" % prefix, "%s.ranger" % prefix, "%s.blade_dancer" % prefix, "%s.root_guard" % prefix]
 	return []
 
 
@@ -71,8 +68,6 @@ static func get_building_template_id(data: BuildingData) -> String:
 		return ""
 	if "recruit_camp" in data.tags:
 		return TEMPLATE_RECRUIT_CAMP
-	if "barracks" in data.tags:
-		return TEMPLATE_BARRACKS_LV1
 	if "watch_tower" in data.tags:
 		return TEMPLATE_WATCH_TOWER
 	if "forge" in data.tags:

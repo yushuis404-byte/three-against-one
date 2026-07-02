@@ -17,6 +17,13 @@ signal resource_hovered(text: String)
 
 const GOLD_MINE_TEXTURE: Texture2D = preload("res://assets/texture/Gold mine.png")
 const QUARRY_TEXTURE: Texture2D = preload("res://assets/texture/stone.png")
+const IRON_OAK_TEXTURE: Texture2D = preload("res://assets/texture/tree.png")
+const IRON_MINE_TEXTURE: Texture2D = preload("res://assets/texture/iron.png")
+const HERD_TEXTURE: Texture2D = preload("res://assets/texture/Herd.png")
+const FRUIT_TREE_TEXTURE: Texture2D = preload("res://assets/texture/fruit tree.png")
+const RUNE_STONE_TEXTURE: Texture2D = preload("res://assets/texture/Ancient Stone Tablet.png")
+const MAGIC_NODE_TEXTURE: Texture2D = preload("res://assets/texture/Magic Node.png")
+const BERRIES_TEXTURE: Texture2D = preload("res://assets/texture/berry.png")
 const RESOURCE_TEXTURE_SIZE := 28.0
 const RESOURCE_DISTRIBUTION_SCALE := 1.5
 const RESOURCE_ACTIVE_ZONES := [7, 8, 9, 10, 11, 12, 4]
@@ -47,11 +54,9 @@ enum ResourceType {
 	MAGIC_NODE,
 	ANCIENT_TREE,
 	RUNE_STONE,
-	ABANDONED_POST,
 	STAR_CRYSTAL,
 	WORLD_TREE_ROOT,
 	DRAGON_CRYSTAL,
-	HOT_SPRING,
 	ANCIENT_RELIC,
 }
 
@@ -60,68 +65,59 @@ enum ResourceType {
 # zone_tag_key uses raw int (ZoneTag enum from grid_manager_2d.gd, not class_name)
 # terrain uses TerrainData.Terrain which IS a global class_name
 const RESOURCE_DEFS: Array = [
-	[ResourceType.GOLD_MINE, "金矿脉", 18, Color(1.0, 0.84, 0.0),
-	 { 7: 3, 8: 3, 9: 3, 12: 3, 11: 1, 10: 1, 4: 4 },
+	[ResourceType.GOLD_MINE, "金矿脉", 27, Color(1.0, 0.84, 0.0),
+	 {7: 3, 8: 3, 9: 3, 12: 3, 11: 1, 10: 1, 4: 4},
 	 [TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
 	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.RUINS,
 	  TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF]],
-	[ResourceType.ANCIENT_FOREST, "古树林", 16, Color(0.13, 0.55, 0.13),
-	 { 7: 6, 8: 4, 10: 3, 9: 3 },
+	[ResourceType.ANCIENT_FOREST, "古树林", 24, Color(0.13, 0.55, 0.13),
+	 {7: 6, 8: 4, 10: 3, 9: 3},
 	 [TerrainData.Terrain.FOREST_ELF]],
-	[ResourceType.QUARRY, "石场", 20, Color(0.55, 0.50, 0.45),
-	 { 8: 6, 12: 3, 4: 3, 11: 2, 9: 2, 7: 4 },
+	[ResourceType.QUARRY, "石场", 30, Color(0.55, 0.50, 0.45),
+	 {8: 6, 12: 3, 4: 3, 11: 2, 9: 2, 7: 4},
 	 [TerrainData.Terrain.MOUNTAIN_DWARF]],
-	[ResourceType.IRON_OAK, "铁橡木", 29, Color(0.6, 0.35, 0.1),
-	 { 7: 12, 8: 5, 9: 8, 10: 4 },
+	[ResourceType.IRON_OAK, "铁橡木", 44, Color(0.6, 0.35, 0.1),
+	 {7: 12, 8: 5, 9: 8, 10: 4},
 	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
 	  TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC]],
-	[ResourceType.WILD_BERRIES, "野果丛", 18, Color(0.85, 0.25, 0.20),
-	 { 7: 6, 10: 4, 8: 2, 9: 4, 12: 2 },
+	[ResourceType.WILD_BERRIES, "野果丛", 27, Color(0.85, 0.25, 0.20),
+	 {7: 6, 10: 4, 8: 2, 9: 4, 12: 2},
 	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
 	  TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC,
 	  TerrainData.Terrain.RUINS]],
-	[ResourceType.WILD_GAME, "兽群", 20, Color(0.55, 0.35, 0.15),
-	 { 9: 12, 10: 3, 12: 2, 7: 2, 8: 1 },
+	[ResourceType.WILD_GAME, "兽群", 30, Color(0.55, 0.35, 0.15),
+	 {9: 12, 10: 3, 12: 2, 7: 2, 8: 1},
 	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.PLAIN_DWARF,
 	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.SWAMP_ORC,
 	  TerrainData.Terrain.GLADE_ELF]],
-	[ResourceType.FRUIT_TREE, "果树", 14, Color(0.35, 0.55, 0.15),
-	 { 7: 5, 10: 3, 9: 3, 12: 2, 8: 1 },
+	[ResourceType.FRUIT_TREE, "果树", 21, Color(0.35, 0.55, 0.15),
+	 {7: 5, 10: 3, 9: 3, 12: 2, 8: 1},
 	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF,
 	  TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC]],
-	[ResourceType.IRON_MINE, "铁矿脉", 14, Color(0.65, 0.65, 0.65),
-	 { 8: 5, 11: 3, 9: 3, 4: 2, 12: 1 },
+	[ResourceType.IRON_MINE, "铁矿脉", 21, Color(0.65, 0.65, 0.65),
+	 {8: 5, 11: 3, 9: 3, 4: 2, 12: 1},
 	 [TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.PLAIN_DWARF]],
-	[ResourceType.MAGIC_NODE, "魔力节点", 14, Color(0.60, 0.20, 0.80),
-	 { 7: 5, 10: 3, 4: 3, 11: 2, 8: 1 },
+	[ResourceType.MAGIC_NODE, "魔力节点", 21, Color(0.60, 0.20, 0.80),
+	 {7: 5, 10: 3, 4: 3, 11: 2, 8: 1},
 	 [TerrainData.Terrain.RUINS, TerrainData.Terrain.FOREST_ELF]],
-	[ResourceType.ANCIENT_TREE, "古木巨树", 14, Color(0.05, 0.35, 0.05),
-	 { 7: 5, 10: 4, 4: 3, 8: 1, 9: 1 },
+	[ResourceType.ANCIENT_TREE, "古木巨树", 21, Color(0.05, 0.35, 0.05),
+	 {7: 5, 10: 4, 4: 3, 8: 1, 9: 1},
 	 [TerrainData.Terrain.FOREST_ELF]],
-	[ResourceType.RUNE_STONE, "远古符文碑", 14, Color(0.00, 0.55, 0.55),
-	 { 11: 3, 7: 3, 4: 3, 8: 3, 9: 2 },
+	[ResourceType.RUNE_STONE, "远古符文碑", 21, Color(0.00, 0.55, 0.55),
+	 {11: 3, 7: 3, 4: 3, 8: 3, 9: 2},
 	 [TerrainData.Terrain.RUINS, TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF]],
-	[ResourceType.ABANDONED_POST, "废弃商站", 6, Color(0.55, 0.27, 0.07),
-	 { 4: 2, 10: 1, 11: 1, 12: 1, 7: 1 },
-	 [TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
-	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.GLADE_ELF]],
-	[ResourceType.STAR_CRYSTAL, "星晶矿床", 8, Color(0.20, 0.40, 0.90),
-	 { 4: 4, 11: 2, 7: 1, 8: 1 },
+	[ResourceType.STAR_CRYSTAL, "星晶矿床", 12, Color(0.20, 0.40, 0.90),
+	 {4: 4, 11: 2, 7: 1, 8: 1},
 	 [TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.RUINS]],
-	[ResourceType.WORLD_TREE_ROOT, "世界树根脉", 8, Color(0.00, 0.50, 0.40),
-	 { 7: 6, 10: 1, 8: 1 },
+	[ResourceType.WORLD_TREE_ROOT, "世界树根脉", 12, Color(0.00, 0.50, 0.40),
+	 {7: 6, 10: 1, 8: 1},
 	 [TerrainData.Terrain.FOREST_ELF, TerrainData.Terrain.GLADE_ELF, TerrainData.Terrain.RUINS]],
-	[ResourceType.DRAGON_CRYSTAL, "龙晶火山口", 8, Color(0.85, 0.10, 0.70),
-	 { 9: 5, 12: 3 },
+	[ResourceType.DRAGON_CRYSTAL, "龙晶火山口", 12, Color(0.85, 0.10, 0.70),
+	 {9: 5, 12: 3},
 	 [TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.WASTELAND_ORC,
 	  TerrainData.Terrain.SWAMP_ORC, TerrainData.Terrain.RUINS]],
-	[ResourceType.HOT_SPRING, "地热泉眼", 3, Color(1.0, 0.45, 0.05),
-	 { 4: 3 },
-	 [TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
-	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.CORRIDOR,
-	  TerrainData.Terrain.GLADE_ELF, TerrainData.Terrain.MOUNTAIN_DWARF]],
-	[ResourceType.ANCIENT_RELIC, "古龙遗迹", 2, Color(0.80, 0.15, 0.15),
-	 { 4: 2 },
+	[ResourceType.ANCIENT_RELIC, "古龙遗迹", 3, Color(0.80, 0.15, 0.15),
+	 {4: 2},
 	 [TerrainData.Terrain.RUINS, TerrainData.Terrain.PLAIN_DWARF,
 	  TerrainData.Terrain.MOUNTAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
 	  TerrainData.Terrain.WASTELAND_ORC, TerrainData.Terrain.CORRIDOR]],
@@ -267,7 +263,7 @@ func _count_resource_zone_capacity(zone_grid: Array, terrain_grid: Array, grid_s
 			if zone_grid[y][x] != zone_tag:
 				continue
 			var terrain: int = terrain_grid[y][x]
-			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC:
+			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC or terrain == TerrainData.Terrain.DRAGON_NEST:
 				continue
 			capacity += 1
 	return capacity
@@ -306,7 +302,7 @@ func _collect_resource_candidates(zone_grid: Array, terrain_grid: Array, grid_si
 			if resource_grid[y][x] != ResourceType.NONE:
 				continue
 			var terrain: int = terrain_grid[y][x]
-			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC:
+			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC or terrain == TerrainData.Terrain.DRAGON_NEST:
 				continue
 			if require_compatible_terrain and compat_terrains.size() > 0 and not (terrain in compat_terrains):
 				continue
@@ -365,6 +361,20 @@ func _draw_resource_texture(resource_type: int, pos: Vector2) -> bool:
 			texture = GOLD_MINE_TEXTURE
 		ResourceType.QUARRY:
 			texture = QUARRY_TEXTURE
+		ResourceType.IRON_OAK:
+			texture = IRON_OAK_TEXTURE
+		ResourceType.IRON_MINE:
+			texture = IRON_MINE_TEXTURE
+		ResourceType.WILD_GAME:
+			texture = HERD_TEXTURE
+		ResourceType.FRUIT_TREE:
+			texture = FRUIT_TREE_TEXTURE
+		ResourceType.RUNE_STONE:
+			texture = RUNE_STONE_TEXTURE
+		ResourceType.WILD_BERRIES:
+			texture = BERRIES_TEXTURE
+		ResourceType.MAGIC_NODE:
+			texture = MAGIC_NODE_TEXTURE
 		_:
 			return false
 	var half := RESOURCE_TEXTURE_SIZE * 0.5
@@ -461,11 +471,9 @@ const RESOURCE_GATHER_KEY: Dictionary = {
 	ResourceType.MAGIC_NODE: [{ "key": "magic_dust" }],
 	ResourceType.ANCIENT_TREE: [{ "key": "ancient_wood" }],
 	ResourceType.RUNE_STONE: [{ "key": "magic_dust" }],
-	ResourceType.ABANDONED_POST: [{ "key": "magic_dust" }],
 	ResourceType.STAR_CRYSTAL: [{ "key": "magic_dust" }],
 	ResourceType.WORLD_TREE_ROOT: [{ "key": "ancient_wood" }],
-	ResourceType.DRAGON_CRYSTAL: [{ "key": "magic_dust" }],
-	ResourceType.HOT_SPRING: [{ "key": "food" }],
+	ResourceType.DRAGON_CRYSTAL: [{ "key": "dragon_crystal" }],
 	ResourceType.ANCIENT_RELIC: [{ "key": "magic_dust" }],
 	ResourceType.IRON_OAK: [{ "key": "wood" }],
 	ResourceType.WILD_BERRIES: [{ "key": "food" }],

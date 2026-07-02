@@ -12,7 +12,7 @@ var _list: HBoxContainer
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
-	position = Vector2(4, 810)
+	position = Vector2(4, 770)
 	size = Vector2(690, 44)
 	_build_ui()
 	hide()
