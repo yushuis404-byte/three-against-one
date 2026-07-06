@@ -346,6 +346,46 @@ func _relocate_invalid_resources(zone_grid: Array, terrain_grid: Array, grid_siz
 		print("[Resource] Warning: %d resources remain on invalid cells; no legal relocation target found." % unresolved_count)
 
 
+func relocate_resources_away_from_cells(blocked_cells: Array, reason: String = "blocked") -> Dictionary:
+	if resource_grid.is_empty() or blocked_cells.is_empty():
+		return { "moved": 0, "unresolved": 0 }
+
+	var blocked_lookup: Dictionary = {}
+	for cell_variant in blocked_cells:
+		var cell: Vector2i = cell_variant
+		if cell.x < 0 or cell.x >= grid_cols or cell.y < 0 or cell.y >= grid_rows:
+			continue
+		blocked_lookup[_cell_key(cell)] = true
+
+	var moved_count: int = 0
+	var unresolved_count: int = 0
+	for y in range(grid_rows):
+		for x in range(grid_cols):
+			var pos := Vector2i(x, y)
+			if not blocked_lookup.has(_cell_key(pos)):
+				continue
+			var rtype: int = int(resource_grid[y][x])
+			if rtype == ResourceType.NONE:
+				continue
+			var target: Vector2i = _find_current_relocation_target(pos, rtype, blocked_lookup, true)
+			if target.x < 0:
+				target = _find_current_relocation_target(pos, rtype, blocked_lookup, false)
+			if target.x < 0:
+				unresolved_count += 1
+				continue
+			resource_grid[target.y][target.x] = rtype
+			resource_grid[y][x] = ResourceType.NONE
+			moved_count += 1
+
+	if moved_count > 0:
+		print("[Resource] Relocated %d resources away from %s cells." % [moved_count, reason])
+	if unresolved_count > 0:
+		print("[Resource] Warning: %d resources remain on %s cells; no legal relocation target found." % [unresolved_count, reason])
+	if moved_count > 0:
+		queue_redraw()
+	return { "moved": moved_count, "unresolved": unresolved_count }
+
+
 func _find_relocation_target(source: Vector2i, rtype: int, zone_grid: Array, terrain_grid: Array, grid_size: int, require_compatible_terrain: bool) -> Vector2i:
 	var best := Vector2i(-1, -1)
 	var best_score: int = 999999
@@ -358,6 +398,25 @@ func _find_relocation_target(source: Vector2i, rtype: int, zone_grid: Array, ter
 				continue
 			var zone_bias: int = 0 if zone_grid[y][x] in RESOURCE_ACTIVE_ZONES else 1000
 			var score: int = abs(candidate.x - source.x) + abs(candidate.y - source.y) + zone_bias
+			if score < best_score:
+				best_score = score
+				best = candidate
+	return best
+
+
+func _find_current_relocation_target(source: Vector2i, rtype: int, blocked_lookup: Dictionary, require_compatible_terrain: bool) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_score: int = 999999
+	for y in range(grid_rows):
+		for x in range(grid_cols):
+			if resource_grid[y][x] != ResourceType.NONE:
+				continue
+			var candidate := Vector2i(x, y)
+			if blocked_lookup.has(_cell_key(candidate)):
+				continue
+			if not _is_current_resource_position_reasonable(candidate, rtype, require_compatible_terrain):
+				continue
+			var score: int = abs(candidate.x - source.x) + abs(candidate.y - source.y)
 			if score < best_score:
 				best_score = score
 				best = candidate
@@ -377,6 +436,28 @@ func _is_resource_position_reasonable(pos: Vector2i, rtype: int, zone_grid: Arra
 		if not compat.is_empty() and not (terrain in compat):
 			return false
 	return true
+
+
+func _is_current_resource_position_reasonable(pos: Vector2i, rtype: int, require_compatible_terrain: bool) -> bool:
+	if pos.x < 0 or pos.x >= grid_cols or pos.y < 0 or pos.y >= grid_rows:
+		return false
+	if _is_in_dragon_lair_resource_clear_area(pos):
+		return false
+	var terrain: int = TerrainData.Terrain.VOID
+	var grid_mgr = get_parent().get_node_or_null("GridManager2D") if is_inside_tree() else null
+	if grid_mgr != null and grid_mgr.has_method("get_terrain_at"):
+		terrain = int(grid_mgr.call("get_terrain_at", pos.x, pos.y))
+	if _is_invalid_resource_terrain(terrain):
+		return false
+	if require_compatible_terrain:
+		var compat: Array = _get_resource_compatible_terrains(rtype)
+		if not compat.is_empty() and not (terrain in compat):
+			return false
+	return true
+
+
+func _cell_key(pos: Vector2i) -> String:
+	return "%d,%d" % [pos.x, pos.y]
 
 
 func _get_resource_compatible_terrains(rtype: int) -> Array:

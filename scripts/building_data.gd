@@ -129,7 +129,8 @@ static func infra_farm() -> BuildingData:
 		"\u519c\u573a", BuildingCategory.ECONOMY, Vector2i(1, 1),
 		0, 8, 0, 0, 2,
 		4, { "food": 3 },
-		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.GLADE_ELF,
+		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.FOREST_ELF,
+		 TerrainData.Terrain.GLADE_ELF,
 		 TerrainData.Terrain.WASTELAND_ORC],
 		7, "\u6bcf\u56de\u5408 +3 \u98df\u7269; \u517d\u4eba\u5de5\u4eba +2, \u5176\u4ed6\u5de5\u4eba +1"
 	)

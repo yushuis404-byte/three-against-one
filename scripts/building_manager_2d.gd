@@ -421,6 +421,9 @@ func _can_place(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		# 格子未被占用
 		if building_grid[t.y][t.x] >= 0:
 			return false
+		if not data.needs_resource_point and _resource_mgr and _resource_mgr.has_method("get_resource_type"):
+			if int(_resource_mgr.call("get_resource_type", t.x, t.y)) != 0:
+				return false
 
 	# 金矿矿井：需要金矿资源点
 	if data.needs_resource_point:
@@ -1420,22 +1423,72 @@ func _show_production_text(building: Dictionary, prod: Dictionary, gcount: int, 
 	## 在建筑上方创建飘浮产量文字，如“木材 +1”“石料 +2”
 	if prod.is_empty():
 		return
-	var lines: PackedStringArray = []
+	var world_pos: Vector2 = _get_building_world_center(building)
+	var container := VBoxContainer.new()
+	container.add_theme_constant_override("separation", 2)
+	var icon_size := 12.0
 	var bonus: Dictionary = get_garrison_bonus(building["id"])
 	for key in prod:
 		var network_bonus: int = get_building_network_production_bonus(int(building["id"]), str(key))
 		var total: int = int(prod[key]) + int(bonus.get(key, 0)) + network_bonus
-		var rname: String = GameCatalog.resource_name(key)
-		lines.append("%s +%d" % [rname, total])
-	_show_floating_text(building, "\n".join(lines), custom_color)
+		var rkey: String = str(key)
+		var rname: String = GameCatalog.resource_name(rkey)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		var icon := TextureRect.new()
+		icon.texture = load("res://assets/icon_" + rkey + ".png")
+		if icon.texture != null:
+			icon.custom_minimum_size = Vector2(icon_size, icon_size)
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		row.add_child(icon)
+		var label := Label.new()
+		label.text = "%s +%d" % [rname, total]
+		label.add_theme_color_override("font_color", custom_color)
+		label.add_theme_font_size_override("font_size", 13)
+		row.add_child(label)
+		container.add_child(row)
+	container.position = Vector2(world_pos.x - 30, world_pos.y - 30)
+	add_child(container)
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.tween_property(container, "position", container.position + Vector2(0, -30), 1.0)
+	tween.parallel().tween_property(container, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(container.queue_free)
+
 
 
 func _show_resource_text(building: Dictionary, resources: Dictionary, custom_color: Color) -> void:
-	var lines: PackedStringArray = []
+	var world_pos: Vector2 = _get_building_world_center(building)
+	var container := VBoxContainer.new()
+	container.add_theme_constant_override("separation", 2)
+	var icon_size := 12.0
 	for key in resources:
-		var rname: String = GameCatalog.resource_name(str(key))
-		lines.append("%s +%d" % [rname, int(resources[key])])
-	_show_floating_text(building, "\n".join(lines), custom_color)
+		var rkey: String = str(key)
+		var rname: String = GameCatalog.resource_name(rkey)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		var icon := TextureRect.new()
+		icon.texture = load("res://assets/icon_" + rkey + ".png")
+		if icon.texture != null:
+			icon.custom_minimum_size = Vector2(icon_size, icon_size)
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		row.add_child(icon)
+		var label := Label.new()
+		label.text = "%s +%d" % [rname, int(resources[key])]
+		label.add_theme_color_override("font_color", custom_color)
+		label.add_theme_font_size_override("font_size", 13)
+		row.add_child(label)
+		container.add_child(row)
+	container.position = Vector2(world_pos.x - 30, world_pos.y - 30)
+	add_child(container)
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.tween_property(container, "position", container.position + Vector2(0, -30), 1.0)
+	tween.parallel().tween_property(container, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(container.queue_free)
+
 
 
 func _show_building_damage_text(building: Dictionary, amount: int) -> void:

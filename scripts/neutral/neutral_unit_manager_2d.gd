@@ -8,6 +8,8 @@ const POISON_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/char
 const POISON_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Poison-Dragon-Attack.png")
 const ANCIENT_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ancient-Dragon-Idle.png")
 const ANCIENT_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ancient-Dragon-Attack.png")
+const PROGENITOR_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Progenitor-Dragon-Idle.png")
+const PROGENITOR_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Progenitor-Dragon-Attack.png")
 ## 中立生物管理器 — 亚龙、流浪商队、哥布林复仇队
 ##
 ## 独立于 UnitManager2D，作为 GameBoard 同级子节点
@@ -51,11 +53,16 @@ const FIRE_DRAGON_ATTACK_FRAMES := 10
 const ICE_DRAGON_ATTACK_FRAMES := 9
 const POISON_DRAGON_ATTACK_FRAMES := 10
 const ANCIENT_DRAGON_ATTACK_FRAMES := 29
+const PROGENITOR_DRAGON_ATTACK_FRAMES := 50
 const FIRE_DRAGON_FRAME_SIZE := Vector2(320.0, 320.0)
 const FIRE_DRAGON_DRAW_SIZE := Vector2(70.0, 70.0)
+const PROGENITOR_DRAGON_DRAW_SIZE := Vector2(116.0, 116.0)
 const FIRE_DRAGON_ATTACK_DURATION := 0.55
+const PROGENITOR_DRAGON_ATTACK_DURATION := 0.85
 const DEFAULT_COMBAT_TICK_INTERVAL := 1.0
 const ANCIENT_DRAGON_ATTACK_INTERVAL := 3.0
+const PROGENITOR_DRAGON_LAIR_ATTACK_INTERVAL := 5.0
+const PROGENITOR_DRAGON_FOOTPRINT := Vector2i(2, 2)
 const MIN_WYVERN_SPACING := 3  # 亚龙之间最小曼哈顿间距
 
 # ========== 数据存储 ==========
@@ -80,6 +87,7 @@ var _combat_data: Dictionary = {}  # { player_unit_id, neutral_unit_id, next_is_
 var _hit_flash: Dictionary = {}    # unit_id -> true
 var _shake_offsets: Dictionary = {} # unit_id -> Vector2
 var _attack_visuals: Dictionary = {} # unit_id -> { t: float, flip_x: bool }
+var _progenitor_lair_attack_elapsed := 0.0
 
 # ========== 外部引用 ==========
 var _grid_manager: Node = null
@@ -96,6 +104,11 @@ func _ready() -> void:
 	_unit_manager = get_parent().get_node("UnitManager2D")
 	_resource_tracker = get_parent().get_node("ResourceTracker")
 	_technology_service = get_parent().get_node_or_null("TechnologyService")
+	set_process(true)
+
+
+func _process(delta: float) -> void:
+	_process_progenitor_lair_attack(delta)
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -132,6 +145,7 @@ func add_neutral_unit(
 		"display_name": display_name,
 		"faction": -1,
 		"grid_pos": grid_pos,
+		"footprint": _get_default_footprint(template_id),
 		"hp": hp,
 		"hp_max": hp_max,
 		"atk": atk,
@@ -190,7 +204,7 @@ func clear_selection() -> void:
 
 func get_neutral_unit_at(grid_pos: Vector2i) -> Dictionary:
 	for u in _neutral_units:
-		if u["grid_pos"] == grid_pos:
+		if _unit_occupies_cell(u, grid_pos):
 			return u
 	return {}
 
@@ -210,6 +224,51 @@ func get_neutral_unit_count() -> int:
 	return _neutral_units.size()
 
 
+func _get_default_footprint(template_id: String) -> Vector2i:
+	if template_id == PROGENITOR_DRAGON_TEMPLATE_ID:
+		return PROGENITOR_DRAGON_FOOTPRINT
+	return Vector2i.ONE
+
+
+func _get_unit_footprint(unit: Dictionary) -> Vector2i:
+	var raw = unit.get("footprint", Vector2i.ONE)
+	if raw is Vector2i:
+		return raw
+	return Vector2i.ONE
+
+
+func _get_cells_for_footprint(anchor: Vector2i, footprint: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for y in range(footprint.y):
+		for x in range(footprint.x):
+			cells.append(anchor + Vector2i(x, y))
+	return cells
+
+
+func _unit_occupies_cell(unit: Dictionary, cell: Vector2i) -> bool:
+	var anchor: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	var footprint: Vector2i = _get_unit_footprint(unit)
+	return cell.x >= anchor.x and cell.y >= anchor.y and cell.x < anchor.x + footprint.x and cell.y < anchor.y + footprint.y
+
+
+func _get_unit_world_center(unit: Dictionary) -> Vector2:
+	var anchor: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	var footprint: Vector2i = _get_unit_footprint(unit)
+	var center_cell := Vector2(float(anchor.x) + float(footprint.x - 1) * 0.5, float(anchor.y) + float(footprint.y - 1) * 0.5)
+	return _grid_to_world_float(center_cell.x, center_cell.y)
+
+
+func _is_unit_footprint_visible_to(unit: Dictionary, viewer: int) -> bool:
+	if _fog_manager == null:
+		return true
+	var anchor: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	var footprint: Vector2i = _get_unit_footprint(unit)
+	for cell in _get_cells_for_footprint(anchor, footprint):
+		if _in_bounds(cell.x, cell.y) and _fog_manager.get_fog(viewer, cell.x, cell.y) <= 0.0:
+			return true
+	return false
+
+
 func get_ai_data_for(unit_id: int) -> Dictionary:
 	## 获取指定单位 AI 数据的副本（供 UnitManager2D 查询行为类型）
 	return _ai_data.get(unit_id, {}).duplicate()
@@ -227,6 +286,40 @@ func apply_ranged_damage(neutral_unit_id: int, killer_player: int, damage: int) 
 	if int(neutral_unit.get("hp", 0)) <= 0:
 		_on_neutral_defeated(neutral_unit_id, killer_player)
 	queue_redraw()
+
+
+func respond_to_ranged_attack(neutral_unit_id: int, attacker_unit_id: int) -> bool:
+	var neutral_unit: Dictionary = get_neutral_unit_by_id(neutral_unit_id)
+	var attacker: Dictionary = _find_player_unit(attacker_unit_id)
+	if neutral_unit.is_empty() or attacker.is_empty():
+		return false
+	if str(neutral_unit.get("template_id", "")) == PROGENITOR_DRAGON_TEMPLATE_ID:
+		return false
+	if int(neutral_unit.get("hp", 0)) <= 0:
+		return false
+	var uid: int = int(neutral_unit.get("id", -1))
+	var ai: Dictionary = _ai_data.get(uid, {})
+	ai["aggro_target"] = attacker_unit_id
+	_ai_data[uid] = ai
+	if _is_adjacent(neutral_unit.get("grid_pos", Vector2i.ZERO), attacker.get("grid_pos", Vector2i.ZERO)):
+		return true
+	var next: Vector2i = _find_counter_step_toward_player(neutral_unit, attacker, ai)
+	if next != neutral_unit.get("grid_pos", Vector2i.ZERO):
+		neutral_unit["grid_pos"] = next
+		queue_redraw()
+	return _is_adjacent(neutral_unit.get("grid_pos", Vector2i.ZERO), attacker.get("grid_pos", Vector2i.ZERO))
+
+
+func start_counter_combat(neutral_unit_id: int, attacker_unit_id: int) -> void:
+	var neutral_unit: Dictionary = get_neutral_unit_by_id(neutral_unit_id)
+	var attacker: Dictionary = _find_player_unit(attacker_unit_id)
+	if neutral_unit.is_empty() or attacker.is_empty():
+		return
+	if str(neutral_unit.get("template_id", "")) == PROGENITOR_DRAGON_TEMPLATE_ID:
+		return
+	if not _is_adjacent(neutral_unit.get("grid_pos", Vector2i.ZERO), attacker.get("grid_pos", Vector2i.ZERO)):
+		return
+	_start_ai_combat(neutral_unit_id, attacker_unit_id)
 
 
 func get_goblin_relation(player: int) -> int:
@@ -280,16 +373,19 @@ func _draw() -> void:
 		# 迷雾遮挡：未探索区域不显示
 		if _fog_manager and _turn_manager:
 			var viewer: int = _turn_manager.current_player
-			if _fog_manager.get_fog(viewer, pos.x, pos.y) > 0.0:
+			if not _is_unit_footprint_visible_to(u, viewer):
 				continue
-		var world_pos: Vector2 = _grid_to_world(pos.x, pos.y)
+		var world_pos: Vector2 = _get_unit_world_center(u)
 		var uid: int = u["id"]
 		var is_selected := uid == _selected_id
 		var behavior: String = _ai_data.get(uid, {}).get("behavior", "")
 
 		# 选中高亮
 		if is_selected:
-			draw_circle(world_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
+			if _get_unit_footprint(u) == Vector2i.ONE:
+				draw_circle(world_pos, UNIT_RADIUS + 3.0, SELECT_COLOR)
+			else:
+				_draw_footprint_selection(u)
 
 		if _is_dragon_sprite(u):
 			_draw_dragon_sprite(u, world_pos)
@@ -318,6 +414,9 @@ func _draw() -> void:
 				color = REVENGE_COLOR
 
 		# 填充圆
+		if _get_unit_footprint(u) != Vector2i.ONE:
+			_draw_footprint_neutral_body(u, color)
+			continue
 		draw_circle(world_pos, UNIT_RADIUS, color)
 
 		# 黑色描边
@@ -359,6 +458,14 @@ func _get_dragon_sprite_spec(unit: Dictionary) -> Dictionary:
 				"attack": ANCIENT_DRAGON_ATTACK_TEXTURE,
 				"attack_frames": ANCIENT_DRAGON_ATTACK_FRAMES,
 			}
+		PROGENITOR_DRAGON_TEMPLATE_ID:
+			return {
+				"idle": PROGENITOR_DRAGON_IDLE_TEXTURE,
+				"attack": PROGENITOR_DRAGON_ATTACK_TEXTURE,
+				"attack_frames": PROGENITOR_DRAGON_ATTACK_FRAMES,
+				"draw_size": PROGENITOR_DRAGON_DRAW_SIZE,
+				"attack_duration": PROGENITOR_DRAGON_ATTACK_DURATION,
+			}
 	return {}
 
 
@@ -378,14 +485,37 @@ func _draw_dragon_sprite(unit: Dictionary, world_pos: Vector2) -> void:
 		frame = clampi(int(floor(t * float(frame_count))), 0, frame_count - 1)
 		flip_x = bool(visual.get("flip_x", false))
 	var offset: Vector2 = _shake_offsets.get(uid, Vector2.ZERO)
+	var draw_size: Vector2 = spec.get("draw_size", FIRE_DRAGON_DRAW_SIZE)
 	var tint := Color.WHITE
 	if _hit_flash.has(uid):
 		tint = Color(1.0, 0.55, 0.45, 1.0)
 	var src := Rect2(Vector2(FIRE_DRAGON_FRAME_SIZE.x * frame, 0.0), FIRE_DRAGON_FRAME_SIZE)
-	var dst := Rect2(-FIRE_DRAGON_DRAW_SIZE * 0.5 + Vector2(0.0, -10.0), FIRE_DRAGON_DRAW_SIZE)
+	var dst := Rect2(-draw_size * 0.5 + Vector2(0.0, -10.0), draw_size)
 	draw_set_transform(world_pos + offset, 0.0, Vector2(-1.0, 1.0) if flip_x else Vector2.ONE)
 	draw_texture_rect_region(texture, dst, src, tint)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_footprint_selection(unit: Dictionary) -> void:
+	var anchor: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	var footprint: Vector2i = _get_unit_footprint(unit)
+	var top_left: Vector2 = _grid_to_world(anchor.x, anchor.y) - Vector2(TILE_SIZE, TILE_SIZE) * 0.5
+	var size := Vector2(float(footprint.x), float(footprint.y)) * TILE_SIZE
+	var rect := Rect2(top_left, size)
+	draw_rect(rect.grow(-2.0), Color(1.0, 1.0, 1.0, 0.14), true)
+	draw_rect(rect.grow(-2.0), SELECT_COLOR, false, 2.0)
+
+
+func _draw_footprint_neutral_body(unit: Dictionary, color: Color) -> void:
+	var anchor: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
+	var footprint: Vector2i = _get_unit_footprint(unit)
+	var top_left: Vector2 = _grid_to_world(anchor.x, anchor.y) - Vector2(TILE_SIZE, TILE_SIZE) * 0.5
+	var size := Vector2(float(footprint.x), float(footprint.y)) * TILE_SIZE
+	var rect := Rect2(top_left, size)
+	draw_rect(rect.grow(-4.0), Color(color.r, color.g, color.b, 0.22), true)
+	draw_rect(rect.grow(-4.0), Color(color.r, color.g, color.b, 0.85), false, 2.0)
+	draw_circle(_get_unit_world_center(unit), minf(size.x, size.y) * 0.28, color)
+	draw_arc(_get_unit_world_center(unit), minf(size.x, size.y) * 0.28, 0, TAU, 24, Color.BLACK, 1.5)
 
 
 func get_unit_at_world(world_pos: Vector2) -> Dictionary:
@@ -401,16 +531,99 @@ func get_unit_at_world(world_pos: Vector2) -> Dictionary:
 		var unit: Dictionary = _neutral_units[i]
 		if not _is_dragon_sprite(unit):
 			continue
-		var unit_pos: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
 		if _fog_manager and _turn_manager:
 			var viewer2: int = _turn_manager.current_player
-			if _fog_manager.get_fog(viewer2, unit_pos.x, unit_pos.y) > 0.0:
+			if not _is_unit_footprint_visible_to(unit, viewer2):
 				continue
-		var center: Vector2 = _grid_to_world(unit_pos.x, unit_pos.y) + Vector2(0.0, -10.0)
-		var rect := Rect2(center - FIRE_DRAGON_DRAW_SIZE * 0.5, FIRE_DRAGON_DRAW_SIZE)
+		var center: Vector2 = _get_unit_world_center(unit) + Vector2(0.0, -10.0)
+		var spec: Dictionary = _get_dragon_sprite_spec(unit)
+		var draw_size: Vector2 = spec.get("draw_size", FIRE_DRAGON_DRAW_SIZE)
+		var rect := Rect2(center - draw_size * 0.5, draw_size)
 		if rect.has_point(world_pos):
 			return unit
 	return get_neutral_unit_at(gpos)
+
+
+func _process_progenitor_lair_attack(delta: float) -> void:
+	if _in_combat:
+		return
+	var progenitor: Dictionary = _get_alive_progenitor_dragon()
+	if progenitor.is_empty():
+		_progenitor_lair_attack_elapsed = 0.0
+		return
+	var targets: Array = _get_player_units_in_dragon_lair()
+	if targets.is_empty():
+		_progenitor_lair_attack_elapsed = 0.0
+		return
+	_progenitor_lair_attack_elapsed += delta
+	if _progenitor_lair_attack_elapsed < PROGENITOR_DRAGON_LAIR_ATTACK_INTERVAL:
+		return
+	_progenitor_lair_attack_elapsed = 0.0
+	_execute_progenitor_lair_attack(progenitor, targets)
+
+
+func _get_alive_progenitor_dragon() -> Dictionary:
+	for unit_variant in _neutral_units:
+		var unit: Dictionary = unit_variant
+		if str(unit.get("template_id", "")) != PROGENITOR_DRAGON_TEMPLATE_ID:
+			continue
+		if int(unit.get("hp", 0)) <= 0:
+			continue
+		return unit
+	return {}
+
+
+func _get_player_units_in_dragon_lair() -> Array:
+	var result: Array = []
+	if _unit_manager == null or not _unit_manager.has_method("get_all_units"):
+		return result
+	var units: Array = _unit_manager.call("get_all_units")
+	for unit_variant in units:
+		var unit: Dictionary = unit_variant
+		var pos: Vector2i = unit.get("grid_pos", Vector2i(-1, -1))
+		if _is_lair_attack_target_cell(pos):
+			result.append(unit)
+	return result
+
+
+func _is_lair_attack_target_cell(pos: Vector2i) -> bool:
+	if pos.x < 0 or pos.x >= GRID_COLS or pos.y < 0 or pos.y >= GRID_ROWS:
+		return false
+	if _grid_manager != null and _grid_manager.has_method("is_dragon_lair_walkable"):
+		return bool(_grid_manager.call("is_dragon_lair_walkable", pos.x, pos.y))
+	if _grid_manager != null and _grid_manager.has_method("get_zone_at"):
+		var zone: int = int(_grid_manager.call("get_zone_at", pos.x, pos.y))
+		return zone == ZONE_MOUNTAIN_NEST or zone == ZONE_MOUNTAIN_BODY or zone == ZONE_MOUNTAIN_PATH
+	return false
+
+
+func _execute_progenitor_lair_attack(progenitor: Dictionary, targets: Array) -> void:
+	_start_progenitor_lair_attack_visual(progenitor)
+	var damage: int = int(progenitor.get("atk", 8))
+	var hit_count := 0
+	for target_variant in targets:
+		var target: Dictionary = target_variant
+		var target_id: int = int(target.get("id", -1))
+		if target_id < 0:
+			continue
+		if _unit_manager != null and _unit_manager.has_method("damage_unit_by_id"):
+			if bool(_unit_manager.call("damage_unit_by_id", target_id, damage)):
+				hit_count += 1
+	print("[中立] 始祖龙发动巢穴攻击，命中 %d 个玩家单位，伤害 %d" % [hit_count, damage])
+	queue_redraw()
+
+
+func _start_progenitor_lair_attack_visual(progenitor: Dictionary) -> void:
+	if not _is_dragon_sprite(progenitor):
+		return
+	var uid: int = int(progenitor.get("id", -1))
+	_attack_visuals[uid] = {"t": 0.0, "flip_x": false}
+	queue_redraw()
+	var spec: Dictionary = _get_dragon_sprite_spec(progenitor)
+	var duration: float = float(spec.get("attack_duration", PROGENITOR_DRAGON_ATTACK_DURATION))
+	var tween := create_tween()
+	tween.tween_method(_set_attack_visual_t.bind(uid), 0.0, 1.0, duration)
+	tween.tween_callback(_finish_attack_visual.bind(uid))
 
 
 # ========== AI 行为（中立阶段） ==========
@@ -637,6 +850,15 @@ func _combat_tick() -> void:
 
 	else:
 		# 中立攻击玩家
+		if str(neutral_unit.get("template_id", "")) == PROGENITOR_DRAGON_TEMPLATE_ID:
+			var lair_targets: Array = _get_player_units_in_dragon_lair()
+			_execute_progenitor_lair_attack(neutral_unit, lair_targets)
+			if _find_player_unit(int(player_unit.get("id", -1))).is_empty():
+				_end_combat(neutral_unit["id"])
+				return
+			_combat_data["next_is_player"] = true
+			_schedule_next_combat_tick()
+			return
 		var dmg: int = neutral_unit.get("atk", 1)
 		_start_neutral_attack_visual(neutral_unit, player_unit)
 		player_unit["hp"] -= dmg
@@ -673,6 +895,8 @@ func _get_next_combat_tick_interval() -> float:
 	if bool(_combat_data.get("next_is_player", true)):
 		return DEFAULT_COMBAT_TICK_INTERVAL
 	var neutral_unit: Dictionary = get_neutral_unit_by_id(int(_combat_data.get("neutral_unit_id", -1)))
+	if str(neutral_unit.get("template_id", "")) == PROGENITOR_DRAGON_TEMPLATE_ID:
+		return PROGENITOR_DRAGON_LAIR_ATTACK_INTERVAL
 	if str(neutral_unit.get("template_id", "")) == ANCIENT_DRAGON_TEMPLATE_ID:
 		return ANCIENT_DRAGON_ATTACK_INTERVAL
 	return DEFAULT_COMBAT_TICK_INTERVAL
@@ -784,8 +1008,10 @@ func _start_neutral_attack_visual(neutral_unit: Dictionary, target_unit: Diction
 	var flip_x := target_pos.x < from_pos.x
 	_attack_visuals[uid] = {"t": 0.0, "flip_x": flip_x}
 	queue_redraw()
+	var spec: Dictionary = _get_dragon_sprite_spec(neutral_unit)
+	var duration: float = float(spec.get("attack_duration", FIRE_DRAGON_ATTACK_DURATION))
 	var tween := create_tween()
-	tween.tween_method(_set_attack_visual_t.bind(uid), 0.0, 1.0, FIRE_DRAGON_ATTACK_DURATION)
+	tween.tween_method(_set_attack_visual_t.bind(uid), 0.0, 1.0, duration)
 	tween.tween_callback(_finish_attack_visual.bind(uid))
 
 
@@ -934,17 +1160,17 @@ func place_initial_neutral_units() -> void:
 func _place_dragon_lair_units() -> void:
 	var center := Vector2i(int(round(MOUNTAIN_CENTER.x)), int(round(MOUNTAIN_CENTER.y)))
 	var blocked_positions: Array[Vector2i] = []
-	var progenitor_pos: Vector2i = _find_nearest_dragon_lair_tile(center, blocked_positions, 2)
+	var progenitor_pos: Vector2i = _find_nearest_dragon_lair_footprint_anchor(center, blocked_positions, PROGENITOR_DRAGON_FOOTPRINT, 2)
 	if progenitor_pos.x >= 0:
 		var progenitor_id := add_neutral_unit(
 			PROGENITOR_DRAGON_TEMPLATE_ID,
 			"史祖龙",
 			progenitor_pos,
-			70,
-			70,
+			100,
+			100,
 			8,
 			0,
-			6,
+			5,
 			"progenitor_dragon",
 			0
 		)
@@ -961,7 +1187,7 @@ func _place_dragon_lair_units() -> void:
 	]
 	var used_positions: Array[Vector2i] = []
 	if progenitor_pos.x >= 0:
-		used_positions.append(progenitor_pos)
+		used_positions.append_array(_get_cells_for_footprint(progenitor_pos, PROGENITOR_DRAGON_FOOTPRINT))
 	for desired_variant in desired_positions:
 		var desired: Vector2i = desired_variant
 		var pos: Vector2i = _find_nearest_dragon_lair_tile(desired, used_positions, 4)
@@ -971,9 +1197,9 @@ func _place_dragon_lair_units() -> void:
 			ANCIENT_DRAGON_TEMPLATE_ID,
 			"古龙",
 			pos,
-			28,
-			28,
-			5,
+			30,
+			30,
+			7,
 			1,
 			4,
 			"ancient_dragon",
@@ -990,9 +1216,9 @@ func _place_wyverns() -> void:
 	## 亚龙：围绕中央巨龙巢穴放置（极坐标环状候选）
 	var placements: Array = [
 		# [template_id, name, seed_offset, count, hp, atk, move, vision]
-		["neutral.wyvern.fire", "火焰亚龙", 0, 3, 6, 3, 1, 2],
-		["neutral.wyvern.frost", "冰霜亚龙", 100, 2, 8, 2, 1, 2],
-		["neutral.wyvern.toxic", "毒液亚龙", 200, 2, 5, 3, 1, 2],
+		["neutral.wyvern.fire", "火焰亚龙", 0, 3, 17, 5, 1, 3],
+		["neutral.wyvern.frost", "冰霜亚龙", 100, 2, 20, 4, 1, 3],
+		["neutral.wyvern.toxic", "毒液亚龙", 200, 2, 15, 5, 1, 3],
 	]
 
 	for p in placements:
@@ -1043,7 +1269,7 @@ func _place_wyverns() -> void:
 			if _is_near_spawn(pos, 5):
 				continue
 
-			var uid := add_neutral_unit(template_id, name, pos, hp, hp, atk, move, vision, "guard", 2)
+			var uid := add_neutral_unit(template_id, name, pos, hp, hp, atk, move, vision, "guard", 3)
 			if uid >= 0:
 				placed += 1
 
@@ -1081,7 +1307,7 @@ func _place_wyverns() -> void:
 					continue
 				if _is_near_spawn(pos, 3):
 					continue
-				var uid := add_neutral_unit(template_id, name, pos, hp, hp, atk, move, vision, "guard", 2)
+				var uid := add_neutral_unit(template_id, name, pos, hp, hp, atk, move, vision, "guard", 3)
 				if uid >= 0:
 					placed += 1
 
@@ -1156,7 +1382,34 @@ func _find_nearest_dragon_lair_tile(origin: Vector2i, blocked: Array[Vector2i], 
 	return Vector2i(-1, -1)
 
 
+func _find_nearest_dragon_lair_footprint_anchor(origin: Vector2i, blocked: Array[Vector2i], footprint: Vector2i, max_radius: int) -> Vector2i:
+	for radius in range(max_radius + 1):
+		for y in range(origin.y - radius, origin.y + radius + 1):
+			for x in range(origin.x - radius, origin.x + radius + 1):
+				var anchor := Vector2i(x, y)
+				if abs(anchor.x - origin.x) + abs(anchor.y - origin.y) > radius:
+					continue
+				if _is_valid_dragon_lair_footprint(anchor, footprint, blocked):
+					return anchor
+	return Vector2i(-1, -1)
+
+
+func _is_valid_dragon_lair_footprint(anchor: Vector2i, footprint: Vector2i, blocked: Array[Vector2i]) -> bool:
+	for cell in _get_cells_for_footprint(anchor, footprint):
+		if cell in blocked:
+			return false
+		if not _in_bounds(cell.x, cell.y):
+			return false
+		if not _is_dragon_lair_zone(cell):
+			return false
+		if not _is_empty(cell.x, cell.y):
+			return false
+	return true
+
+
 func _is_valid_placement_for_behavior(pos: Vector2i, behavior: String) -> bool:
+	if behavior == "progenitor_dragon":
+		return _is_valid_dragon_lair_footprint(pos, PROGENITOR_DRAGON_FOOTPRINT, [])
 	if behavior == "ancient_dragon" or behavior == "progenitor_dragon":
 		if not _in_bounds(pos.x, pos.y):
 			return false
@@ -1294,7 +1547,7 @@ func _is_occupied_by_other_neutral(pos: Vector2i, uid: int) -> bool:
 		var unit: Dictionary = unit_variant
 		if int(unit.get("id", -1)) == uid:
 			continue
-		if unit.get("grid_pos", Vector2i.ZERO) == pos:
+		if _unit_occupies_cell(unit, pos):
 			return true
 	return false
 
@@ -1322,7 +1575,7 @@ func _is_empty(gx: int, gy: int) -> bool:
 	var pos := Vector2i(gx, gy)
 	# 自己占用
 	for u in _neutral_units:
-		if u["grid_pos"] == pos:
+		if _unit_occupies_cell(u, pos):
 			return false
 	# 玩家单位占用
 	if _unit_manager and _unit_manager.has_method("get_unit_at"):
@@ -1372,6 +1625,30 @@ func _find_nearest_player_unit(from: Vector2i, radius: int) -> int:
 			nearest_id = u["id"]
 
 	return nearest_id
+
+
+func _find_counter_step_toward_player(neutral_unit: Dictionary, attacker: Dictionary, ai: Dictionary) -> Vector2i:
+	var from: Vector2i = neutral_unit.get("grid_pos", Vector2i.ZERO)
+	var target_pos: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var uid: int = int(neutral_unit.get("id", -1))
+	var behavior: String = str(ai.get("behavior", ""))
+	var dirs: Array[Vector2i] = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+	var best: Vector2i = from
+	var best_dist: int = abs(from.x - target_pos.x) + abs(from.y - target_pos.y)
+	for dir in dirs:
+		var candidate: Vector2i = from + dir
+		if behavior == "ancient_dragon":
+			var home: Vector2i = ai.get("spawn_pos", from)
+			var territory_radius: int = int(ai.get("territory_radius", ANCIENT_DRAGON_TERRITORY_RADIUS))
+			if not _is_ancient_dragon_move_allowed(candidate, home, territory_radius, uid):
+				continue
+		elif not _is_valid_placement(candidate):
+			continue
+		var dist: int = abs(candidate.x - target_pos.x) + abs(candidate.y - target_pos.y)
+		if dist < best_dist:
+			best_dist = dist
+			best = candidate
+	return best
 
 
 func _bfs_step_toward(from: Vector2i, to: Vector2i, max_steps: int) -> Vector2i:
@@ -1428,6 +1705,11 @@ func _in_bounds(x: int, y: int) -> bool:
 
 
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:
+	var offset := Vector2(-GRID_CENTER.x * TILE_SIZE, -GRID_CENTER.y * TILE_SIZE)
+	return Vector2(grid_x * TILE_SIZE + offset.x, grid_y * TILE_SIZE + offset.y)
+
+
+func _grid_to_world_float(grid_x: float, grid_y: float) -> Vector2:
 	var offset := Vector2(-GRID_CENTER.x * TILE_SIZE, -GRID_CENTER.y * TILE_SIZE)
 	return Vector2(grid_x * TILE_SIZE + offset.x, grid_y * TILE_SIZE + offset.y)
 

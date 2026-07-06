@@ -46,6 +46,7 @@ var _resource_progress_bars: Dictionary = {}
 var achievement_service: AchievementService = null
 var achievement_tree_panel: Control = null
 var achievement_tree_button: Button = null
+var tree_overlay_input_blocker: Control = null
 var technology_service: Node = null
 var technology_tree_panel: Control = null
 var technology_tree_button: Button = null
@@ -146,6 +147,7 @@ func _setup_game() -> void:
 	building_manager.recruit_panel_requested.connect(_on_recruit_panel_requested)
 	building_manager.recruit_panel_closed.connect(_on_recruit_panel_closed)
 	building_manager.recruit_queue_changed.connect(_on_recruit_queue_changed)
+	_relocate_resources_away_from_initial_reserved_cells()
 	_place_initial_buildings()
 	building_manager.reveal_all_town_hall_vision()
 
@@ -170,6 +172,7 @@ func _setup_game() -> void:
 	# 中立生物系统初始化
 	neutral_unit_manager.set_turn_manager(turn_manager)
 	neutral_unit_manager.place_initial_neutral_units()
+	_relocate_resources_away_from_current_occupants()
 	neutral_unit_manager.neutral_combat_started.connect(_on_neutral_combat_started)
 	neutral_unit_manager.neutral_combat_ended.connect(_on_neutral_combat_ended)
 	_init_dragon_portal_manager()
@@ -353,6 +356,80 @@ const FACTION_SPAWNS := [
 	{ "player": 1, "th_pos": Vector2i(35, 43), "th_origin": Vector2i(34, 41) },
 	{ "player": 2, "th_pos": Vector2i(62, 35), "th_origin": Vector2i(61, 33) },
 ]
+
+
+func _relocate_resources_away_from_initial_reserved_cells() -> void:
+	if resource_manager == null or not resource_manager.has_method("relocate_resources_away_from_cells"):
+		return
+	var reserved: Array[Vector2i] = []
+	var infra_offsets: Array[Vector2i] = [
+		Vector2i(-1, 0), Vector2i(2, 0),
+		Vector2i(0, -1),
+		Vector2i(-1, 1), Vector2i(2, 1),
+		Vector2i(-1, -1), Vector2i(2, -1),
+		Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 1),
+	]
+	var camp_offsets: Array[Vector2i] = [
+		Vector2i(0, 2), Vector2i(1, 2),
+		Vector2i(-1, 0), Vector2i(2, 0),
+		Vector2i(0, -1), Vector2i(1, -1),
+	]
+	var unit_offsets: Array[int] = [-1, -2, -3]
+	for spawn_index in range(FACTION_SPAWNS.size()):
+		var spawn: Dictionary = FACTION_SPAWNS[spawn_index]
+		var origin: Vector2i = spawn["th_origin"]
+		for dy in range(2):
+			for dx in range(2):
+				_append_unique_cell(reserved, Vector2i(origin.x + dx, origin.y + dy))
+		for off in infra_offsets:
+			_append_unique_cell(reserved, origin + off)
+		for off in camp_offsets:
+			_append_unique_cell(reserved, origin + off)
+		var unit_base: Vector2i = spawn["th_pos"]
+		var unit_start_offset: int = unit_offsets[spawn_index]
+		for i in range(3):
+			_append_unique_cell(reserved, Vector2i(unit_base.x + unit_start_offset + i, unit_base.y))
+	resource_manager.call("relocate_resources_away_from_cells", reserved, "initial reserved")
+
+
+func _relocate_resources_away_from_current_occupants() -> void:
+	if resource_manager == null or not resource_manager.has_method("relocate_resources_away_from_cells"):
+		return
+	var occupied: Array[Vector2i] = []
+	if building_manager != null and building_manager.has_method("get_all_buildings"):
+		var buildings: Array = building_manager.call("get_all_buildings")
+		for building_variant in buildings:
+			var building: Dictionary = building_variant
+			var data: BuildingData = building.get("data", null)
+			if data == null:
+				continue
+			var origin: Vector2i = building.get("origin", Vector2i(-1, -1))
+			for dy in range(data.footprint.y):
+				for dx in range(data.footprint.x):
+					_append_unique_cell(occupied, Vector2i(origin.x + dx, origin.y + dy))
+	if unit_manager != null and unit_manager.has_method("get_all_units"):
+		var units: Array = unit_manager.call("get_all_units")
+		for unit_variant in units:
+			var unit: Dictionary = unit_variant
+			_append_unique_cell(occupied, unit.get("grid_pos", Vector2i(-1, -1)))
+	if neutral_unit_manager != null and neutral_unit_manager.has_method("get_all_neutral_units"):
+		var neutral_units: Array = neutral_unit_manager.call("get_all_neutral_units")
+		for neutral_variant in neutral_units:
+			var neutral_unit: Dictionary = neutral_variant
+			var pos: Vector2i = neutral_unit.get("grid_pos", Vector2i(-1, -1))
+			var footprint: Vector2i = neutral_unit.get("footprint", Vector2i.ONE)
+			for dy in range(footprint.y):
+				for dx in range(footprint.x):
+					_append_unique_cell(occupied, Vector2i(pos.x + dx, pos.y + dy))
+	resource_manager.call("relocate_resources_away_from_cells", occupied, "occupied")
+
+
+func _append_unique_cell(cells: Array[Vector2i], cell: Vector2i) -> void:
+	if cell.x < 0 or cell.y < 0:
+		return
+	if cell in cells:
+		return
+	cells.append(cell)
 
 
 func _place_initial_buildings() -> void:
@@ -758,12 +835,13 @@ func _on_achievement_completed(player: int, _achievement_id: String, title: Stri
 func _init_achievement_tree_panel() -> void:
 	achievement_tree_panel = AchievementTreePanelScript.new()
 	achievement_tree_panel.name = "AchievementTreePanel"
-	achievement_tree_panel.position = Vector2.ZERO
 	achievement_tree_panel.size = Vector2(1920.0, 1080.0)
 	achievement_tree_panel.visible = false
 	achievement_tree_panel.z_index = 100
 	$UI.add_child(achievement_tree_panel)
+	_fit_design_overlay_panel(achievement_tree_panel)
 	achievement_tree_panel.setup(achievement_service, turn_manager)
+	achievement_tree_panel.visibility_changed.connect(_sync_tree_overlay_input_blocker)
 
 
 func _init_achievement_tree_button() -> void:
@@ -813,19 +891,25 @@ func _on_achievement_tree_button_pressed() -> void:
 		score_rule_panel.visible = false
 	if civilization_route_panel != null:
 		civilization_route_panel.visible = false
+	_fit_design_overlay_panel(achievement_tree_panel)
+	_ensure_tree_overlay_input_blocker()
+	_sync_tree_overlay_input_blocker()
+	achievement_tree_panel.z_index = 110
 	achievement_tree_panel.visible = true
+	_sync_tree_overlay_input_blocker()
 	achievement_tree_panel.queue_redraw()
 
 
 func _init_technology_tree_panel() -> void:
 	technology_tree_panel = TechnologyTreePanelScript.new()
 	technology_tree_panel.name = "TechnologyTreePanel"
-	technology_tree_panel.position = Vector2.ZERO
 	technology_tree_panel.size = Vector2(1920.0, 1080.0)
 	technology_tree_panel.visible = false
 	technology_tree_panel.z_index = 101
 	$UI.add_child(technology_tree_panel)
+	_fit_design_overlay_panel(technology_tree_panel)
 	technology_tree_panel.setup(technology_service, achievement_service, turn_manager)
+	technology_tree_panel.visibility_changed.connect(_sync_tree_overlay_input_blocker)
 
 
 func _init_technology_tree_button() -> void:
@@ -875,8 +959,64 @@ func _on_technology_tree_button_pressed() -> void:
 		score_rule_panel.visible = false
 	if civilization_route_panel != null:
 		civilization_route_panel.visible = false
+	_fit_design_overlay_panel(technology_tree_panel)
+	_ensure_tree_overlay_input_blocker()
+	_sync_tree_overlay_input_blocker()
+	technology_tree_panel.z_index = 111
 	technology_tree_panel.visible = true
+	_sync_tree_overlay_input_blocker()
 	technology_tree_panel.queue_redraw()
+
+
+func _ensure_tree_overlay_input_blocker() -> void:
+	if tree_overlay_input_blocker != null:
+		return
+	tree_overlay_input_blocker = Control.new()
+	tree_overlay_input_blocker.name = "TreeOverlayInputBlocker"
+	tree_overlay_input_blocker.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tree_overlay_input_blocker.mouse_filter = Control.MOUSE_FILTER_STOP
+	tree_overlay_input_blocker.focus_mode = Control.FOCUS_NONE
+	tree_overlay_input_blocker.visible = false
+	tree_overlay_input_blocker.z_index = 100
+	$UI.add_child(tree_overlay_input_blocker)
+
+
+func _sync_tree_overlay_input_blocker() -> void:
+	if tree_overlay_input_blocker == null:
+		return
+	var has_tree_overlay := false
+	if achievement_tree_panel != null and achievement_tree_panel.visible:
+		has_tree_overlay = true
+	if technology_tree_panel != null and technology_tree_panel.visible:
+		has_tree_overlay = true
+	tree_overlay_input_blocker.visible = has_tree_overlay
+	if has_tree_overlay:
+		tree_overlay_input_blocker.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tree_overlay_input_blocker.size = get_viewport_rect().size
+		_raise_tree_overlay_stack()
+
+
+func _raise_tree_overlay_stack() -> void:
+	if tree_overlay_input_blocker == null:
+		return
+	var ui_node: Node = $UI
+	ui_node.move_child(tree_overlay_input_blocker, ui_node.get_child_count() - 1)
+	if achievement_tree_panel != null and achievement_tree_panel.visible:
+		ui_node.move_child(achievement_tree_panel, ui_node.get_child_count() - 1)
+	if technology_tree_panel != null and technology_tree_panel.visible:
+		ui_node.move_child(technology_tree_panel, ui_node.get_child_count() - 1)
+
+
+func _fit_design_overlay_panel(panel: Control) -> void:
+	if panel == null:
+		return
+	var design_size := Vector2(1920.0, 1080.0)
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var scale_value: float = minf(viewport_size.x / design_size.x, viewport_size.y / design_size.y)
+	scale_value = minf(scale_value, 0.92)
+	panel.size = design_size
+	panel.scale = Vector2(scale_value, scale_value)
+	panel.position = (viewport_size - design_size * scale_value) * 0.5
 
 
 func _init_score_rule_panel() -> void:

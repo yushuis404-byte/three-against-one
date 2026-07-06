@@ -25,7 +25,7 @@ const BASE_RESOURCE_CAPS := {
 	"mithril": 20,
 	"steel": 30,
 	"dragon_blood": 25,
-	"dragon_crystal": 20,
+	"dragon_crystal": 25,
 }
 
 # UI Label 引用：_label_refs["wood"] = Label 等

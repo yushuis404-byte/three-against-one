@@ -247,26 +247,37 @@ func _is_player_ready(player: int) -> bool:
 
 
 func _show_gather_text(grid_pos: Vector2i, results: Array) -> void:
-	var label := Label.new()
-	var parts: PackedStringArray = []
+	var container := VBoxContainer.new()
+	container.add_theme_constant_override("separation", 2)
+	var icon_size := 12.0
 	for result_variant in results:
 		var entry: Dictionary = result_variant
-		var display: String = GameCatalog.resource_name(str(entry.get("key", "")))
-		parts.append("+%d %s" % [int(entry.get("amount", 0)), display])
-	label.text = "\n".join(parts)
-	label.add_theme_color_override("font_color", Color.WHITE)
-	label.add_theme_font_size_override("font_size", 10)
-	label.autowrap_mode = TextServer.AUTOWRAP_OFF
-
+		var rkey: String = str(entry.get("key", ""))
+		var display: String = GameCatalog.resource_name(rkey)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		var icon := TextureRect.new()
+		icon.texture = load("res://assets/icon_" + rkey + ".png")
+		if icon.texture != null:
+			icon.custom_minimum_size = Vector2(icon_size, icon_size)
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		row.add_child(icon)
+		var label := Label.new()
+		label.text = "+%d %s" % [int(entry.get("amount", 0)), display]
+		label.add_theme_color_override("font_color", Color.WHITE)
+		label.add_theme_font_size_override("font_size", 10)
+		row.add_child(label)
+		container.add_child(row)
 	var world_pos := _grid_to_world(grid_pos.x, grid_pos.y)
-	label.position = Vector2(world_pos.x - 40, world_pos.y - 30)
-	add_child(label)
-
+	container.position = Vector2(world_pos.x - 40, world_pos.y - 30)
+	add_child(container)
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_SINE)
-	tween.tween_property(label, "position", label.position + Vector2(0, -30), 1.0)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 1.0)
-	tween.tween_callback(label.queue_free)
+	tween.tween_property(container, "position", container.position + Vector2(0, -30), 1.0)
+	tween.parallel().tween_property(container, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(container.queue_free)
+
 
 
 func _grid_to_world(grid_x: int, grid_y: int) -> Vector2:

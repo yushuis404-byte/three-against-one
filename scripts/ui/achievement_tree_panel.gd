@@ -14,8 +14,9 @@ const NODE_OPEN := Color(0.13, 0.22, 0.34, 0.96)
 const NODE_DONE := Color(0.18, 0.42, 0.23, 0.96)
 const NODE_BORDER := Color(0.72, 0.84, 1.0, 0.72)
 const NODE_DONE_BORDER := Color(0.62, 1.0, 0.58, 0.88)
-const NODE_SIZE := Vector2(44.0, 44.0)
-const NODE_STEP := Vector2(82.0, 62.0)
+const NODE_RADIUS := 20.0
+const NODE_SIZE := Vector2(40.0, 40.0)
+const NODE_STEP := Vector2(112.0, 82.0)
 const HEADER_H := 40.0
 const DETAIL_H := 114.0
 const BOARD_MARGIN := 18.0
@@ -227,7 +228,7 @@ func _build_node_rects() -> void:
 		var grid_pos: Vector2i = Vector2i.ZERO
 		if definition.has("position"):
 			grid_pos = definition["position"]
-		var node_pos: Vector2 = panel_rect.position + Vector2(18.0 + float(grid_pos.x) * NODE_STEP.x, 44.0 + float(grid_pos.y) * NODE_STEP.y)
+		var node_pos: Vector2 = panel_rect.position + Vector2(24.0 + float(grid_pos.x) * NODE_STEP.x, 50.0 + float(grid_pos.y) * NODE_STEP.y)
 		var id: String = str(definition["id"])
 		_node_rects[id] = Rect2(node_pos, NODE_SIZE)
 		_node_defs[id] = definition
@@ -288,22 +289,24 @@ func _draw_node(player: int, definition: Dictionary, rect: Rect2) -> void:
 		text_color = Color(0.92, 0.96, 1.0)
 	if id == _selected_id:
 		border = Color(1.0, 0.90, 0.42, 1.0)
-	draw_rect(rect, fill, true)
-	var border_width: float = 1.0
+	var center: Vector2 = rect.get_center()
+	var radius := NODE_RADIUS
+	draw_circle(center, radius, fill)
+	var border_width: float = 1.5
 	if id == _selected_id:
 		border_width = 2.0
-	draw_rect(rect, border, false, border_width)
+	draw_arc(center, radius, 0.0, TAU, 48, border, border_width)
 
 	var icon_label: String = _icon_label(str(definition.get("icon_key", "")))
-	_draw_text(rect.position + Vector2(12.0, 29.0), icon_label, 18, text_color)
+	_draw_centered_text(center + Vector2(0.0, 6.0), icon_label, 17, text_color)
 
 	var progress: Dictionary = _service.get_progress(player, id)
 	var progress_text: String = "%d/%d" % [int(progress.get("current", 0)), int(progress.get("target", 1))]
 	var progress_color: Color = Color(0.48, 0.52, 0.58)
 	if unlocked:
 		progress_color = Color(0.78, 0.86, 0.96)
-	_draw_text(rect.position + Vector2(3.0, rect.size.y + 13.0), progress_text, 10, progress_color)
-	_draw_text(rect.position + Vector2(-6.0, rect.size.y + 28.0), _short_title(str(definition.get("title", id))), 10, text_color)
+	_draw_centered_text(center + Vector2(0.0, radius + 15.0), progress_text, 10, progress_color)
+	_draw_centered_text(center + Vector2(0.0, radius + 31.0), _short_title(str(definition.get("title", id))), 10, text_color)
 
 
 func _draw_detail(player: int) -> void:
@@ -540,3 +543,9 @@ func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, width: float, d
 func _draw_text(pos: Vector2, text: String, font_size: int, color: Color) -> void:
 	var font: Font = ThemeDB.fallback_font
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+
+
+func _draw_centered_text(pos: Vector2, text: String, font_size: int, color: Color) -> void:
+	var font: Font = ThemeDB.fallback_font
+	var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	draw_string(font, pos - Vector2(width * 0.5, 0.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)

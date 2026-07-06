@@ -13,6 +13,7 @@ const PANEL_H := 500
 const CARD_W := 160
 const CARD_H := 200
 const CARD_GAP := 20
+const CARD_BG_TEXTURE: Texture2D = preload("res://assets/texture/商品卡底图.png")
 
 # ========== 商品数据结构 ==========
 # # TODO: 奖励池内容待填充 — 当前为占位数据
@@ -200,11 +201,12 @@ func _rebuild_cards() -> void:
 		var goods: Dictionary = _offer_goods[i]
 		var cx := start_x + i * (CARD_W + CARD_GAP)
 
-		var card := ColorRect.new()
-		card.color = Color(0.18, 0.18, 0.22)
+		var card := TextureRect.new()
+		card.texture = CARD_BG_TEXTURE
 		card.size = Vector2(CARD_W, CARD_H)
 		card.position = Vector2(cx, card_y)
 		card.mouse_filter = Control.MOUSE_FILTER_STOP
+		card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		_panel.add_child(card)
 
 		# 图标

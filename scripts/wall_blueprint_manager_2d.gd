@@ -72,7 +72,7 @@ func _ensure_wall_draws_below_buildings() -> void:
 	var parent_node := get_parent()
 	var building_index: int = _building_manager.get_index()
 	if get_index() > building_index:
-		parent_node.move_child(self, building_index)
+		parent_node.move_child.call_deferred(self, building_index)
 
 
 func set_network_game_service(service: Node) -> void:

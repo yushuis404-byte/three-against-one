@@ -69,6 +69,7 @@ var _in_combat := false
 var _combat_timer: Timer = null
 var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
 var _combat_sequence_id: int = 0
+var _focus_attack_sessions: Dictionary = {}  # attacker_id -> { target_id, timer }
 var _building_attack_timer: Timer = null
 var _building_attack_data: Dictionary = {}
 var _combat_choice_panel: Panel = null
@@ -81,6 +82,7 @@ var _attack_visuals: Dictionary = {}  # unit_id -> { t: float, flip_x: bool }
 var _death_visuals: Dictionary = {}  # unit_id -> { pos: Vector2, t: float, flip_x: bool }
 var _unit_facing_flip: Dictionary = {}  # unit_id -> bool
 var _pending_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
+var _pending_focus_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
 var _pending_building_attack_after_move: Dictionary = {}  # attacker_id -> building_id
 var _throw_beast_source_id: int = -1
 var _fog_reveal_mode: bool = false
@@ -1039,6 +1041,9 @@ func _unhandled_input(event: InputEvent) -> void:
 						return
 			var target := get_visible_unit_at(gpos)
 			if not target.is_empty() and target["faction"] != src["faction"]:
+				if _selected_unit_ids.size() > 1:
+					if _try_start_focus_attack_for_selected_units(target):
+						return
 				if _request_network_unit_attack(int(src.get("id", -1)), int(target.get("id", -1))):
 					return
 				if _is_retreat_unselectable_for_attacker(src, target):
@@ -1067,7 +1072,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					if not ntarget.is_empty() and _can_ranged_attack(src, ntarget):
 						_initiate_ranged_neutral_combat(int(src.get("id", -1)), int(ntarget.get("id", -1)), numgr)
 						return
-					if not ntarget.is_empty() and _is_adjacent(src["grid_pos"], ntarget.get("grid_pos", Vector2i(-1, -1))):
+					if not ntarget.is_empty() and _distance_to_unit_footprint(src["grid_pos"], ntarget) == 1:
 						var behavior: String = ""
 						if numgr.has_method("get_ai_data_for"):
 							behavior = numgr.get_ai_data_for(ntarget["id"]).get("behavior", "")
@@ -1901,7 +1906,7 @@ func _make_neutral_attack_preview(attacker: Dictionary, target: Dictionary) -> D
 		"is_ranged": false,
 		"reason": "",
 	}
-	var dist: int = _grid_distance(from, target_pos)
+	var dist: int = _distance_to_unit_footprint(from, target)
 	if attacker_data.attack_range > 1 and dist > 1 and dist <= attacker_data.attack_range:
 		preview["approach_pos"] = from
 		preview["can_attack"] = true
@@ -1925,7 +1930,7 @@ func _can_ranged_attack(attacker: Dictionary, target: Dictionary) -> bool:
 		return false
 	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
 	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
-	var dist: int = _grid_distance(from, target_pos)
+	var dist: int = _distance_to_unit_footprint(from, target)
 	return dist > 1 and dist <= data.attack_range
 
 
@@ -1937,7 +1942,7 @@ func _can_unit_attack_unit(attacker: Dictionary, target: Dictionary) -> bool:
 		return false
 	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
 	var target_pos: Vector2i = target.get("grid_pos", Vector2i.ZERO)
-	var distance: int = _grid_distance(from, target_pos)
+	var distance: int = _distance_to_unit_footprint(from, target)
 	return distance > 0 and distance <= data.attack_range
 
 
@@ -2249,6 +2254,19 @@ func _resolve_throw_landing(preferred: Vector2i) -> Vector2i:
 
 func _grid_distance(a: Vector2i, b: Vector2i) -> int:
 	return abs(a.x - b.x) + abs(a.y - b.y)
+
+
+func _distance_to_unit_footprint(from: Vector2i, target: Dictionary) -> int:
+	var anchor: Vector2i = target.get("grid_pos", Vector2i.ZERO)
+	var footprint = target.get("footprint", Vector2i.ONE)
+	var size := Vector2i.ONE
+	if footprint is Vector2i:
+		size = footprint
+	var best := 999
+	for y in range(size.y):
+		for x in range(size.x):
+			best = mini(best, _grid_distance(from, anchor + Vector2i(x, y)))
+	return best
 
 
 func _move_selected_to(target: Vector2i) -> void:
@@ -3877,6 +3895,13 @@ func _ranged_neutral_combat_tick() -> void:
 	if target.is_empty():
 		_finish_ranged_combat()
 		return
+	if neutral_mgr.has_method("respond_to_ranged_attack"):
+		var counter_ready: bool = bool(neutral_mgr.call("respond_to_ranged_attack", neutral_id, int(attacker.get("id", -1))))
+		if counter_ready:
+			_finish_ranged_combat()
+			if neutral_mgr.has_method("start_counter_combat"):
+				neutral_mgr.call("start_counter_combat", neutral_id, int(attacker.get("id", -1)))
+			return
 	queue_redraw()
 
 
@@ -4177,6 +4202,23 @@ func play_hit_effect_at(grid_pos: Vector2i, damage: int, unit_id: int = -1) -> v
 		_play_hit_effect(unit_id, grid_pos, damage)
 	else:
 		_show_damage_text(grid_pos, damage)
+
+
+func damage_unit_by_id(uid: int, amount: int) -> bool:
+	for i in range(_units.size() - 1, -1, -1):
+		var unit: Dictionary = _units[i]
+		if int(unit.get("id", -1)) != uid:
+			continue
+		var damage: int = maxi(0, amount)
+		unit["hp"] = int(unit.get("hp", 0)) - damage
+		_play_hit_effect(uid, unit.get("grid_pos", Vector2i.ZERO), damage)
+		if int(unit.get("hp", 0)) <= 0:
+			remove_unit_by_id(uid)
+		else:
+			_units[i] = unit
+			queue_redraw()
+		return true
+	return false
 
 
 func remove_unit_by_id(uid: int) -> void:
@@ -4896,6 +4938,10 @@ func _is_valid_spawn_tile(gx: int, gy: int) -> bool:
 		return false
 	if not _is_tile_empty(gx, gy):
 		return false
+	var res_mgr = get_parent().get_node_or_null("ResourceManager2D")
+	if res_mgr != null and res_mgr.has_method("get_resource_type"):
+		if int(res_mgr.call("get_resource_type", gx, gy)) != 0:
+			return false
 	return true
 
 

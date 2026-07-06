@@ -10,7 +10,7 @@ const NODE_RADIUS := 34.0
 const CLOSE_RECT := Rect2(0, 0, 72, 26)
 const DETAIL_W := 360.0
 const HEADER_H := 36.0
-const MIN_ZOOM := 0.55
+const MIN_ZOOM := 0.45
 const MAX_ZOOM := 1.75
 
 var _service: TechnologyService = null
@@ -19,8 +19,8 @@ var _turn_manager: Node = null
 var _selected_id := ""
 var _node_world_positions: Dictionary = {}
 var _node_screen_rects: Dictionary = {}
-var _pan := Vector2(760.0, 540.0)
-var _zoom := 0.68
+var _pan := Vector2(760.0, 500.0)
+var _zoom := 0.58
 var _dragging := false
 var _last_mouse := Vector2.ZERO
 var _research_rect := Rect2()
@@ -342,7 +342,7 @@ func _draw_detail(player: int) -> void:
 	_draw_text(Vector2(x + 18.0, HEADER_H + 224.0), "\u9886\u4e3b\uff1a" + _join_lord_titles(definition.get("required_lords", [])), 11, Color(0.68, 0.74, 0.84))
 	_draw_text(Vector2(x + 18.0, HEADER_H + 256.0), "\u6548\u679c", 13, Color(0.94, 0.97, 1.0))
 	_draw_wrapped_lines(Vector2(x + 18.0, HEADER_H + 280.0), _effect_text(definition.get("effects", {})), 12, Color(0.78, 0.86, 0.94), 310.0)
-	_research_rect = Rect2(x + 18.0, size.y - 58.0, 126.0, 34.0)
+	_research_rect = Rect2(x + 18.0, HEADER_H + 372.0, 150.0, 36.0)
 	var button_color := Color(0.20, 0.36, 0.58, 0.96) if available else Color(0.12, 0.13, 0.15, 0.96)
 	if researched:
 		button_color = Color(0.16, 0.32, 0.18, 0.96)
