@@ -192,6 +192,7 @@ func reveal_area_immediate(player: int, cx: int, cy: int, radius: int) -> void:
 					changed = true
 	if changed:
 		queue_redraw()
+		fog_updated.emit(player)
 
 
 func conceal_area(player: int, cx: int, cy: int, radius: int) -> void:

@@ -24,9 +24,16 @@ const FRUIT_TREE_TEXTURE: Texture2D = preload("res://assets/texture/fruit tree.p
 const RUNE_STONE_TEXTURE: Texture2D = preload("res://assets/texture/Ancient Stone Tablet.png")
 const MAGIC_NODE_TEXTURE: Texture2D = preload("res://assets/texture/Magic Node.png")
 const BERRIES_TEXTURE: Texture2D = preload("res://assets/texture/berry.png")
+const STAR_CRYSTAL_TEXTURE: Texture2D = preload("res://assets/texture/Star Crystal Deposit.png")
+const ANCIENT_FOREST_TEXTURE: Texture2D = preload("res://assets/texture/ancient forest.png")
+const ANCIENT_TREE_TEXTURE: Texture2D = preload("res://assets/texture/Ancient giant trees.png")
+const DRAGON_CRYSTAL_TEXTURE: Texture2D = preload("res://assets/texture/Dragon Crystal Crater.png")
+const WORLD_TREE_ROOT_TEXTURE: Texture2D = preload("res://assets/texture/World Tree Root.png")
 const RESOURCE_TEXTURE_SIZE := 28.0
 const RESOURCE_DISTRIBUTION_SCALE := 1.5
 const RESOURCE_ACTIVE_ZONES := [7, 8, 9, 10, 11, 12, 4]
+const DRAGON_LAIR_CENTER := Vector2(27.5, 27.5)
+const DRAGON_LAIR_RESOURCE_CLEAR_RADIUS := 7.3
 
 
 func set_turn_manager(tm: Node) -> void:
@@ -200,6 +207,7 @@ func place_resources(zone_grid: Array, terrain_grid: Array, grid_size: int) -> v
 				var def: Array = plan["def"]
 				print("[Resource] Warning: %s zone %d placed %d/%d" % [def[1], zone_tag, placed_before + placed, needed])
 		plan["placed"] = placed_counts
+	_relocate_invalid_resources(zone_grid, terrain_grid, grid_size)
 
 
 func _place_resource_count(zone_grid: Array, terrain_grid: Array, grid_size: int, plan: Dictionary, zone_tag: int, amount: int) -> int:
@@ -263,7 +271,9 @@ func _count_resource_zone_capacity(zone_grid: Array, terrain_grid: Array, grid_s
 			if zone_grid[y][x] != zone_tag:
 				continue
 			var terrain: int = terrain_grid[y][x]
-			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC or terrain == TerrainData.Terrain.DRAGON_NEST:
+			if _is_invalid_resource_terrain(terrain):
+				continue
+			if _is_in_dragon_lair_resource_clear_area(Vector2i(x, y)):
 				continue
 			capacity += 1
 	return capacity
@@ -302,12 +312,91 @@ func _collect_resource_candidates(zone_grid: Array, terrain_grid: Array, grid_si
 			if resource_grid[y][x] != ResourceType.NONE:
 				continue
 			var terrain: int = terrain_grid[y][x]
-			if terrain == TerrainData.Terrain.VOID or terrain == TerrainData.Terrain.WATER or terrain == TerrainData.Terrain.SWAMP_ORC or terrain == TerrainData.Terrain.DRAGON_NEST:
+			if _is_invalid_resource_terrain(terrain):
+				continue
+			if _is_in_dragon_lair_resource_clear_area(Vector2i(x, y)):
 				continue
 			if require_compatible_terrain and compat_terrains.size() > 0 and not (terrain in compat_terrains):
 				continue
 			candidates.append(Vector2i(x, y))
 	return candidates
+
+
+func _relocate_invalid_resources(zone_grid: Array, terrain_grid: Array, grid_size: int) -> void:
+	var moved_count: int = 0
+	var unresolved_count: int = 0
+	for y in range(grid_size):
+		for x in range(grid_size):
+			var rtype: int = int(resource_grid[y][x])
+			if rtype == ResourceType.NONE:
+				continue
+			var source := Vector2i(x, y)
+			if _is_resource_position_reasonable(source, rtype, zone_grid, terrain_grid, grid_size, true):
+				continue
+			var target: Vector2i = _find_relocation_target(source, rtype, zone_grid, terrain_grid, grid_size, true)
+			if target.x < 0:
+				unresolved_count += 1
+				continue
+			resource_grid[target.y][target.x] = rtype
+			resource_grid[y][x] = ResourceType.NONE
+			moved_count += 1
+	if moved_count > 0:
+		print("[Resource] Relocated %d resources away from invalid cells." % moved_count)
+	if unresolved_count > 0:
+		print("[Resource] Warning: %d resources remain on invalid cells; no legal relocation target found." % unresolved_count)
+
+
+func _find_relocation_target(source: Vector2i, rtype: int, zone_grid: Array, terrain_grid: Array, grid_size: int, require_compatible_terrain: bool) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_score: int = 999999
+	for y in range(grid_size):
+		for x in range(grid_size):
+			if resource_grid[y][x] != ResourceType.NONE:
+				continue
+			var candidate := Vector2i(x, y)
+			if not _is_resource_position_reasonable(candidate, rtype, zone_grid, terrain_grid, grid_size, require_compatible_terrain):
+				continue
+			var zone_bias: int = 0 if zone_grid[y][x] in RESOURCE_ACTIVE_ZONES else 1000
+			var score: int = abs(candidate.x - source.x) + abs(candidate.y - source.y) + zone_bias
+			if score < best_score:
+				best_score = score
+				best = candidate
+	return best
+
+
+func _is_resource_position_reasonable(pos: Vector2i, rtype: int, zone_grid: Array, terrain_grid: Array, grid_size: int, require_compatible_terrain: bool) -> bool:
+	if pos.x < 0 or pos.x >= grid_size or pos.y < 0 or pos.y >= grid_size:
+		return false
+	if _is_in_dragon_lair_resource_clear_area(pos):
+		return false
+	var terrain: int = int(terrain_grid[pos.y][pos.x])
+	if _is_invalid_resource_terrain(terrain):
+		return false
+	if require_compatible_terrain:
+		var compat: Array = _get_resource_compatible_terrains(rtype)
+		if not compat.is_empty() and not (terrain in compat):
+			return false
+	return true
+
+
+func _get_resource_compatible_terrains(rtype: int) -> Array:
+	for def in RESOURCE_DEFS:
+		if int(def[0]) == rtype:
+			return def[5]
+	return []
+
+
+func _is_invalid_resource_terrain(terrain: int) -> bool:
+	return terrain == TerrainData.Terrain.VOID \
+		or terrain == TerrainData.Terrain.WATER \
+		or terrain == TerrainData.Terrain.SWAMP_ORC \
+		or terrain == TerrainData.Terrain.DRAGON_NEST \
+		or terrain == TerrainData.Terrain.DRAGON_MOUNT \
+		or terrain == TerrainData.Terrain.CORRIDOR
+
+
+func _is_in_dragon_lair_resource_clear_area(pos: Vector2i) -> bool:
+	return Vector2(float(pos.x), float(pos.y)).distance_to(DRAGON_LAIR_CENTER) <= DRAGON_LAIR_RESOURCE_CLEAR_RADIUS
 
 
 func _shuffle_resource_candidates(candidates: Array, rtype: int, zone_tag: int) -> void:
@@ -356,9 +445,13 @@ func _draw() -> void:
 
 func _draw_resource_texture(resource_type: int, pos: Vector2) -> bool:
 	var texture: Texture2D = null
+	var texture_size: float = RESOURCE_TEXTURE_SIZE
 	match resource_type:
 		ResourceType.GOLD_MINE:
 			texture = GOLD_MINE_TEXTURE
+		ResourceType.ANCIENT_FOREST:
+			texture = ANCIENT_FOREST_TEXTURE
+			texture_size = RESOURCE_TEXTURE_SIZE * 1.2
 		ResourceType.QUARRY:
 			texture = QUARRY_TEXTURE
 		ResourceType.IRON_OAK:
@@ -373,12 +466,20 @@ func _draw_resource_texture(resource_type: int, pos: Vector2) -> bool:
 			texture = RUNE_STONE_TEXTURE
 		ResourceType.WILD_BERRIES:
 			texture = BERRIES_TEXTURE
+		ResourceType.STAR_CRYSTAL:
+			texture = STAR_CRYSTAL_TEXTURE
+		ResourceType.WORLD_TREE_ROOT:
+			texture = WORLD_TREE_ROOT_TEXTURE
+		ResourceType.DRAGON_CRYSTAL:
+			texture = DRAGON_CRYSTAL_TEXTURE
+		ResourceType.ANCIENT_TREE:
+			texture = ANCIENT_TREE_TEXTURE
 		ResourceType.MAGIC_NODE:
 			texture = MAGIC_NODE_TEXTURE
 		_:
 			return false
-	var half := RESOURCE_TEXTURE_SIZE * 0.5
-	draw_texture_rect(texture, Rect2(pos.x - half, pos.y - half, RESOURCE_TEXTURE_SIZE, RESOURCE_TEXTURE_SIZE), false)
+	var half := texture_size * 0.5
+	draw_texture_rect(texture, Rect2(pos.x - half, pos.y - half, texture_size, texture_size), false)
 	return true
 
 

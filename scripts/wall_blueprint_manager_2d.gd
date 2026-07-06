@@ -8,11 +8,11 @@ signal wall_preview_changed(message: String, valid: bool, cells: int, stone_cost
 const DWARF_PLAYER := 1
 const STONE_COST_PER_SEGMENT := 3
 const IRON_COST_PER_UPGRADE := 1
+const WALL_TEXTURE: Texture2D = preload("res://assets/texture/city wall.png")
 const WALL_LEVEL_1_HP := 8
 const WALL_LEVEL_2_HP := 14
 const WALL_THICKNESS := 8.0
-const WALL_STRAIGHT_LENGTH := 34.0
-const WALL_DIAGONAL_LENGTH := 48.0
+const WALL_SEGMENT_OVERLAP := 3.0
 
 var grid_cols := 100
 var grid_rows := 56
@@ -46,6 +46,7 @@ func _ready() -> void:
 	_resource_tracker = get_parent().get_node_or_null("ResourceTracker")
 	_turn_manager = get_parent().get_node_or_null("TurnManager2D")
 	_fog_manager = get_parent().get_node_or_null("FogOfWar2D")
+	_ensure_wall_draws_below_buildings()
 	if _fog_manager != null and _fog_manager.has_signal("fog_updated"):
 		var callback := Callable(self, "_on_fog_updated")
 		if not _fog_manager.fog_updated.is_connected(callback):
@@ -62,6 +63,16 @@ func set_resource_tracker(resource_tracker: Node) -> void:
 
 func set_building_manager(building_manager: Node) -> void:
 	_building_manager = building_manager
+	_ensure_wall_draws_below_buildings()
+
+
+func _ensure_wall_draws_below_buildings() -> void:
+	if _building_manager == null or get_parent() == null:
+		return
+	var parent_node := get_parent()
+	var building_index: int = _building_manager.get_index()
+	if get_index() > building_index:
+		parent_node.move_child(self, building_index)
 
 
 func set_network_game_service(service: Node) -> void:
@@ -396,9 +407,7 @@ func _draw_confirmed_walls() -> void:
 			if int(segment_dict.get("level", 1)) >= 2:
 				color = Color(0.48, 0.52, 0.56, 0.95)
 				border = Color(0.82, 0.88, 0.95, 1.0)
-			_draw_wall_shadow(segment_dict)
 			_draw_wall_segment(segment_dict, color, border, true)
-			_draw_wall_caps(segment_dict, border)
 
 
 func _draw_preview() -> void:
@@ -422,42 +431,10 @@ func _draw_wall_segment(segment: Dictionary, fill: Color, border: Color, filled:
 	var direction: Vector2i = segment.get("dir", Vector2i.RIGHT)
 	var center: Vector2 = _grid_to_world(cell.x, cell.y)
 	var angle: float = atan2(float(direction.y), float(direction.x))
-	var length: float = WALL_STRAIGHT_LENGTH
-	if direction.x != 0 and direction.y != 0:
-		length = WALL_DIAGONAL_LENGTH
+	var length: float = _get_wall_segment_length(direction)
 	var rect: Rect2 = Rect2(Vector2(-length * 0.5, -WALL_THICKNESS * 0.5), Vector2(length, WALL_THICKNESS))
 	draw_set_transform(center, angle, Vector2.ONE)
-	draw_rect(rect, fill, filled)
-	draw_rect(rect, border, false, 1.5)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-
-func _draw_wall_shadow(segment: Dictionary) -> void:
-	var cell: Vector2i = segment.get("cell", Vector2i.ZERO)
-	var direction: Vector2i = segment.get("dir", Vector2i.RIGHT)
-	var center: Vector2 = _grid_to_world(cell.x, cell.y) + Vector2(2.0, 3.0)
-	var angle: float = atan2(float(direction.y), float(direction.x))
-	var length: float = WALL_STRAIGHT_LENGTH
-	if direction.x != 0 and direction.y != 0:
-		length = WALL_DIAGONAL_LENGTH
-	var rect: Rect2 = Rect2(Vector2(-length * 0.5, -WALL_THICKNESS * 0.5), Vector2(length, WALL_THICKNESS))
-	draw_set_transform(center, angle, Vector2.ONE)
-	draw_rect(rect, Color(0.0, 0.0, 0.0, 0.25), true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-
-func _draw_wall_caps(segment: Dictionary, color: Color) -> void:
-	var cell: Vector2i = segment.get("cell", Vector2i.ZERO)
-	var direction: Vector2i = segment.get("dir", Vector2i.RIGHT)
-	var center: Vector2 = _grid_to_world(cell.x, cell.y)
-	var angle: float = atan2(float(direction.y), float(direction.x))
-	var length: float = WALL_STRAIGHT_LENGTH
-	if direction.x != 0 and direction.y != 0:
-		length = WALL_DIAGONAL_LENGTH
-	var cap_size: Vector2 = Vector2(3.0, WALL_THICKNESS + 2.0)
-	draw_set_transform(center, angle, Vector2.ONE)
-	draw_rect(Rect2(Vector2(-length * 0.5 - 1.0, -cap_size.y * 0.5), cap_size), color, true)
-	draw_rect(Rect2(Vector2(length * 0.5 - 2.0, -cap_size.y * 0.5), cap_size), color, true)
+	draw_texture_rect(WALL_TEXTURE, rect, false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -468,10 +445,15 @@ func _draw_blueprint_center_line(segment: Dictionary, color: Color) -> void:
 	var dir: Vector2 = Vector2(float(direction.x), float(direction.y)).normalized()
 	if dir == Vector2.ZERO:
 		dir = Vector2.RIGHT
-	var length: float = WALL_STRAIGHT_LENGTH
-	if direction.x != 0 and direction.y != 0:
-		length = WALL_DIAGONAL_LENGTH
+	var length: float = _get_wall_segment_length(direction)
 	draw_line(center - dir * length * 0.5, center + dir * length * 0.5, Color(color.r, color.g, color.b, 0.42), 1.0, true)
+
+
+func _get_wall_segment_length(direction: Vector2i) -> float:
+	var base_length: float = tile_size
+	if direction.x != 0 and direction.y != 0:
+		base_length = tile_size * sqrt(2.0)
+	return base_length + WALL_SEGMENT_OVERLAP * 2.0
 
 
 func _build_eight_direction_line(start: Vector2i, end: Vector2i) -> Array[Vector2i]:

@@ -4484,10 +4484,14 @@ func teleport_units_to_nearest_empty(unit_ids: Array, target_anchor: Vector2i, s
 
 
 func _is_tile_passable_for_unit(unit: Dictionary, gx: int, gy: int) -> bool:
+	var is_inside_lair: bool = bool(unit.get(INSIDE_DRAGON_LAIR_KEY, false))
+	var target_is_lair: bool = _is_dragon_lair_walkable(gx, gy)
+	if target_is_lair:
+		return is_inside_lair
+	if is_inside_lair:
+		return false
 	if _is_tile_passable(gx, gy):
 		return true
-	if bool(unit.get(INSIDE_DRAGON_LAIR_KEY, false)):
-		return _is_dragon_lair_walkable(gx, gy)
 	return false
 
 

@@ -4,6 +4,10 @@ const FIRE_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/charac
 const FIRE_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Fire-Dragon-Attack.png")
 const ICE_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ice-Dragon-Idle.png")
 const ICE_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ice-Dragon-Attack.png")
+const POISON_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Poison-Dragon-Idle.png")
+const POISON_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Poison-Dragon-Attack.png")
+const ANCIENT_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ancient-Dragon-Idle.png")
+const ANCIENT_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ancient-Dragon-Attack.png")
 ## 中立生物管理器 — 亚龙、流浪商队、哥布林复仇队
 ##
 ## 独立于 UnitManager2D，作为 GameBoard 同级子节点
@@ -31,8 +35,8 @@ const REVENGE_COLOR := Color(0.8, 0.15, 0.15)        # 红色复仇
 
 # ========== 巨龙巢穴区域（放置亚龙用） ==========
 const MOUNTAIN_CENTER := Vector2(49.5, 27.5)
-const RING_INNER := 4.0
-const RING_OUTER := 9.0
+const RING_INNER := 6.0
+const RING_OUTER := 11.0
 const ZONE_MOUNTAIN_NEST := 1
 const ZONE_MOUNTAIN_BODY := 2
 const ZONE_MOUNTAIN_PATH := 3
@@ -40,13 +44,18 @@ const ANCIENT_DRAGON_TEMPLATE_ID := "neutral.dragon.ancient"
 const PROGENITOR_DRAGON_TEMPLATE_ID := "neutral.dragon.progenitor"
 const FIRE_WYVERN_TEMPLATE_ID := "neutral.wyvern.fire"
 const FROST_WYVERN_TEMPLATE_ID := "neutral.wyvern.frost"
+const TOXIC_WYVERN_TEMPLATE_ID := "neutral.wyvern.toxic"
 const ANCIENT_DRAGON_TERRITORY_RADIUS := 5
 const ANCIENT_DRAGON_AGGRO_RANGE := 4
 const FIRE_DRAGON_ATTACK_FRAMES := 10
 const ICE_DRAGON_ATTACK_FRAMES := 9
+const POISON_DRAGON_ATTACK_FRAMES := 10
+const ANCIENT_DRAGON_ATTACK_FRAMES := 29
 const FIRE_DRAGON_FRAME_SIZE := Vector2(320.0, 320.0)
 const FIRE_DRAGON_DRAW_SIZE := Vector2(70.0, 70.0)
 const FIRE_DRAGON_ATTACK_DURATION := 0.55
+const DEFAULT_COMBAT_TICK_INTERVAL := 1.0
+const ANCIENT_DRAGON_ATTACK_INTERVAL := 3.0
 const MIN_WYVERN_SPACING := 3  # 亚龙之间最小曼哈顿间距
 
 # ========== 数据存储 ==========
@@ -338,6 +347,18 @@ func _get_dragon_sprite_spec(unit: Dictionary) -> Dictionary:
 				"attack": ICE_DRAGON_ATTACK_TEXTURE,
 				"attack_frames": ICE_DRAGON_ATTACK_FRAMES,
 			}
+		TOXIC_WYVERN_TEMPLATE_ID:
+			return {
+				"idle": POISON_DRAGON_IDLE_TEXTURE,
+				"attack": POISON_DRAGON_ATTACK_TEXTURE,
+				"attack_frames": POISON_DRAGON_ATTACK_FRAMES,
+			}
+		ANCIENT_DRAGON_TEMPLATE_ID:
+			return {
+				"idle": ANCIENT_DRAGON_IDLE_TEXTURE,
+				"attack": ANCIENT_DRAGON_ATTACK_TEXTURE,
+				"attack_frames": ANCIENT_DRAGON_ATTACK_FRAMES,
+			}
 	return {}
 
 
@@ -570,10 +591,9 @@ func engage_combat(player_unit_id: int, neutral_unit_id: int) -> void:
 	print("[战斗] 玩家 %d 攻击中立 %s" % [pu["faction"], nu.get("display_name", "")])
 
 	_combat_timer = Timer.new()
-	_combat_timer.wait_time = 1.0
+	_combat_timer.one_shot = true
 	_combat_timer.timeout.connect(_combat_tick)
 	add_child(_combat_timer)
-	_combat_timer.start()
 
 	# 先手立即出拳
 	_combat_tick()
@@ -613,6 +633,7 @@ func _combat_tick() -> void:
 
 		# 切换为中立攻击
 		_combat_data["next_is_player"] = false
+		_schedule_next_combat_tick()
 
 	else:
 		# 中立攻击玩家
@@ -637,6 +658,24 @@ func _combat_tick() -> void:
 
 		# 切换为玩家攻击
 		_combat_data["next_is_player"] = true
+		_schedule_next_combat_tick()
+
+
+func _schedule_next_combat_tick() -> void:
+	if not _in_combat or _combat_timer == null:
+		return
+	_combat_timer.stop()
+	_combat_timer.wait_time = _get_next_combat_tick_interval()
+	_combat_timer.start()
+
+
+func _get_next_combat_tick_interval() -> float:
+	if bool(_combat_data.get("next_is_player", true)):
+		return DEFAULT_COMBAT_TICK_INTERVAL
+	var neutral_unit: Dictionary = get_neutral_unit_by_id(int(_combat_data.get("neutral_unit_id", -1)))
+	if str(neutral_unit.get("template_id", "")) == ANCIENT_DRAGON_TEMPLATE_ID:
+		return ANCIENT_DRAGON_ATTACK_INTERVAL
+	return DEFAULT_COMBAT_TICK_INTERVAL
 
 
 func _end_combat(winner_id: int) -> void:
@@ -726,10 +765,9 @@ func _start_ai_combat(neutral_unit_id: int, player_unit_id: int) -> void:
 	print("[战斗] 中立 %s 攻击玩家 %d" % [nu.get("display_name", ""), pu["faction"]])
 
 	_combat_timer = Timer.new()
-	_combat_timer.wait_time = 1.0
+	_combat_timer.one_shot = true
 	_combat_timer.timeout.connect(_combat_tick)
 	add_child(_combat_timer)
-	_combat_timer.start()
 
 	# 中立先手出拳
 	_combat_tick()
@@ -983,8 +1021,8 @@ func _place_wyverns() -> void:
 			if not _grid_manager:
 				continue
 			# 检查曼哈顿距离确保在环内
-			var md: int = abs(pos.x - int(MOUNTAIN_CENTER.x)) + abs(pos.y - int(MOUNTAIN_CENTER.y))
-			if md < int(RING_INNER) or md > int(RING_OUTER):
+			var ring_dist: float = Vector2(float(pos.x), float(pos.y)).distance_to(MOUNTAIN_CENTER)
+			if ring_dist < RING_INNER or ring_dist > RING_OUTER:
 				continue
 			# 不在中央 void 区域（巨龙巢穴 / 山体）
 			if _grid_manager and _grid_manager.has_method("get_zone_at"):
@@ -1018,10 +1056,13 @@ func _place_wyverns() -> void:
 				var h1: float = _simple_hash(attempt * 3, seed_off + 50, 2)
 				var h2: float = _simple_hash(attempt * 3 + 1, seed_off + 51, 3)
 				var angle: float = h1 * TAU
-				var dist: float = h2 * 12.0 + 2.0
+				var dist: float = h2 * 12.0 + RING_INNER
 				var cx: int = int(round(MOUNTAIN_CENTER.x + cos(angle) * dist))
 				var cy: int = int(round(MOUNTAIN_CENTER.y + sin(angle) * dist))
 				var pos := Vector2i(clamp(cx, 0, GRID_COLS - 1), clamp(cy, 0, GRID_ROWS - 1))
+				var ring_dist: float = Vector2(float(pos.x), float(pos.y)).distance_to(MOUNTAIN_CENTER)
+				if ring_dist < RING_INNER:
+					continue
 				if not _is_passable(pos.x, pos.y):
 					continue
 				# 不在中央 void 区域

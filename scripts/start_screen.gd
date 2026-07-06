@@ -20,6 +20,7 @@ func _ready() -> void:
 	video_player.autoplay = true
 	video_player.loop = true
 	video_player.play()
+	bgm_player.finished.connect(bgm_player.play)
 
 	btn_start.pressed.connect(_on_start_pressed)
 	btn_multiplayer.pressed.connect(_on_multiplayer_pressed)

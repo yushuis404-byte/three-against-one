@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://mrqs16t1viw3" path="res://scripts/camera_controller_2d.gd" id="1_cam"]
 [ext_resource type="Script" uid="uid://bpsaxd6jjabte" path="res://scripts/main.gd" id="2_main"]
 [ext_resource type="Script" uid="uid://bte14bwxues10" path="res://scripts/grid_manager_2d.gd" id="3_grid"]
-[ext_resource type="Texture2D" uid="uid://dhks62vjbvryl" path="res://assets/texture/Recruitment Camp.png" id="4_jscy8"]
+[ext_resource type="Texture2D" uid="uid://dpd7xqheqme15" path="res://assets/texture/watchtower.png" id="4_jscy8"]
 [ext_resource type="Script" uid="uid://cwnwknb7gwbr1" path="res://scripts/resource_manager_2d.gd" id="4_res"]
 [ext_resource type="Script" uid="uid://ph5cqqvj2iv2" path="res://scripts/fog_of_war_2d.gd" id="5_fog"]
 [ext_resource type="Script" uid="uid://cusehjhmocsbj" path="res://scripts/territory_manager_2d.gd" id="6_territory"]
@@ -52,11 +52,12 @@ editor_brush_clif = 15
 editor_brush_preview = SubResource("ImageTexture_y6deb")
 editor_log_paint_cells = true
 editor_fit_enabled = true
-editor_fit_preset = 11
+editor_fit_preset = 13
 editor_fit_texture = ExtResource("4_jscy8")
 editor_fit_preview_cell = Vector2i(33, 11)
 editor_fit_footprint = Vector2i(1, 1)
-editor_fit_texture_scale = 1.0
+editor_fit_texture_scale = 1.82
+editor_fit_offset_tiles = Vector2(0, -0.34)
 land_base_scale = 0.8180000000000001
 land_base_offset = Vector2(0.995, 0.57)
 

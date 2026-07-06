@@ -23,6 +23,7 @@ var _fog_of_war: Node = null
 func _ready() -> void:
 	z_index = 2
 	_bind_siblings()
+	_connect_fog_signals()
 	_build_portals()
 	_ensure_confirm_panel()
 	set_process(true)
@@ -73,9 +74,21 @@ func _bind_siblings() -> void:
 	_fog_of_war = get_parent().get_node_or_null("FogOfWar2D")
 
 
+
+func _connect_fog_signals() -> void:
+	if _fog_of_war == null or not _fog_of_war.has_signal("fog_updated"):
+		return
+	var callback := Callable(self, "_on_fog_updated")
+	if not _fog_of_war.fog_updated.is_connected(callback):
+		_fog_of_war.fog_updated.connect(callback)
+
+
+func _on_fog_updated(_player: int) -> void:
+	queue_redraw()
+
 func _build_portals() -> void:
 	_portals = [
-		_make_portal("elf", "精灵龙门", 0, Vector2i(50, 21), Vector2i(50, 24)),
+		_make_portal("elf", "精灵龙门", 0, Vector2i(50, 20), Vector2i(50, 24)),
 		_make_portal("dwarf", "矮人龙门", 1, Vector2i(44, 33), Vector2i(46, 30)),
 		_make_portal("orc", "兽人龙门", 2, Vector2i(56, 33), Vector2i(53, 30)),
 	]
@@ -261,14 +274,14 @@ func _get_portal_end_at(grid_pos: Vector2i) -> Dictionary:
 func _draw_portal_end(portal: Dictionary, side: String) -> void:
 	var anchor: Vector2i = portal.get("%s_anchor" % side, Vector2i.ZERO)
 	var portal_center := _grid_to_world(anchor.x, anchor.y)
-	var tex_size := 48.0
+	var tex_size := 38.4
 	draw_texture_rect(PORTAL_TEXTURE, Rect2(portal_center - Vector2(tex_size, tex_size) * 0.5, Vector2(tex_size, tex_size)), false)
 
 
 func _is_cell_visible(player: int, cell: Vector2i) -> bool:
 	if _fog_of_war == null or not _fog_of_war.has_method("get_fog"):
 		return true
-	return _fog_of_war.get_fog(player, cell.x, cell.y) <= 0.0
+	return _fog_of_war.get_fog(player, cell.x, cell.y) < 0.7
 
 
 

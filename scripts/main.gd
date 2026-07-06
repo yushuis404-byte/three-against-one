@@ -356,13 +356,8 @@ const FACTION_SPAWNS := [
 
 
 func _place_initial_buildings() -> void:
-	## 每阵营：1 座主城（2×2）+ 1 座特色资源建筑
-	## 精灵→伐木场，矮人→采石场，兽人→农场
-	var faction_buildings := {
-		0: BuildingData.infra_lumber_camp(),
-		1: BuildingData.infra_quarry(),
-		2: BuildingData.infra_farm(),
-	}
+	## 每阵营：1 座主城（2×2）+ 3 座经济建筑（农场/采石场/伐木场）
+	var all_infra := [BuildingData.infra_farm(), BuildingData.infra_quarry(), BuildingData.infra_lumber_camp()]
 	for s in FACTION_SPAWNS:
 		var p: int = s["player"]
 		var origin: Vector2i = s["th_origin"]
@@ -371,23 +366,30 @@ func _place_initial_buildings() -> void:
 		var th_placed: bool = building_manager.place_building(BuildingData.town_hall(), p, origin)
 		print("[建筑] 阵营 %d 主城放置: %s at %s" % [p, str(th_placed), str(origin)])
 
-		# 特色资源建筑：在主城旁尝试偏移位置放置
-		var infra: BuildingData = faction_buildings[p]
-		var offsets := [
+		# 三座经济建筑：依次在主城旁尝试偏移放置
+		var used_cells: Array[Vector2i] = []
+		var infra_offsets := [
 			Vector2i(-1, 0), Vector2i(2, 0),
 			Vector2i(0, -1),
 			Vector2i(-1, 1), Vector2i(2, 1),
 			Vector2i(-1, -1), Vector2i(2, -1),
+			Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 1),
 		]
-		var infra_placed: bool = false
-		for off in offsets:
-			var cand := Vector2i(origin.x + off.x, origin.y + off.y)
-			if building_manager.place_building(infra, p, cand):
-				infra_placed = true
-				print("[建筑] 阵营 %d %s 放置: true at %s" % [p, infra.name, str(cand)])
-				break
-		if not infra_placed:
-			print("[建筑] 阵营 %d %s 放置失败!" % [p, infra.name])
+		for infra in all_infra:
+			var placed: bool = false
+			for off in infra_offsets:
+				var cand := Vector2i(origin.x + off.x, origin.y + off.y)
+				if cand in used_cells:
+					continue
+				if building_manager.place_building(infra, p, cand):
+					used_cells.append(cand)
+					placed = true
+					print("[建筑] 阵营 %d %s 放置: true at %s" % [p, infra.name, str(cand)])
+					break
+			if not placed:
+				print("[建筑] 阵营 %d %s 放置失败!" % [p, infra.name])
+
+
 
 
 		# 招募营：在主城旁尝试偏移位置放置

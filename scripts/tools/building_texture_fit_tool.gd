@@ -18,7 +18,7 @@ const PRESET_TEXTURES := [
 	{"key": "forge", "name": "Forge", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "recruit_camp", "name": "Recruit Camp", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
 	{"key": "scout_post", "name": "Scout Post", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
-	{"key": "watch_tower", "name": "Watch Tower", "path": "", "footprint": Vector2i(1, 1), "scale": 1.0},
+	{"key": "watch_tower", "name": "Watch Tower", "path": "res://assets/texture/watchtower.png", "footprint": Vector2i(1, 1), "scale": 1.82},
 ]
 
 var _preset_index := 0
@@ -186,6 +186,7 @@ func _save_config() -> void:
 		"footprint": [_footprint.x, _footprint.y],
 		"scale": _texture_scale,
 		"offset": [_offset_tiles.x, _offset_tiles.y],
+		"preserve_aspect": key == "watch_tower",
 	}
 	var file := FileAccess.open(CONFIG_PATH, FileAccess.WRITE)
 	if file == null:
@@ -222,6 +223,8 @@ func _draw_preview(preview_rect: Rect2) -> void:
 	draw_rect(footprint_rect, Color(0.48, 0.78, 1.0, 0.95), false, 2.0)
 	if _texture != null:
 		var tex_size := footprint_size * _texture_scale
+		if str(PRESET_TEXTURES[_preset_index].get("key", "")) == "watch_tower" and _texture.get_width() > 0:
+			tex_size.y = tex_size.x * float(_texture.get_height()) / float(_texture.get_width())
 		var tex_rect := Rect2(footprint_rect.get_center() - tex_size * 0.5 + _offset_tiles * tile_px, tex_size)
 		draw_texture_rect(_texture, tex_rect, false)
 		draw_rect(tex_rect, Color(1.0, 1.0, 1.0, 0.65), false, 1.0)

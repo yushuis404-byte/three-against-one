@@ -458,6 +458,8 @@ func _get_portrait_spec(unit: Dictionary) -> Dictionary:
 		"unit.orc.slinger": {"path": "res://assets/texture/character/orc/Orc-Slinger-Idle.png", "frame_size": Vector2(252.0, 255.0)},
 		"neutral.wyvern.fire": {"path": "res://assets/texture/character/dragon/Fire-Dragon-Idle.png", "frame_size": Vector2(320.0, 320.0)},
 		"neutral.wyvern.frost": {"path": "res://assets/texture/character/dragon/Ice-Dragon-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"neutral.wyvern.toxic": {"path": "res://assets/texture/character/dragon/Poison-Dragon-Idle.png", "frame_size": Vector2(320.0, 320.0)},
+		"neutral.dragon.ancient": {"path": "res://assets/texture/character/dragon/Ancient-Dragon-Idle.png", "frame_size": Vector2(320.0, 320.0)},
 		"unit.worker": {"path": "res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png", "frame_size": Vector2(320.0, 320.0)},
 		"unit.scout": {"path": "res://assets/texture/character/elf/Scout/Elf-Scout-Idle.png", "frame_size": Vector2(320.0, 320.0)},
 		"unit.guard": {"path": "res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png", "frame_size": Vector2(320.0, 320.0)},

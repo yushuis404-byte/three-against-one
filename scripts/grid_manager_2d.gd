@@ -13,6 +13,7 @@ const EDITOR_FIT_DWARF_CAPITAL_PATH := "res://assets/texture/Dwarf Capital.png"
 const EDITOR_FIT_ORC_CAPITAL_PATH := "res://assets/texture/Orc Capital.png"
 const EDITOR_FIT_GOLD_MINE_PATH := "res://assets/texture/Gold mine.png"
 const EDITOR_FIT_STONE_PATH := "res://assets/texture/stone.png"
+const EDITOR_FIT_WATCH_TOWER_PATH := "res://assets/texture/watchtower.png"
 const WATER_MIDDLE_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/Water_Middle.png"
 const WATER_CORNER_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_corner2.png"
 const WATER_CORNER_UP_PATH := "res://assets/texture/Cute_Fantasy_Free/Tiles/clif_corner_up.png"
@@ -78,7 +79,7 @@ var grid_center := Vector2((GRID_COLS - 1) * 0.5, (GRID_ROWS - 1) * 0.5)  # 全�
 
 # ========== 巨龙山体参数 ==========
 const NEST_RADIUS := 1.5
-const MOUNT_RADIUS := 5.3
+const MOUNT_RADIUS := 7.3
 const RESOURCE_OUTER := 9.5
 
 # ========== 阵营种子点 ==========
@@ -404,11 +405,16 @@ func _apply_editor_fit_preset_defaults() -> void:
 			editor_fit_footprint = Vector2i(1, 1)
 			editor_fit_texture_scale = 1.0
 			editor_fit_offset_tiles = Vector2.ZERO
-		6, 7, 8, 9, 10, 11, 12, 13, 14:
+		6, 7, 8, 9, 10, 11, 12, 13:
 			editor_fit_preview_cell = Vector2i(33, 11)
 			editor_fit_footprint = Vector2i(1, 1)
 			editor_fit_texture_scale = 1.0
 			editor_fit_offset_tiles = Vector2.ZERO
+		14:
+			editor_fit_preview_cell = Vector2i(33, 11)
+			editor_fit_footprint = Vector2i(1, 1)
+			editor_fit_texture_scale = 1.82
+			editor_fit_offset_tiles = Vector2(0.0, -0.34)
 		_:
 			editor_fit_footprint = Vector2i(1, 1)
 			editor_fit_texture_scale = 1.0
@@ -439,7 +445,7 @@ func _get_editor_fit_texture_path() -> String:
 		4:
 			return EDITOR_FIT_STONE_PATH
 		5, 6, 7, 8, 9, 10, 11, 12, 13, 14:
-			return ""
+			return EDITOR_FIT_WATCH_TOWER_PATH if editor_fit_preset == 14 else ""
 	return ""
 
 
@@ -494,6 +500,7 @@ func _save_editor_building_fit_config() -> void:
 		"scale": editor_fit_texture_scale,
 		"offset": [editor_fit_offset_tiles.x, editor_fit_offset_tiles.y],
 		"preview_cell": [editor_fit_preview_cell.x, editor_fit_preview_cell.y],
+		"preserve_aspect": key == "watch_tower",
 	}
 	var json_text := JSON.stringify(config, "\t")
 	var file := FileAccess.open(BUILDING_TEXTURE_FIT_CONFIG_PATH, FileAccess.WRITE)
@@ -1312,6 +1319,8 @@ func _draw_editor_building_texture_fit() -> void:
 	draw_line(Vector2(center.x, footprint_rect.position.y - TILE_SIZE), Vector2(center.x, footprint_rect.end.y + TILE_SIZE), Color(1.0, 0.92, 0.38, 0.85), 1.0)
 	draw_line(Vector2(footprint_rect.position.x - TILE_SIZE, center.y), Vector2(footprint_rect.end.x + TILE_SIZE, center.y), Color(1.0, 0.92, 0.38, 0.85), 1.0)
 	var tex_size := footprint_size * editor_fit_texture_scale
+	if editor_fit_preset == 14 and _editor_fit_texture.get_width() > 0:
+		tex_size.y = tex_size.x * float(_editor_fit_texture.get_height()) / float(_editor_fit_texture.get_width())
 	var tex_rect := Rect2(center - tex_size * 0.5 + editor_fit_offset_tiles * TILE_SIZE, tex_size)
 	draw_texture_rect(_editor_fit_texture, tex_rect, false)
 	draw_rect(tex_rect, Color(1.0, 1.0, 1.0, 0.7), false, 1.0)

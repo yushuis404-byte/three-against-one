@@ -351,7 +351,7 @@ func place_building(data: BuildingData, faction: int, origin: Vector2i) -> bool:
 		var reveal_radius: int = 5 if BuildingRules.is_watch_tower(data) else 3
 		_fog_mgr.reveal_area_immediate(faction, center_x, center_y, reveal_radius)
 
-	if BuildingRules.is_outpost(data) and _territory_mgr and _territory_mgr.has_method("recalc_territory"):
+	if _territory_mgr and _territory_mgr.has_method("recalc_territory"):
 		_territory_mgr.recalc_territory(faction)
 
 	if data.storage_level > 0 and _resource_tracker and _resource_tracker.has_method("update_display"):
@@ -904,6 +904,8 @@ func _draw_buildings() -> void:
 			var offset_tiles: Vector2 = fit.get("offset", Vector2.ZERO)
 			var tex_w: float = w * texture_scale
 			var tex_h: float = h * texture_scale
+			if bool(fit.get("preserve_aspect", false)) and building_texture.get_width() > 0:
+				tex_h = tex_w * float(building_texture.get_height()) / float(building_texture.get_width())
 			var tex_rect := Rect2(
 				top_left.x + w / 2.0 - tex_w / 2.0 + offset_tiles.x * tile_size,
 				top_left.y + h / 2.0 - tex_h / 2.0 + offset_tiles.y * tile_size,
@@ -1213,6 +1215,7 @@ func _get_building_texture_fit(key: String, default_scale: float) -> Dictionary:
 	var result := {
 		"scale": default_scale,
 		"offset": Vector2.ZERO,
+		"preserve_aspect": key == "watch_tower",
 	}
 	var resolved_key := _resolve_building_texture_key(key)
 	if not _building_texture_fit_config.has(resolved_key):
@@ -1229,6 +1232,8 @@ func _get_building_texture_fit(key: String, default_scale: float) -> Dictionary:
 			var offset_array: Array = offset_variant
 			if offset_array.size() >= 2:
 				result["offset"] = Vector2(float(offset_array[0]), float(offset_array[1]))
+	if fit.has("preserve_aspect"):
+		result["preserve_aspect"] = bool(fit.get("preserve_aspect", result.get("preserve_aspect", false)))
 	return result
 
 
