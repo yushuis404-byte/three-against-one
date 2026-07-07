@@ -2,6 +2,10 @@ extends Control
 ## 建造面板 UI — 双栏布局：左侧分类 + 右侧卡片网格 + 底部详情
 
 signal building_selected(data: BuildingData)
+signal panel_closed
+
+const CLOSE_ICON_RED: Texture2D = preload("res://assets/ui/cross_red.svg")
+const CLOSE_ICON_DARK_RED: Texture2D = preload("res://assets/ui/cross_dark_red.svg")
 
 var _turn_manager: Node = null
 var _building_manager: Node = null
@@ -9,6 +13,7 @@ var _resource_tracker: Node = null
 var _civilization_rules: Node = null
 var _current_player := 0
 var _selected_cat: BuildingData.BuildingCategory = BuildingData.BuildingCategory.ECONOMY
+var _hovered_cat: int = -1
 
 # 节点引用
 var _title_label: Label
@@ -17,6 +22,13 @@ var _card_grid: GridContainer
 var _detail_name: Label
 var _detail_cost: Label
 var _detail_desc: Label
+var _close_button: TextureButton
+const CLOSE_BUTTON_LEFT_OFFSET := -22.4
+const CLOSE_BUTTON_TOP_OFFSET := 10.8
+const CLOSE_BUTTON_RIGHT_OFFSET := -8.0
+const CLOSE_BUTTON_BOTTOM_OFFSET := 25.2
+const DIRECTORY_NORMAL_COLOR := Color(1.0, 1.0, 1.0, 0.8)
+const DIRECTORY_ACTIVE_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 var _cat_buttons: Dictionary = {}  # BuildingCategory → Button
 
 const CATEGORY_NAMES := {
@@ -65,15 +77,23 @@ func set_civilization_rules(rules: Node) -> void:
 
 
 func toggle_panel() -> void:
-	visible = not visible
+	if visible:
+		hide_panel()
+	else:
+		_reset_close_button_layout()
+		visible = true
 
 func hide_panel() -> void:
+	var was_visible := visible
 	visible = false
+	if was_visible:
+		panel_closed.emit()
 
 func refresh(player: int) -> void:
 	_current_player = player
 	if _title_label:
 		_title_label.text = "[%s] 建造" % GameCatalog.faction_name(player)
+	_reset_close_button_layout()
 	# 刷新当前分类的卡片（更新已建数量）
 	_select_category(_selected_cat)
 
@@ -89,6 +109,21 @@ func _build_ui() -> void:
 	panel.offset_right = 1900.0
 	panel.offset_bottom = 700.0
 	add_child(panel)
+
+	_close_button = TextureButton.new()
+	_close_button.name = "CloseButton"
+	_close_button.texture_normal = CLOSE_ICON_RED
+	_close_button.texture_hover = CLOSE_ICON_DARK_RED
+	_close_button.texture_pressed = CLOSE_ICON_DARK_RED
+	_close_button.texture_disabled = CLOSE_ICON_RED
+	_close_button.ignore_texture_size = true
+	_close_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	_reset_close_button_layout()
+	_close_button.focus_mode = Control.FOCUS_NONE
+	_close_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	_close_button.button_down.connect(_on_close_button_down)
+	_close_button.button_up.connect(_on_close_button_up)
+	panel.add_child(_close_button)
 
 	var margin := MarginContainer.new()
 	margin.name = "Margin"
@@ -130,15 +165,21 @@ func _build_ui() -> void:
 	for cat in CATEGORY_ORDER:
 		var btn := Button.new()
 		btn.name = "Btn_%d" % cat
-		btn.text = CATEGORY_NAMES.get(cat, "?")
+		btn.text = "  " + CATEGORY_NAMES.get(cat, "?")
 		btn.flat = true
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.add_theme_font_size_override("font_size", 13)
+		btn.add_theme_color_override("font_color", DIRECTORY_NORMAL_COLOR)
+		btn.add_theme_color_override("font_hover_color", DIRECTORY_NORMAL_COLOR)
+		btn.add_theme_color_override("font_pressed_color", DIRECTORY_ACTIVE_COLOR)
+		btn.add_theme_color_override("font_focus_color", DIRECTORY_ACTIVE_COLOR)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_sidebar.add_child(btn)
 		_cat_buttons[cat] = btn
 		var captured_cat: BuildingData.BuildingCategory = cat
 		btn.pressed.connect(func(): _select_category(captured_cat))
+		btn.mouse_entered.connect(func(): _set_hovered_category(captured_cat))
+		btn.mouse_exited.connect(func(): _set_hovered_category(-1))
 
 	# 右侧卡片区
 	_card_grid = GridContainer.new()
@@ -204,23 +245,32 @@ func _build_ui() -> void:
 func _select_category(cat: BuildingData.BuildingCategory) -> void:
 	_selected_cat = cat
 
-	# 更新按钮高亮
-	var selected_style := StyleBoxFlat.new()
-	selected_style.bg_color = Color(0.24, 0.24, 0.24, 0.8)
-	selected_style.corner_radius_top_left = 3
-	selected_style.corner_radius_top_right = 3
-	selected_style.corner_radius_bottom_left = 3
-	selected_style.corner_radius_bottom_right = 3
-
-	for c in _cat_buttons:
-		var btn: Button = _cat_buttons[c]
-		if c == cat:
-			btn.add_theme_stylebox_override("normal", selected_style)
-		else:
-			btn.remove_theme_stylebox_override("normal")
+	_update_category_buttons()
 
 	# 重建卡片
 	_rebuild_cards(cat)
+
+
+func _set_hovered_category(cat: int) -> void:
+	_hovered_cat = cat
+	_update_category_buttons()
+
+
+func _update_category_buttons() -> void:
+	for c in _cat_buttons:
+		var btn: Button = _cat_buttons[c]
+		var is_active: bool = c == _selected_cat
+		var is_hovered: bool = c == _hovered_cat
+		var color: Color = DIRECTORY_ACTIVE_COLOR if is_active else DIRECTORY_NORMAL_COLOR
+		var marker := "▸ " if is_active or is_hovered else "  "
+		btn.text = marker + CATEGORY_NAMES.get(c, "?")
+		btn.add_theme_color_override("font_color", color)
+		btn.add_theme_color_override("font_hover_color", color)
+		btn.add_theme_color_override("font_pressed_color", DIRECTORY_ACTIVE_COLOR)
+		btn.add_theme_color_override("font_focus_color", DIRECTORY_ACTIVE_COLOR)
+		btn.remove_theme_stylebox_override("normal")
+		btn.remove_theme_stylebox_override("hover")
+		btn.remove_theme_stylebox_override("pressed")
 
 
 func _rebuild_cards(cat: BuildingData.BuildingCategory) -> void:
@@ -408,3 +458,28 @@ func _get_built_count(building_name: String) -> int:
 	if not _building_manager or not _building_manager.has_method("count_buildings"):
 		return 0
 	return _building_manager.count_buildings(_current_player, building_name)
+
+
+func _on_close_button_down() -> void:
+	if _close_button != null:
+		_apply_close_button_offsets(Vector2(1.0, 1.0))
+
+
+func _on_close_button_up() -> void:
+	if _close_button != null:
+		_reset_close_button_layout()
+	hide_panel()
+
+
+func _reset_close_button_layout() -> void:
+	_apply_close_button_offsets(Vector2.ZERO)
+
+
+func _apply_close_button_offsets(delta: Vector2) -> void:
+	if _close_button == null:
+		return
+	_close_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_close_button.offset_left = CLOSE_BUTTON_LEFT_OFFSET + delta.x
+	_close_button.offset_top = CLOSE_BUTTON_TOP_OFFSET + delta.y
+	_close_button.offset_right = CLOSE_BUTTON_RIGHT_OFFSET + delta.x
+	_close_button.offset_bottom = CLOSE_BUTTON_BOTTOM_OFFSET + delta.y

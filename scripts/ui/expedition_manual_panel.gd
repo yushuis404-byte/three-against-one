@@ -4,17 +4,24 @@ extends Control
 const BOOK_TEXTURE: Texture2D = preload("res://assets/ui/手册底图.png")
 const PREV_ICON: Texture2D = preload("res://assets/ui/上一页.png")
 const NEXT_ICON: Texture2D = preload("res://assets/ui/下一页.png")
+const CLOSE_ICON: Texture2D = preload("res://assets/ui/cross.svg")
+const CLOSE_ICON_GRAY70: Texture2D = preload("res://assets/ui/cross_gray70.svg")
+const CLOSE_ICON_BLACK: Texture2D = preload("res://assets/ui/cross_black.svg")
 
 const TEXT_DARK := Color(0.10, 0.09, 0.075)
 const TEXT_GRAY := Color(0.32, 0.30, 0.26)
 const TEXT_MUTED := Color(0.45, 0.42, 0.36)
 const SELECTED_COLOR := Color(0.06, 0.055, 0.045)
+const DIRECTORY_BLACK_100 := Color(0.0, 0.0, 0.0)
+const DIRECTORY_GRAY_90 := Color(0.10, 0.10, 0.10)
+const DIRECTORY_GRAY_80 := Color(0.20, 0.20, 0.20)
+const DIRECTORY_GRAY_70 := Color(0.30, 0.30, 0.30)
 const HOVER_COLOR := Color(0.16, 0.14, 0.11)
 const PANEL_SIZE := Vector2(1920.0, 1080.0)
 const BOOK_MARGIN := Vector2(120.0, 88.0)
 const SPINE_GAP := 114.0
-const PAGE_INSET_LEFT := 92.0
-const PAGE_INSET_RIGHT := 92.0
+const PAGE_INSET_LEFT := 80.0
+const PAGE_INSET_RIGHT := 80.0
 const PAGE_INSET_TOP := 82.0
 const PAGE_INSET_BOTTOM := 110.0
 
@@ -28,7 +35,8 @@ var _item_box: VBoxContainer = null
 var _content_title: Label = null
 var _content_body: RichTextLabel = null
 var _entry_image: TextureRect = null
-var _close_button: Button = null
+var _close_button: TextureButton = null
+var _close_button_base_position := Vector2.ZERO
 var _prev_button: TextureButton = null
 var _next_button: TextureButton = null
 
@@ -43,12 +51,6 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
-	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.0, 0.0, 0.0, 0.48)
-	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(backdrop)
-
 	var book := TextureRect.new()
 	book.texture = BOOK_TEXTURE
 	book.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -58,26 +60,33 @@ func _build_ui() -> void:
 	book.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(book)
 
-	_close_button = Button.new()
-	_close_button.text = "关闭"
+	_close_button = TextureButton.new()
+	_close_button.texture_normal = CLOSE_ICON_GRAY70
+	_close_button.texture_hover = CLOSE_ICON_BLACK
+	_close_button.texture_pressed = CLOSE_ICON_BLACK
+	_close_button.texture_disabled = CLOSE_ICON_GRAY70
+	_close_button.ignore_texture_size = true
+	_close_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	_close_button.focus_mode = Control.FOCUS_NONE
-	_close_button.position = Vector2(PANEL_SIZE.x - BOOK_MARGIN.x - 92.0, BOOK_MARGIN.y + 28.0)
-	_close_button.size = Vector2(68.0, 30.0)
-	_close_button.pressed.connect(_on_close_pressed)
+	_close_button_base_position = Vector2(PANEL_SIZE.x - BOOK_MARGIN.x - 128.0, BOOK_MARGIN.y + 70.0)
+	_close_button.position = _close_button_base_position
+	_close_button.size = Vector2(28.0, 28.0)
+	_close_button.button_down.connect(_on_close_button_down)
+	_close_button.button_up.connect(_on_close_button_up)
 	add_child(_close_button)
 
-	var content_origin := BOOK_MARGIN + Vector2(50.0, 50.0)
+	var content_origin := BOOK_MARGIN + Vector2(50.0, 0.0)
 	var content_size := PANEL_SIZE - BOOK_MARGIN * 2.0 - Vector2(100.0, 100.0)
 	var page_width := (content_size.x - SPINE_GAP) * 0.5
 	var page_height := content_size.y
 
 	var left_rect := Rect2(
-		content_origin + Vector2(PAGE_INSET_LEFT + 70.0, PAGE_INSET_TOP),
-		Vector2(page_width - PAGE_INSET_LEFT - 70.0 - 42.0, page_height - PAGE_INSET_TOP - PAGE_INSET_BOTTOM + 30.0)
+		content_origin + Vector2(PAGE_INSET_LEFT, PAGE_INSET_TOP),
+		Vector2(page_width - PAGE_INSET_LEFT - 80.0, page_height - PAGE_INSET_TOP - PAGE_INSET_BOTTOM + 30.0)
 	)
 	var right_rect := Rect2(
 		content_origin + Vector2(page_width + SPINE_GAP + 42.0, PAGE_INSET_TOP),
-		Vector2(page_width - PAGE_INSET_RIGHT - 70.0 - 42.0, page_height - PAGE_INSET_TOP - PAGE_INSET_BOTTOM + 30.0)
+		Vector2(page_width - PAGE_INSET_RIGHT - 42.0, page_height - PAGE_INSET_TOP - PAGE_INSET_BOTTOM + 30.0)
 	)
 
 	var left_scroll := ScrollContainer.new()
@@ -125,9 +134,12 @@ func _build_ui() -> void:
 
 	_prev_button = TextureButton.new()
 	_prev_button.texture_normal = PREV_ICON
+	_prev_button.texture_hover = PREV_ICON
+	_prev_button.texture_pressed = PREV_ICON
+	_prev_button.texture_disabled = PREV_ICON
 	_prev_button.ignore_texture_size = true
 	_prev_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	_prev_button.position = Vector2(left_rect.position.x, BOOK_MARGIN.y + book.size.y - 74.0)
+	_prev_button.position = Vector2(left_rect.position.x, BOOK_MARGIN.y + book.size.y - 124.0)
 	_prev_button.size = Vector2(80.0, 42.0)
 	_prev_button.focus_mode = Control.FOCUS_NONE
 	_prev_button.pressed.connect(_on_prev_pressed)
@@ -135,9 +147,12 @@ func _build_ui() -> void:
 
 	_next_button = TextureButton.new()
 	_next_button.texture_normal = NEXT_ICON
+	_next_button.texture_hover = NEXT_ICON
+	_next_button.texture_pressed = NEXT_ICON
+	_next_button.texture_disabled = NEXT_ICON
 	_next_button.ignore_texture_size = true
 	_next_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	_next_button.position = Vector2(right_rect.position.x + right_rect.size.x - 80.0, BOOK_MARGIN.y + book.size.y - 74.0)
+	_next_button.position = Vector2(right_rect.position.x + right_rect.size.x - 80.0, BOOK_MARGIN.y + book.size.y - 124.0)
 	_next_button.size = Vector2(80.0, 42.0)
 	_next_button.focus_mode = Control.FOCUS_NONE
 	_next_button.pressed.connect(_on_next_pressed)
@@ -327,18 +342,22 @@ func _directory_prefix(level: int, has_children: bool, is_collapsed: bool, selec
 
 func _directory_font_size(level: int) -> int:
 	if level == 0:
-		return 19
+		return 21
 	if level == 1:
-		return 17
-	return 15
+		return 19
+	return 17
 
 
 func _directory_color(level: int, selected: bool) -> Color:
 	if selected:
-		return SELECTED_COLOR
-	if level <= 1:
-		return TEXT_DARK
-	return TEXT_GRAY
+		return DIRECTORY_BLACK_100
+	if level == 0:
+		return DIRECTORY_BLACK_100
+	if level == 1:
+		return DIRECTORY_GRAY_90
+	if level == 2:
+		return DIRECTORY_GRAY_80
+	return DIRECTORY_GRAY_70
 
 
 func _empty_style() -> StyleBoxFlat:
@@ -486,6 +505,17 @@ func _on_prev_pressed() -> void:
 
 func _on_next_pressed() -> void:
 	_select_relative_item(1)
+
+
+func _on_close_button_down() -> void:
+	if _close_button != null:
+		_close_button.position = _close_button_base_position + Vector2(2.0, 2.0)
+
+
+func _on_close_button_up() -> void:
+	if _close_button != null:
+		_close_button.position = _close_button_base_position
+	_on_close_pressed()
 
 
 func _on_close_pressed() -> void:

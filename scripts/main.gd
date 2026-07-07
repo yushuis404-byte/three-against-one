@@ -66,6 +66,7 @@ var score_label: Label = null
 var civilization_route_panel: Control = null
 var civilization_route_button: Button = null
 var creative_mode_button: Button = null
+var building_panel_button: Button = null
 var end_turn_button: Button = null
 var wall_blueprint_button: Button = null
 var wall_blueprint_status_label: Label = null
@@ -206,7 +207,10 @@ func _setup_game() -> void:
 	if building_ui.has_method("set_civilization_rules"):
 		building_ui.set_civilization_rules(civilization_rules)
 	building_ui.building_selected.connect(_on_building_selected)
+	if building_ui.has_signal("panel_closed"):
+		building_ui.panel_closed.connect(_on_building_panel_closed)
 	building_ui.refresh(turn_manager.current_player)
+	_init_building_panel_button()
 
 	recruit_ui.recruit_requested.connect(_on_recruit_requested)
 
@@ -693,6 +697,37 @@ func _init_creative_mode_button() -> void:
 	_update_creative_mode_button()
 
 
+func _init_building_panel_button() -> void:
+	building_panel_button = Button.new()
+	building_panel_button.name = "BuildingPanelButton"
+	building_panel_button.text = "\u5efa\u9020"
+	building_panel_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	building_panel_button.offset_left = -104.0
+	building_panel_button.offset_top = 54.0
+	building_panel_button.offset_right = -16.0
+	building_panel_button.offset_bottom = 86.0
+	building_panel_button.size = Vector2(88.0, 32.0)
+	building_panel_button.focus_mode = Control.FOCUS_NONE
+	building_panel_button.z_index = 130
+	building_panel_button.add_theme_font_size_override("font_size", 15)
+	building_panel_button.pressed.connect(_on_building_panel_button_pressed)
+	$UI.add_child(building_panel_button)
+
+
+func _on_building_panel_button_pressed() -> void:
+	if building_ui == null:
+		return
+	building_ui.visible = true
+	building_ui.refresh(_get_display_player())
+	if building_panel_button != null:
+		building_panel_button.visible = false
+
+
+func _on_building_panel_closed() -> void:
+	if building_panel_button != null:
+		building_panel_button.visible = true
+
+
 func _on_creative_mode_toggled(enabled: bool) -> void:
 	_creative_mode_enabled = enabled
 	if turn_manager != null and turn_manager.has_method("set_creative_mode_enabled"):
@@ -889,6 +924,15 @@ func _make_normalized_nav_icon(source_texture: Texture2D) -> Texture2D:
 	return ImageTexture.create_from_image(canvas)
 
 
+func _apply_transparent_icon_button_style(button: Button) -> void:
+	var empty := StyleBoxEmpty.new()
+	button.add_theme_stylebox_override("normal", empty)
+	button.add_theme_stylebox_override("hover", empty)
+	button.add_theme_stylebox_override("pressed", empty)
+	button.add_theme_stylebox_override("disabled", empty)
+	button.add_theme_stylebox_override("focus", empty)
+
+
 func _init_achievement_tree_panel() -> void:
 	achievement_tree_panel = AchievementTreePanelScript.new()
 	achievement_tree_panel.name = "AchievementTreePanel"
@@ -904,7 +948,7 @@ func _init_achievement_tree_panel() -> void:
 func _init_achievement_tree_button() -> void:
 	var acontainer := VBoxContainer.new()
 	acontainer.name = "AchievementTreeContainer"
-	acontainer.position = Vector2(16.0, 168.0)
+	acontainer.position = Vector2(16.0, 88.0)
 	acontainer.z_index = 90
 	achievement_tree_button = Button.new()
 	achievement_tree_button.name = "AchievementTreeButton"
@@ -913,6 +957,7 @@ func _init_achievement_tree_button() -> void:
 	achievement_tree_button.custom_minimum_size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	achievement_tree_button.size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	achievement_tree_button.focus_mode = Control.FOCUS_NONE
+	_apply_transparent_icon_button_style(achievement_tree_button)
 	achievement_tree_button.pressed.connect(_on_achievement_tree_button_pressed)
 	acontainer.add_child(achievement_tree_button)
 	var alabel := Label.new()
@@ -960,7 +1005,7 @@ func _init_technology_tree_panel() -> void:
 func _init_technology_tree_button() -> void:
 	var tcontainer := VBoxContainer.new()
 	tcontainer.name = "TechnologyTreeContainer"
-	tcontainer.position = Vector2(103.0, 168.0)
+	tcontainer.position = Vector2(103.0, 88.0)
 	tcontainer.z_index = 90
 	technology_tree_button = Button.new()
 	technology_tree_button.name = "TechnologyTreeButton"
@@ -969,6 +1014,7 @@ func _init_technology_tree_button() -> void:
 	technology_tree_button.custom_minimum_size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	technology_tree_button.size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	technology_tree_button.focus_mode = Control.FOCUS_NONE
+	_apply_transparent_icon_button_style(technology_tree_button)
 	technology_tree_button.pressed.connect(_on_technology_tree_button_pressed)
 	tcontainer.add_child(technology_tree_button)
 	var tlabel := Label.new()
@@ -1016,7 +1062,7 @@ func _init_expedition_manual_panel() -> void:
 func _init_expedition_manual_button() -> void:
 	var mcontainer := VBoxContainer.new()
 	mcontainer.name = "ExpeditionManualContainer"
-	mcontainer.position = Vector2(190.0, 168.0)
+	mcontainer.position = Vector2(190.0, 88.0)
 	mcontainer.z_index = 90
 	expedition_manual_button = Button.new()
 	expedition_manual_button.name = "ExpeditionManualButton"
@@ -1026,6 +1072,7 @@ func _init_expedition_manual_button() -> void:
 	expedition_manual_button.custom_minimum_size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	expedition_manual_button.size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	expedition_manual_button.focus_mode = Control.FOCUS_NONE
+	_apply_transparent_icon_button_style(expedition_manual_button)
 	expedition_manual_button.pressed.connect(_on_expedition_manual_button_pressed)
 	mcontainer.add_child(expedition_manual_button)
 	var mlabel := Label.new()
@@ -1136,7 +1183,7 @@ func _init_score_rule_button() -> void:
 	score_rule_button = Button.new()
 	score_rule_button.name = "ScoreRuleButton"
 	score_rule_button.text = "\u8ba1\u5206"
-	score_rule_button.position = Vector2(16.0, 256.0)
+	score_rule_button.position = Vector2(16.0, 206.0)
 	score_rule_button.size = Vector2(56.0, 30.0)
 	score_rule_button.focus_mode = Control.FOCUS_NONE
 	score_rule_button.z_index = 90
@@ -1174,7 +1221,7 @@ func _init_civilization_route_button() -> void:
 	civilization_route_button = Button.new()
 	civilization_route_button.name = "CivilizationRouteButton"
 	civilization_route_button.text = "\u8def\u7ebf"
-	civilization_route_button.position = Vector2(16.0, 291.0)
+	civilization_route_button.position = Vector2(16.0, 241.0)
 	civilization_route_button.size = Vector2(56.0, 30.0)
 	civilization_route_button.focus_mode = Control.FOCUS_NONE
 	civilization_route_button.z_index = 90
@@ -1405,26 +1452,11 @@ func _update_score_label(player: int) -> void:
 
 
 func _init_zoom_status_label() -> void:
-	zoom_status_label = Label.new()
-	zoom_status_label.name = "ZoomStatusLabel"
-	zoom_status_label.position = Vector2(16.0, 92.0)
-	zoom_status_label.size = Vector2(160.0, 28.0)
-	zoom_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	zoom_status_label.z_index = 95
-	zoom_status_label.add_theme_font_size_override("font_size", 16)
-	zoom_status_label.add_theme_color_override("font_color", Color(0.86, 0.92, 1.0))
-	zoom_status_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
-	zoom_status_label.add_theme_constant_override("shadow_offset_x", 1)
-	zoom_status_label.add_theme_constant_override("shadow_offset_y", 1)
-	$UI.add_child(zoom_status_label)
-	_update_zoom_status_label()
+	zoom_status_label = null
 
 
 func _update_zoom_status_label() -> void:
-	if zoom_status_label == null or camera == null:
-		return
-	var zoom_percent := int(roundf(camera.zoom.x * 100.0))
-	zoom_status_label.text = "Zoom: %d%%" % zoom_percent
+	return
 
 
 func _make_label_settings(color: Color) -> LabelSettings:
@@ -1873,6 +1905,8 @@ func _input(event: InputEvent) -> void:
 		elif event.keycode == KEY_1:
 			if current_state == GameState.PLAYING and building_ui != null:
 				building_ui.toggle_panel()
+				if building_panel_button != null:
+					building_panel_button.visible = not building_ui.visible
 		elif event.keycode == KEY_ESCAPE:
 			if building_ui != null and building_ui.visible:
 				building_ui.hide_panel()
