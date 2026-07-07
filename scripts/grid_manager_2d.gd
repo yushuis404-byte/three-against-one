@@ -1674,6 +1674,10 @@ func is_dragon_lair_walkable(x: int, y: int) -> bool:
 	return dist <= MOUNT_RADIUS
 
 
+func get_dragon_lair_center_grid() -> Vector2:
+	return Vector2(center.x + float(LAND_OFFSET_X), center.y)
+
+
 func grid_to_world(grid_x: int, grid_y: int) -> Vector2:
 	var world_offset := Vector2(-grid_center.x * TILE_SIZE, -grid_center.y * TILE_SIZE)
 	return Vector2(

@@ -7,6 +7,7 @@ const LINE_LOCKED := Color(0.22, 0.24, 0.27, 0.72)
 const LINE_OPEN := Color(0.34, 0.58, 0.90, 0.84)
 const LINE_DONE := Color(0.42, 0.90, 0.58, 0.90)
 const NODE_RADIUS := 34.0
+const ELF_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/精灵科技框.png")
 const CLOSE_RECT := Rect2(0, 0, 72, 26)
 const DETAIL_W := 360.0
 const HEADER_H := 36.0
@@ -306,7 +307,11 @@ func _draw_node(player: int, definition: Dictionary, center: Vector2, radius: fl
 	if id == _selected_id:
 		ring = Color(1.0, 0.90, 0.42, 1.0)
 	draw_circle(center, radius, fill)
-	draw_arc(center, radius, 0.0, TAU, 64, ring, 3.0 if id == _selected_id else 2.0)
+	if id.begins_with("tech.lord.elf"):
+		var frame_size := radius * 2.0
+		draw_texture_rect(ELF_FRAME_TEXTURE, Rect2(center - Vector2(radius, radius), Vector2(frame_size, frame_size)), false)
+	else:
+		draw_arc(center, radius, 0.0, TAU, 64, ring, 3.0 if id == _selected_id else 2.0)
 	draw_circle(center, maxi(4.0, radius * 0.16), family_color)
 	var title: String = str(definition.get("title", id))
 	if title.length() > 6:

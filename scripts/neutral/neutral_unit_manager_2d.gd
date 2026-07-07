@@ -10,6 +10,7 @@ const ANCIENT_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/cha
 const ANCIENT_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Ancient-Dragon-Attack.png")
 const PROGENITOR_DRAGON_IDLE_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Progenitor-Dragon-Idle.png")
 const PROGENITOR_DRAGON_ATTACK_TEXTURE: Texture2D = preload("res://assets/texture/character/dragon/Progenitor-Dragon-Attack.png")
+const PROGENITOR_DRAGON_ATTACK_SOUND: AudioStream = preload("res://assets/audio/始祖龙攻击音效.wav")
 ## 中立生物管理器 — 亚龙、流浪商队、哥布林复仇队
 ##
 ## 独立于 UnitManager2D，作为 GameBoard 同级子节点
@@ -55,13 +56,17 @@ const POISON_DRAGON_ATTACK_FRAMES := 10
 const ANCIENT_DRAGON_ATTACK_FRAMES := 29
 const PROGENITOR_DRAGON_ATTACK_FRAMES := 50
 const FIRE_DRAGON_FRAME_SIZE := Vector2(320.0, 320.0)
-const FIRE_DRAGON_DRAW_SIZE := Vector2(70.0, 70.0)
-const PROGENITOR_DRAGON_DRAW_SIZE := Vector2(116.0, 116.0)
+const FIRE_DRAGON_DRAW_SIZE := Vector2(56.0, 56.0)
+const ANCIENT_DRAGON_DRAW_SIZE := Vector2(70.0, 70.0)
+const PROGENITOR_DRAGON_DRAW_SIZE := Vector2(139.2, 139.2)
 const FIRE_DRAGON_ATTACK_DURATION := 0.55
-const PROGENITOR_DRAGON_ATTACK_DURATION := 0.85
+const PROGENITOR_DRAGON_ATTACK_DURATION := 5.0
 const DEFAULT_COMBAT_TICK_INTERVAL := 1.0
 const ANCIENT_DRAGON_ATTACK_INTERVAL := 3.0
 const PROGENITOR_DRAGON_LAIR_ATTACK_INTERVAL := 5.0
+const PROGENITOR_DRAGON_LAIR_DAMAGE_TIME := 4.0
+const PROGENITOR_DRAGON_LAIR_DAMAGE := 2
+const PROGENITOR_DRAGON_LAIR_ATTACK_RANGE := 4
 const PROGENITOR_DRAGON_FOOTPRINT := Vector2i(2, 2)
 const MIN_WYVERN_SPACING := 3  # 亚龙之间最小曼哈顿间距
 
@@ -88,6 +93,8 @@ var _hit_flash: Dictionary = {}    # unit_id -> true
 var _shake_offsets: Dictionary = {} # unit_id -> Vector2
 var _attack_visuals: Dictionary = {} # unit_id -> { t: float, flip_x: bool }
 var _progenitor_lair_attack_elapsed := 0.0
+var _progenitor_lair_attack_active := false
+var _progenitor_lair_damage_applied := false
 
 # ========== 外部引用 ==========
 var _grid_manager: Node = null
@@ -96,6 +103,7 @@ var _fog_manager: Node = null
 var _unit_manager: Node = null
 var _resource_tracker: Node = null
 var _technology_service: Node = null
+var _progenitor_attack_audio: AudioStreamPlayer = null
 
 
 func _ready() -> void:
@@ -104,7 +112,16 @@ func _ready() -> void:
 	_unit_manager = get_parent().get_node("UnitManager2D")
 	_resource_tracker = get_parent().get_node("ResourceTracker")
 	_technology_service = get_parent().get_node_or_null("TechnologyService")
+	_setup_progenitor_attack_audio()
 	set_process(true)
+
+
+func _setup_progenitor_attack_audio() -> void:
+	_progenitor_attack_audio = AudioStreamPlayer.new()
+	_progenitor_attack_audio.name = "ProgenitorAttackAudio"
+	_progenitor_attack_audio.stream = PROGENITOR_DRAGON_ATTACK_SOUND
+	_progenitor_attack_audio.volume_db = -3.0
+	add_child(_progenitor_attack_audio)
 
 
 func _process(delta: float) -> void:
@@ -439,24 +456,28 @@ func _get_dragon_sprite_spec(unit: Dictionary) -> Dictionary:
 				"idle": FIRE_DRAGON_IDLE_TEXTURE,
 				"attack": FIRE_DRAGON_ATTACK_TEXTURE,
 				"attack_frames": FIRE_DRAGON_ATTACK_FRAMES,
+				"draw_size": FIRE_DRAGON_DRAW_SIZE,
 			}
 		FROST_WYVERN_TEMPLATE_ID:
 			return {
 				"idle": ICE_DRAGON_IDLE_TEXTURE,
 				"attack": ICE_DRAGON_ATTACK_TEXTURE,
 				"attack_frames": ICE_DRAGON_ATTACK_FRAMES,
+				"draw_size": FIRE_DRAGON_DRAW_SIZE,
 			}
 		TOXIC_WYVERN_TEMPLATE_ID:
 			return {
 				"idle": POISON_DRAGON_IDLE_TEXTURE,
 				"attack": POISON_DRAGON_ATTACK_TEXTURE,
 				"attack_frames": POISON_DRAGON_ATTACK_FRAMES,
+				"draw_size": FIRE_DRAGON_DRAW_SIZE,
 			}
 		ANCIENT_DRAGON_TEMPLATE_ID:
 			return {
 				"idle": ANCIENT_DRAGON_IDLE_TEXTURE,
 				"attack": ANCIENT_DRAGON_ATTACK_TEXTURE,
 				"attack_frames": ANCIENT_DRAGON_ATTACK_FRAMES,
+				"draw_size": ANCIENT_DRAGON_DRAW_SIZE,
 			}
 		PROGENITOR_DRAGON_TEMPLATE_ID:
 			return {
@@ -549,17 +570,30 @@ func _process_progenitor_lair_attack(delta: float) -> void:
 		return
 	var progenitor: Dictionary = _get_alive_progenitor_dragon()
 	if progenitor.is_empty():
-		_progenitor_lair_attack_elapsed = 0.0
+		_reset_progenitor_lair_attack_state()
 		return
-	var targets: Array = _get_player_units_in_dragon_lair()
-	if targets.is_empty():
+	if not _progenitor_lair_attack_active:
+		if _get_player_units_in_progenitor_attack_range(progenitor).is_empty():
+			_reset_progenitor_lair_attack_state()
+			return
+		_progenitor_lair_attack_active = true
 		_progenitor_lair_attack_elapsed = 0.0
+		_progenitor_lair_damage_applied = false
+		_start_progenitor_lair_attack_visual(progenitor)
+		_play_progenitor_attack_sound()
 		return
 	_progenitor_lair_attack_elapsed += delta
-	if _progenitor_lair_attack_elapsed < PROGENITOR_DRAGON_LAIR_ATTACK_INTERVAL:
-		return
+	if not _progenitor_lair_damage_applied and _progenitor_lair_attack_elapsed >= PROGENITOR_DRAGON_LAIR_DAMAGE_TIME:
+		_progenitor_lair_damage_applied = true
+		_execute_progenitor_lair_attack(progenitor, _get_player_units_in_progenitor_attack_range(progenitor))
+	if _progenitor_lair_attack_elapsed >= PROGENITOR_DRAGON_LAIR_ATTACK_INTERVAL:
+		_reset_progenitor_lair_attack_state()
+
+
+func _reset_progenitor_lair_attack_state() -> void:
 	_progenitor_lair_attack_elapsed = 0.0
-	_execute_progenitor_lair_attack(progenitor, targets)
+	_progenitor_lair_attack_active = false
+	_progenitor_lair_damage_applied = false
 
 
 func _get_alive_progenitor_dragon() -> Dictionary:
@@ -586,6 +620,32 @@ func _get_player_units_in_dragon_lair() -> Array:
 	return result
 
 
+func _get_player_units_in_progenitor_attack_range(progenitor: Dictionary) -> Array:
+	var result: Array = []
+	if _unit_manager == null or not _unit_manager.has_method("get_all_units"):
+		return result
+	var units: Array = _unit_manager.call("get_all_units")
+	for unit_variant in units:
+		var unit: Dictionary = unit_variant
+		var pos: Vector2i = unit.get("grid_pos", Vector2i(-1, -1))
+		if not _is_lair_attack_target_cell(pos):
+			continue
+		if _distance_to_unit_footprint(pos, progenitor) <= PROGENITOR_DRAGON_LAIR_ATTACK_RANGE:
+			result.append(unit)
+	return result
+
+
+func _distance_to_unit_footprint(pos: Vector2i, neutral_unit: Dictionary) -> int:
+	var anchor: Vector2i = neutral_unit.get("grid_pos", Vector2i.ZERO)
+	var footprint: Vector2i = _get_unit_footprint(neutral_unit)
+	var best := 999999
+	for cell in _get_cells_for_footprint(anchor, footprint):
+		var dist: int = abs(pos.x - cell.x) + abs(pos.y - cell.y)
+		if dist < best:
+			best = dist
+	return best
+
+
 func _is_lair_attack_target_cell(pos: Vector2i) -> bool:
 	if pos.x < 0 or pos.x >= GRID_COLS or pos.y < 0 or pos.y >= GRID_ROWS:
 		return false
@@ -598,8 +658,7 @@ func _is_lair_attack_target_cell(pos: Vector2i) -> bool:
 
 
 func _execute_progenitor_lair_attack(progenitor: Dictionary, targets: Array) -> void:
-	_start_progenitor_lair_attack_visual(progenitor)
-	var damage: int = int(progenitor.get("atk", 8))
+	var damage: int = PROGENITOR_DRAGON_LAIR_DAMAGE
 	var hit_count := 0
 	for target_variant in targets:
 		var target: Dictionary = target_variant
@@ -611,6 +670,13 @@ func _execute_progenitor_lair_attack(progenitor: Dictionary, targets: Array) -> 
 				hit_count += 1
 	print("[中立] 始祖龙发动巢穴攻击，命中 %d 个玩家单位，伤害 %d" % [hit_count, damage])
 	queue_redraw()
+
+
+func _play_progenitor_attack_sound() -> void:
+	if _progenitor_attack_audio == null:
+		return
+	_progenitor_attack_audio.stop()
+	_progenitor_attack_audio.play()
 
 
 func _start_progenitor_lair_attack_visual(progenitor: Dictionary) -> void:
@@ -1158,9 +1224,10 @@ func place_initial_neutral_units() -> void:
 
 
 func _place_dragon_lair_units() -> void:
-	var center := Vector2i(int(round(MOUNTAIN_CENTER.x)), int(round(MOUNTAIN_CENTER.y)))
+	var center_pos: Vector2 = _get_dragon_lair_center_grid()
+	var center := Vector2i(int(floor(center_pos.x)), int(floor(center_pos.y)))
 	var blocked_positions: Array[Vector2i] = []
-	var progenitor_pos: Vector2i = _find_nearest_dragon_lair_footprint_anchor(center, blocked_positions, PROGENITOR_DRAGON_FOOTPRINT, 2)
+	var progenitor_pos: Vector2i = center if _is_valid_dragon_lair_footprint(center, PROGENITOR_DRAGON_FOOTPRINT, blocked_positions) else _find_nearest_dragon_lair_footprint_anchor(center, blocked_positions, PROGENITOR_DRAGON_FOOTPRINT, 2)
 	if progenitor_pos.x >= 0:
 		var progenitor_id := add_neutral_unit(
 			PROGENITOR_DRAGON_TEMPLATE_ID,
@@ -1168,7 +1235,7 @@ func _place_dragon_lair_units() -> void:
 			progenitor_pos,
 			100,
 			100,
-			8,
+			2,
 			0,
 			5,
 			"progenitor_dragon",
@@ -1210,6 +1277,12 @@ func _place_dragon_lair_units() -> void:
 			ancient_ai["territory_radius"] = ANCIENT_DRAGON_TERRITORY_RADIUS
 			_ai_data[uid] = ancient_ai
 			used_positions.append(pos)
+
+
+func _get_dragon_lair_center_grid() -> Vector2:
+	if _grid_manager != null and _grid_manager.has_method("get_dragon_lair_center_grid"):
+		return _grid_manager.call("get_dragon_lair_center_grid")
+	return MOUNTAIN_CENTER
 
 
 func _place_wyverns() -> void:

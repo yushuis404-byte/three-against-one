@@ -70,6 +70,8 @@ var _combat_timer: Timer = null
 var _combat_data: Dictionary = {}  # { unit_a_id, unit_b_id, next_attacker_id }
 var _combat_sequence_id: int = 0
 var _focus_attack_sessions: Dictionary = {}  # attacker_id -> { target_id, timer }
+var _focus_neutral_attack_sessions: Dictionary = {}  # attacker_id -> { neutral_id, timer }
+var _focus_building_attack_sessions: Dictionary = {}  # attacker_id -> { building_id, timer }
 var _building_attack_timer: Timer = null
 var _building_attack_data: Dictionary = {}
 var _combat_choice_panel: Panel = null
@@ -83,12 +85,15 @@ var _death_visuals: Dictionary = {}  # unit_id -> { pos: Vector2, t: float, flip
 var _unit_facing_flip: Dictionary = {}  # unit_id -> bool
 var _pending_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
 var _pending_focus_attack_after_move: Dictionary = {}  # attacker_id -> defender_id
+var _pending_charge_attack_after_move: Dictionary = {}  # attacker_id -> target_info
 var _pending_building_attack_after_move: Dictionary = {}  # attacker_id -> building_id
 var _throw_beast_source_id: int = -1
 var _fog_reveal_mode: bool = false
 var _fog_reveal_tiles: Array[Vector2i] = []
 var _fog_conceal_mode: bool = false
 var _fog_conceal_tiles: Array[Vector2i] = []
+var _warband_charge_leader_id: int = -1
+var _warband_charge_tiles: Array[Vector2i] = []
 var _last_action_preview_key := ""
 var _current_action_preview: Dictionary = {}
 var _next_warband_id: int = 1
@@ -170,6 +175,8 @@ const WARBAND_RADIUS := 3
 const WARBAND_MIN_MEMBERS := 3
 const WARBAND_MAX_MEMBERS := 8
 const WARBAND_AP_COST := 1
+const WARBAND_CHARGE_AP_COST := 8
+const WARBAND_CHARGE_RANGE := 5
 const ELVEN_FIRST_STRIKE_SECOND_HIT_RATIO := 0.5
 const ORC_BLOOD_AXE_IDLE_FRAMES := 1
 const ORC_BLOOD_AXE_WALK_FRAMES := 9
@@ -549,7 +556,10 @@ func _cancel_active_unit_action(unit_id: int) -> void:
 		return
 	_cancel_gather_for_unit(unit_id)
 	_cancel_focus_attack_for_attacker(unit_id)
+	_cancel_focus_neutral_attack_for_attacker(unit_id)
+	_cancel_focus_building_attack_for_attacker(unit_id)
 	_pending_focus_attack_after_move.erase(unit_id)
+	_pending_charge_attack_after_move.erase(unit_id)
 
 
 func _cancel_gather_for_units(unit_ids: Array) -> void:
@@ -861,6 +871,11 @@ func _draw() -> void:
 		var conceal_rect := Rect2(pos_conceal - Vector2(tile_size, tile_size) * 0.5, Vector2(tile_size, tile_size))
 		draw_rect(conceal_rect.grow(-3.0), FOG_CONCEAL_COLOR, true)
 		draw_rect(conceal_rect.grow(-3.0), FOG_CONCEAL_BORDER_COLOR, false, 1.5)
+	for t in _warband_charge_tiles:
+		var pos_charge := _grid_to_world(t.x, t.y)
+		var charge_rect := Rect2(pos_charge - Vector2(tile_size, tile_size) * 0.5, Vector2(tile_size, tile_size))
+		draw_rect(charge_rect.grow(-5.0), Color(1.0, 0.25, 0.08, 0.18), true)
+		draw_rect(charge_rect.grow(-5.0), Color(1.0, 0.52, 0.18, 0.55), false, 1.5)
 
 	_draw_action_preview_highlight()
 	_draw_warband_highlights()
@@ -934,8 +949,9 @@ func _draw_selection_box() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE and (_fog_reveal_mode or _fog_conceal_mode):
+		if event.keycode == KEY_ESCAPE and (_fog_reveal_mode or _fog_conceal_mode or _is_warband_charge_mode()):
 			_cancel_fog_modes()
+			_cancel_warband_charge_mode()
 			_emit_selected_unit_view()
 			return
 
@@ -1001,6 +1017,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _request_network_fog_skill("unit_fog_reveal", _selected_id, gpos):
 			return
 		_try_reveal_fog_at(gpos)
+		return
+
+	if _is_warband_charge_mode():
+		_handle_warband_charge_click(gpos)
 		return
 
 	if _is_warband_selection_active():
@@ -1165,6 +1185,8 @@ func _can_start_box_selection() -> bool:
 		return false
 	if _is_warband_selection_active():
 		return false
+	if _is_warband_charge_mode():
+		return false
 	if _throw_beast_source_id >= 0:
 		return false
 	return true
@@ -1257,6 +1279,7 @@ func _refresh_primary_selection() -> void:
 	_throw_range_tiles = []
 	_throw_beast_source_id = -1
 	_cancel_fog_modes()
+	_cancel_warband_charge_mode()
 	_emit_action_preview({})
 	unit_selected.emit(_make_unit_view(unit))
 	queue_redraw()
@@ -1272,6 +1295,7 @@ func _clear_selection() -> void:
 	_throw_range_tiles = []
 	_throw_beast_source_id = -1
 	_cancel_fog_modes()
+	_cancel_warband_charge_mode()
 	_emit_action_preview({})
 	selection_cleared.emit()
 	queue_redraw()
@@ -1310,6 +1334,10 @@ func request_unit_skill(action_id: String, unit_id: int = -1) -> bool:
 			return true
 		"warband_disband":
 			return disband_warband(selected_unit_id)
+		"warband_charge":
+			var charge_ok: bool = _request_warband_charge_skill(selected_unit_id)
+			_emit_selected_unit_view()
+			return charge_ok
 	return false
 
 
@@ -1352,6 +1380,42 @@ func _request_throw_beast_skill(unit_id: int) -> bool:
 	return _try_arm_beast_throw(slinger, beast)
 
 
+func _request_warband_charge_skill(unit_id: int) -> bool:
+	if unit_id != _selected_id:
+		_select_unit(unit_id)
+	var leader: Dictionary = _get_unit_by_id(unit_id)
+	if not _is_warband_leader(leader):
+		return false
+	if _is_warband_charge_mode() and _warband_charge_leader_id == unit_id:
+		_cancel_warband_charge_mode()
+		return true
+	if int(leader.get("faction", -1)) != _current_player_id():
+		return false
+	if not _can_current_player_act():
+		return false
+	if not _has_ap(WARBAND_CHARGE_AP_COST):
+		return false
+	_cancel_fog_modes()
+	_throw_beast_source_id = -1
+	_warband_charge_leader_id = unit_id
+	_warband_charge_tiles = _get_tiles_in_manhattan_radius(leader.get("grid_pos", Vector2i.ZERO), WARBAND_CHARGE_RANGE)
+	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
+	_emit_action_preview({
+		"visible": true,
+		"action": "warband_charge",
+		"target_name": "军团冲锋",
+		"target_pos": leader.get("grid_pos", Vector2i.ZERO),
+		"approach_pos": leader.get("grid_pos", Vector2i.ZERO),
+		"ap_cost": WARBAND_CHARGE_AP_COST,
+		"can_attack": true,
+		"reason": "点击 7 格内敌方单位，全军免费行进并开始攻击。",
+	})
+	queue_redraw()
+	return true
+
+
 func _toggle_fog_reveal_mode() -> void:
 	if _fog_reveal_mode:
 		_cancel_fog_reveal_mode()
@@ -1364,6 +1428,7 @@ func _toggle_fog_reveal_mode() -> void:
 		print("[Fog] Windrunner Scout reveal is cooling down.")
 		return
 	_cancel_fog_conceal_mode()
+	_cancel_warband_charge_mode()
 	_fog_reveal_mode = true
 	_reachable_tiles = []
 	_attack_range_tiles = []
@@ -1392,6 +1457,7 @@ func _toggle_fog_conceal_mode() -> void:
 		print("[Fog] Moonshadow Assassin conceal is cooling down.")
 		return
 	_cancel_fog_reveal_mode()
+	_cancel_warband_charge_mode()
 	_fog_conceal_mode = true
 	_reachable_tiles = []
 	_attack_range_tiles = []
@@ -1673,6 +1739,7 @@ func _disband_warband_local(selected_unit_id: int) -> bool:
 
 
 func _start_warband_selection(leader_id: int) -> void:
+	_cancel_warband_charge_mode()
 	_warband_selection_leader_id = leader_id
 	_warband_selection_ids.clear()
 	_warband_selection_ids.append(leader_id)
@@ -2052,6 +2119,360 @@ func _try_start_or_move_focus_attacker(attacker: Dictionary, target: Dictionary)
 	return _move_focus_attacker_to_attack(attacker, target, approach_tile)
 
 
+func _handle_warband_charge_click(gpos: Vector2i) -> void:
+	var leader: Dictionary = _get_unit_by_id(_warband_charge_leader_id)
+	if leader.is_empty():
+		_cancel_warband_charge_mode()
+		return
+	var target_info: Dictionary = _get_warband_charge_target_at(gpos, get_global_mouse_position(), leader)
+	if target_info.is_empty():
+		print("[Warband] Select an enemy unit, neutral unit, or enemy building within charge range.")
+		return
+	if not _try_execute_warband_charge(leader, target_info):
+		print("[Warband] Charge failed.")
+
+
+func _get_warband_charge_target_at(gpos: Vector2i, world_pos: Vector2, leader: Dictionary) -> Dictionary:
+	var player_target: Dictionary = get_visible_unit_at(gpos)
+	if not player_target.is_empty() and int(player_target.get("faction", -1)) != int(leader.get("faction", -2)):
+		return {
+			"kind": "player_unit",
+			"id": int(player_target.get("id", -1)),
+			"pos": player_target.get("grid_pos", gpos),
+		}
+	var neutral_mgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+	if neutral_mgr != null:
+		var neutral_target: Dictionary = {}
+		if neutral_mgr.has_method("get_unit_at_world"):
+			neutral_target = neutral_mgr.call("get_unit_at_world", world_pos)
+		if neutral_target.is_empty() and neutral_mgr.has_method("get_neutral_unit_at"):
+			neutral_target = neutral_mgr.call("get_neutral_unit_at", gpos)
+		if not neutral_target.is_empty():
+			return {
+				"kind": "neutral_unit",
+				"id": int(neutral_target.get("id", -1)),
+				"pos": neutral_target.get("grid_pos", gpos),
+			}
+	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+	if bmgr != null and bmgr.has_method("get_building_at"):
+		var building: Dictionary = bmgr.call("get_building_at", gpos)
+		if not building.is_empty() and int(building.get("faction", -1)) != int(leader.get("faction", -2)):
+			return {
+				"kind": "building",
+				"id": int(building.get("id", -1)),
+				"pos": building.get("origin", gpos),
+			}
+	return {}
+
+
+func _try_execute_warband_charge(leader: Dictionary, target_info: Dictionary) -> bool:
+	if leader.is_empty() or target_info.is_empty():
+		return false
+	if not _is_warband_leader(leader):
+		return false
+	if int(leader.get("faction", -1)) != _current_player_id():
+		return false
+	if not _can_current_player_act():
+		return false
+	if not _has_ap(WARBAND_CHARGE_AP_COST):
+		return false
+	var leader_pos: Vector2i = leader.get("grid_pos", Vector2i.ZERO)
+	var leader_distance: int = _distance_to_charge_target(leader_pos, target_info)
+	if leader_distance < 0 or leader_distance > WARBAND_CHARGE_RANGE:
+		print("[Warband] Charge target out of range.")
+		return false
+	var warband_id: int = int(leader.get("warband_id", -1))
+	var members: Array[Dictionary] = _get_warband_members(warband_id)
+	var member_ids: Array[int] = _get_warband_member_ids(warband_id)
+	var reserved: Dictionary = {}
+	var plans: Array[Dictionary] = []
+	for member in members:
+		var member_id: int = int(member.get("id", -1))
+		var plan: Dictionary = _find_warband_charge_plan(member, target_info, member_ids, reserved)
+		if plan.is_empty():
+			continue
+		plan["unit_id"] = member_id
+		plans.append(plan)
+		reserved[plan.get("target_pos", Vector2i.ZERO)] = true
+	if plans.is_empty():
+		return false
+	if _turn_manager != null:
+		var ok: bool = _turn_manager.spend_ap(_current_player_id(), WARBAND_CHARGE_AP_COST)
+		if not ok:
+			return false
+	for plan_variant in plans:
+		var plan: Dictionary = plan_variant
+		var unit_id: int = int(plan.get("unit_id", -1))
+		var unit: Dictionary = _get_unit_by_id(unit_id)
+		if unit.is_empty():
+			continue
+		var destination: Vector2i = plan.get("target_pos", unit.get("grid_pos", Vector2i.ZERO))
+		var can_attack_after_move: bool = bool(plan.get("can_attack", false))
+		if destination == unit.get("grid_pos", Vector2i.ZERO):
+			if can_attack_after_move:
+				_start_charge_attack_session(unit_id, target_info)
+		else:
+			_move_charge_attacker_without_ap(unit, target_info, destination, can_attack_after_move)
+	_cancel_warband_charge_mode()
+	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
+	_emit_selected_unit_view()
+	queue_redraw()
+	return true
+
+
+func _find_warband_charge_plan(member: Dictionary, target_info: Dictionary, ignored_unit_ids: Array[int], reserved: Dictionary) -> Dictionary:
+	var from: Vector2i = member.get("grid_pos", Vector2i.ZERO)
+	if _can_unit_attack_charge_target(member, target_info) and not reserved.has(from):
+		return {"target_pos": from, "can_attack": true}
+	var attack_range: int = maxi(1, _get_unit_data(member).attack_range)
+	var visited: Dictionary = { from: true }
+	var dist: Dictionary = { from: 0 }
+	var queue: Array[Vector2i] = [from]
+	var dirs: Array[Vector2i] = [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+	var best_advance := Vector2i(-1, -1)
+	var best_distance: int = 999
+	while not queue.is_empty():
+		var pos: Vector2i = queue.pop_front()
+		var d: int = int(dist[pos])
+		if d >= WARBAND_CHARGE_RANGE:
+			continue
+		for dir in dirs:
+			var next_pos: Vector2i = pos + dir
+			if visited.has(next_pos):
+				continue
+			visited[next_pos] = true
+			if not _in_bounds(next_pos.x, next_pos.y):
+				continue
+			if not _is_tile_passable_for_unit(member, next_pos.x, next_pos.y):
+				continue
+			if reserved.has(next_pos):
+				continue
+			if not _is_tile_empty_ignoring_units(next_pos.x, next_pos.y, ignored_unit_ids):
+				continue
+			dist[next_pos] = d + 1
+			var target_distance: int = _distance_to_charge_target(next_pos, target_info)
+			if target_distance >= 0 and target_distance <= attack_range:
+				return {"target_pos": next_pos, "can_attack": true}
+			if target_distance >= 0 and target_distance < best_distance:
+				best_distance = target_distance
+				best_advance = next_pos
+			queue.append(next_pos)
+	if best_advance.x >= 0:
+		return {"target_pos": best_advance, "can_attack": false}
+	return {}
+
+
+func _move_charge_attacker_without_ap(attacker: Dictionary, target_info: Dictionary, approach_tile: Vector2i, attack_after_move: bool) -> bool:
+	var attacker_id: int = int(attacker.get("id", -1))
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	for i in range(_units.size()):
+		var unit: Dictionary = _units[i]
+		if int(unit.get("id", -1)) != attacker_id:
+			continue
+		_cancel_active_unit_action(attacker_id)
+		unit["grid_pos"] = approach_tile
+		unit["has_moved"] = true
+		_update_dragon_lair_location_after_move(unit, from, approach_tile)
+		if attack_after_move:
+			_pending_charge_attack_after_move[attacker_id] = target_info.duplicate(true)
+		_units[i] = unit
+		_start_move_visual(attacker_id, from, approach_tile)
+		if _fog_manager and _turn_manager:
+			_fog_manager.reveal_area(_turn_manager.current_player, approach_tile.x, approach_tile.y, _get_unit_vision_value(unit))
+		return true
+	return false
+
+
+func _start_charge_attack_session(attacker_id: int, target_info: Dictionary) -> bool:
+	match str(target_info.get("kind", "")):
+		"player_unit":
+			return _start_focus_attack_session(attacker_id, int(target_info.get("id", -1)))
+		"neutral_unit":
+			return _start_focus_neutral_attack_session(attacker_id, int(target_info.get("id", -1)))
+		"building":
+			return _start_focus_building_attack_session(attacker_id, int(target_info.get("id", -1)))
+	return false
+
+
+func _can_unit_attack_charge_target(attacker: Dictionary, target_info: Dictionary) -> bool:
+	if attacker.is_empty() or target_info.is_empty():
+		return false
+	var data: UnitData = _get_unit_data(attacker)
+	if data.atk <= 0:
+		return false
+	var distance: int = _distance_to_charge_target(attacker.get("grid_pos", Vector2i.ZERO), target_info)
+	return distance >= 0 and distance <= data.attack_range
+
+
+func _distance_to_charge_target(from: Vector2i, target_info: Dictionary) -> int:
+	match str(target_info.get("kind", "")):
+		"player_unit":
+			var target: Dictionary = _get_unit_by_id(int(target_info.get("id", -1)))
+			if target.is_empty():
+				return -1
+			return _distance_to_unit_footprint(from, target)
+		"neutral_unit":
+			var neutral_mgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+			if neutral_mgr == null or not neutral_mgr.has_method("get_neutral_unit_by_id"):
+				return -1
+			var neutral: Dictionary = neutral_mgr.call("get_neutral_unit_by_id", int(target_info.get("id", -1)))
+			if neutral.is_empty():
+				return -1
+			return _distance_to_unit_footprint(from, neutral)
+		"building":
+			var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+			if bmgr == null or not bmgr.has_method("get_building_by_id"):
+				return -1
+			var building: Dictionary = bmgr.call("get_building_by_id", int(target_info.get("id", -1)))
+			if building.is_empty():
+				return -1
+			return _distance_to_building(from, building)
+	return -1
+
+
+func _start_focus_neutral_attack_session(attacker_id: int, neutral_id: int) -> bool:
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	var target_info := {"kind": "neutral_unit", "id": neutral_id}
+	if attacker.is_empty() or not _can_unit_attack_charge_target(attacker, target_info):
+		return false
+	_cancel_active_unit_action(attacker_id)
+	var timer := Timer.new()
+	timer.one_shot = false
+	timer.wait_time = _get_unit_attack_interval(attacker)
+	timer.timeout.connect(_on_focus_neutral_attack_timer_timeout.bind(attacker_id))
+	add_child(timer)
+	_focus_neutral_attack_sessions[attacker_id] = {
+		"neutral_id": neutral_id,
+		"timer": timer,
+	}
+	timer.start()
+	_perform_focus_neutral_attack_tick(attacker_id)
+	return true
+
+
+func _on_focus_neutral_attack_timer_timeout(attacker_id: int) -> void:
+	_perform_focus_neutral_attack_tick(attacker_id)
+
+
+func _perform_focus_neutral_attack_tick(attacker_id: int) -> void:
+	if not _focus_neutral_attack_sessions.has(attacker_id):
+		return
+	var session: Dictionary = _focus_neutral_attack_sessions[attacker_id]
+	var neutral_id: int = int(session.get("neutral_id", -1))
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	var target_info := {"kind": "neutral_unit", "id": neutral_id}
+	var neutral_mgr := get_parent().get_node_or_null("NeutralUnitManager2D")
+	if attacker.is_empty() or neutral_mgr == null or not neutral_mgr.has_method("get_neutral_unit_by_id"):
+		_cancel_focus_neutral_attack_for_attacker(attacker_id)
+		return
+	var neutral: Dictionary = neutral_mgr.call("get_neutral_unit_by_id", neutral_id)
+	if neutral.is_empty() or not _can_unit_attack_charge_target(attacker, target_info):
+		_cancel_focus_neutral_attack_for_attacker(attacker_id)
+		return
+	var damage: int = _get_unit_attack_value(attacker)
+	if neutral_mgr.has_method("apply_ranged_damage"):
+		neutral_mgr.call("apply_ranged_damage", neutral_id, int(attacker.get("faction", -1)), damage)
+	neutral = neutral_mgr.call("get_neutral_unit_by_id", neutral_id)
+	if neutral.is_empty():
+		_cancel_focus_neutral_attacks_involving_neutral(neutral_id)
+	_schedule_focus_attack_timer(_focus_neutral_attack_sessions, attacker_id, attacker)
+	queue_redraw()
+
+
+func _cancel_focus_neutral_attack_for_attacker(attacker_id: int) -> void:
+	if not _focus_neutral_attack_sessions.has(attacker_id):
+		return
+	var session: Dictionary = _focus_neutral_attack_sessions[attacker_id]
+	var timer: Timer = session.get("timer", null) as Timer
+	if timer != null:
+		timer.stop()
+		timer.queue_free()
+	_focus_neutral_attack_sessions.erase(attacker_id)
+
+
+func _cancel_focus_neutral_attacks_involving_neutral(neutral_id: int) -> void:
+	var to_cancel: Array[int] = []
+	for attacker_id_variant in _focus_neutral_attack_sessions.keys():
+		var attacker_id: int = int(attacker_id_variant)
+		var session: Dictionary = _focus_neutral_attack_sessions[attacker_id]
+		if int(session.get("neutral_id", -1)) == neutral_id:
+			to_cancel.append(attacker_id)
+	for attacker_id in to_cancel:
+		_cancel_focus_neutral_attack_for_attacker(attacker_id)
+
+
+func _start_focus_building_attack_session(attacker_id: int, building_id: int) -> bool:
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	var target_info := {"kind": "building", "id": building_id}
+	if attacker.is_empty() or not _can_unit_attack_charge_target(attacker, target_info):
+		return false
+	_cancel_active_unit_action(attacker_id)
+	var timer := Timer.new()
+	timer.one_shot = false
+	timer.wait_time = _get_unit_attack_interval(attacker)
+	timer.timeout.connect(_on_focus_building_attack_timer_timeout.bind(attacker_id))
+	add_child(timer)
+	_focus_building_attack_sessions[attacker_id] = {
+		"building_id": building_id,
+		"timer": timer,
+	}
+	timer.start()
+	_perform_focus_building_attack_tick(attacker_id)
+	return true
+
+
+func _on_focus_building_attack_timer_timeout(attacker_id: int) -> void:
+	_perform_focus_building_attack_tick(attacker_id)
+
+
+func _perform_focus_building_attack_tick(attacker_id: int) -> void:
+	if not _focus_building_attack_sessions.has(attacker_id):
+		return
+	var session: Dictionary = _focus_building_attack_sessions[attacker_id]
+	var building_id: int = int(session.get("building_id", -1))
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
+	if attacker.is_empty() or bmgr == null or not bmgr.has_method("get_building_by_id") or not bmgr.has_method("damage_building"):
+		_cancel_focus_building_attack_for_attacker(attacker_id)
+		return
+	var building: Dictionary = bmgr.call("get_building_by_id", building_id)
+	var target_info := {"kind": "building", "id": building_id}
+	if building.is_empty() or not _can_unit_attack_charge_target(attacker, target_info):
+		_cancel_focus_building_attack_for_attacker(attacker_id)
+		return
+	var damage: int = _get_building_attack_damage(attacker)
+	var result: Dictionary = bmgr.call("damage_building", building_id, damage, int(attacker.get("faction", -1)))
+	if bool(result.get("destroyed", false)):
+		_cancel_focus_building_attacks_involving_building(building_id)
+		return
+	_schedule_focus_attack_timer(_focus_building_attack_sessions, attacker_id, attacker)
+	queue_redraw()
+
+
+func _cancel_focus_building_attack_for_attacker(attacker_id: int) -> void:
+	if not _focus_building_attack_sessions.has(attacker_id):
+		return
+	var session: Dictionary = _focus_building_attack_sessions[attacker_id]
+	var timer: Timer = session.get("timer", null) as Timer
+	if timer != null:
+		timer.stop()
+		timer.queue_free()
+	_focus_building_attack_sessions.erase(attacker_id)
+
+
+func _cancel_focus_building_attacks_involving_building(building_id: int) -> void:
+	var to_cancel: Array[int] = []
+	for attacker_id_variant in _focus_building_attack_sessions.keys():
+		var attacker_id: int = int(attacker_id_variant)
+		var session: Dictionary = _focus_building_attack_sessions[attacker_id]
+		if int(session.get("building_id", -1)) == building_id:
+			to_cancel.append(attacker_id)
+	for attacker_id in to_cancel:
+		_cancel_focus_building_attack_for_attacker(attacker_id)
+
+
 func _move_focus_attacker_to_attack(attacker: Dictionary, target: Dictionary, approach_tile: Vector2i) -> bool:
 	var attacker_id: int = int(attacker.get("id", -1))
 	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
@@ -2092,7 +2513,7 @@ func _start_focus_attack_session(attacker_id: int, target_id: int) -> bool:
 	_cancel_active_unit_action(attacker_id)
 	var timer := Timer.new()
 	timer.one_shot = false
-	timer.wait_time = UNIT_ATTACK_INTERVAL
+	timer.wait_time = _get_unit_attack_interval(attacker)
 	timer.timeout.connect(_on_focus_attack_timer_timeout.bind(attacker_id))
 	add_child(timer)
 	_focus_attack_sessions[attacker_id] = {
@@ -2129,7 +2550,19 @@ func _perform_focus_attack_tick(attacker_id: int) -> void:
 		_remove_unit_after_attack(target_id, attacker)
 		_cancel_focus_attacks_involving_unit(target_id)
 		_cancel_focus_attack_for_attacker(attacker_id)
+		return
+	_schedule_focus_attack_timer(_focus_attack_sessions, attacker_id, attacker)
 	queue_redraw()
+
+
+func _schedule_focus_attack_timer(sessions: Dictionary, attacker_id: int, attacker: Dictionary) -> void:
+	if not sessions.has(attacker_id):
+		return
+	var session: Dictionary = sessions[attacker_id]
+	var timer: Timer = session.get("timer", null) as Timer
+	if timer == null:
+		return
+	timer.wait_time = _get_unit_attack_interval(attacker)
 
 
 func _cancel_focus_attack_for_attacker(attacker_id: int) -> void:
@@ -2152,13 +2585,23 @@ func _cancel_focus_attacks_involving_unit(unit_id: int) -> void:
 			to_cancel.append(attacker_id)
 	for attacker_id in to_cancel:
 		_cancel_focus_attack_for_attacker(attacker_id)
+	_cancel_focus_neutral_attack_for_attacker(unit_id)
+	_cancel_focus_building_attack_for_attacker(unit_id)
 	_pending_focus_attack_after_move.erase(unit_id)
+	_pending_charge_attack_after_move.erase(unit_id)
 	var pending_to_cancel: Array[int] = []
 	for pending_attacker in _pending_focus_attack_after_move.keys():
 		if int(_pending_focus_attack_after_move[pending_attacker]) == unit_id:
 			pending_to_cancel.append(int(pending_attacker))
 	for pending_attacker_id in pending_to_cancel:
 		_pending_focus_attack_after_move.erase(pending_attacker_id)
+	var pending_charge_to_cancel: Array[int] = []
+	for pending_attacker in _pending_charge_attack_after_move.keys():
+		var pending_info: Dictionary = _pending_charge_attack_after_move[pending_attacker]
+		if str(pending_info.get("kind", "")) == "player_unit" and int(pending_info.get("id", -1)) == unit_id:
+			pending_charge_to_cancel.append(int(pending_attacker))
+	for pending_attacker_id in pending_charge_to_cancel:
+		_pending_charge_attack_after_move.erase(pending_attacker_id)
 
 
 func _try_attack_building(attacker: Dictionary, building: Dictionary) -> bool:
@@ -2271,7 +2714,8 @@ func _schedule_next_building_attack_tick() -> void:
 	_ensure_building_attack_timer()
 	if _building_attack_timer == null:
 		return
-	_building_attack_timer.wait_time = UNIT_ATTACK_INTERVAL
+	var attacker: Dictionary = _get_unit_by_id(int(_building_attack_data.get("attacker_id", -1)))
+	_building_attack_timer.wait_time = _get_unit_attack_interval(attacker) if not attacker.is_empty() else UNIT_ATTACK_INTERVAL
 	_building_attack_timer.start()
 
 
@@ -2689,6 +3133,13 @@ func _finish_move_visual(unit_id: int) -> void:
 			if _can_unit_attack_unit(focus_attacker, focus_defender):
 				_start_focus_attack_session(unit_id, focus_defender_id)
 				return
+	if _pending_charge_attack_after_move.has(unit_id):
+		var charge_target: Dictionary = _pending_charge_attack_after_move.get(unit_id, {})
+		_pending_charge_attack_after_move.erase(unit_id)
+		var charge_attacker: Dictionary = _get_unit_by_id(unit_id)
+		if not charge_attacker.is_empty() and _can_unit_attack_charge_target(charge_attacker, charge_target):
+			_start_charge_attack_session(unit_id, charge_target)
+			return
 	if _pending_attack_after_move.has(unit_id):
 		var defender_id: int = int(_pending_attack_after_move.get(unit_id, -1))
 		_pending_attack_after_move.erase(unit_id)
@@ -3164,6 +3615,25 @@ func _is_active_warband_member(unit: Dictionary) -> bool:
 	if warband_id < 0:
 		return false
 	return _get_warband_member_count(warband_id) >= WARBAND_MIN_MEMBERS
+
+
+func _is_warband_leader(unit: Dictionary) -> bool:
+	if unit.is_empty():
+		return false
+	if not _is_active_warband_member(unit):
+		return false
+	return int(unit.get("id", -1)) == int(unit.get("warband_leader_id", -2))
+
+
+func _is_warband_charge_mode() -> bool:
+	return _warband_charge_leader_id >= 0
+
+
+func _cancel_warband_charge_mode() -> void:
+	_warband_charge_leader_id = -1
+	_warband_charge_tiles.clear()
+	_emit_action_preview({})
+	queue_redraw()
 
 
 func _get_warband_member_count(warband_id: int) -> int:
@@ -3767,7 +4237,7 @@ func _start_locked_duel(first_attacker_id: int, second_unit_id: int) -> void:
 		"locked_until_death": true,
 	}
 	_combat_timer = Timer.new()
-	_combat_timer.wait_time = 1.0
+	_combat_timer.wait_time = _get_unit_attack_interval(_get_unit_by_id(first_attacker_id))
 	_combat_timer.timeout.connect(_combat_tick)
 	add_child(_combat_timer)
 	_combat_timer.start()
@@ -3974,7 +4444,7 @@ func _initiate_combat(attacker_id: int, defender_id: int) -> void:
 
 	# 创建并启动 Timer
 	_combat_timer = Timer.new()
-	_combat_timer.wait_time = 1.0
+	_combat_timer.wait_time = _get_unit_attack_interval(_get_unit_by_id(attacker_id))
 	_combat_timer.timeout.connect(_combat_tick)
 	add_child(_combat_timer)
 	_combat_timer.start()
@@ -3999,7 +4469,7 @@ func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
 	}
 	combat_started.emit()
 	_combat_timer = Timer.new()
-	_combat_timer.wait_time = 1.0
+	_combat_timer.wait_time = _get_unit_attack_interval(_get_unit_by_id(attacker_id))
 	_combat_timer.timeout.connect(_ranged_combat_tick)
 	add_child(_combat_timer)
 	_combat_timer.start()
@@ -4019,7 +4489,7 @@ func _initiate_ranged_neutral_combat(attacker_id: int, neutral_id: int, neutral_
 	}
 	combat_started.emit()
 	_combat_timer = Timer.new()
-	_combat_timer.wait_time = 1.0
+	_combat_timer.wait_time = _get_unit_attack_interval(_get_unit_by_id(attacker_id))
 	_combat_timer.timeout.connect(_ranged_neutral_combat_tick)
 	add_child(_combat_timer)
 	_combat_timer.start()
@@ -4049,6 +4519,7 @@ func _ranged_combat_tick() -> void:
 			_remove_unit_after_attack(int(defender.get("id", -1)), attacker)
 			_finish_ranged_combat()
 			return
+	_set_combat_timer_wait_for_unit(attacker)
 	queue_redraw()
 
 
@@ -4077,6 +4548,7 @@ func _ranged_neutral_combat_tick() -> void:
 			if neutral_mgr.has_method("start_counter_combat"):
 				neutral_mgr.call("start_counter_combat", neutral_id, int(attacker.get("id", -1)))
 			return
+	_set_combat_timer_wait_for_unit(attacker)
 	queue_redraw()
 
 
@@ -4137,6 +4609,7 @@ func _combat_tick() -> void:
 
 	# 交替攻击方
 	_combat_data["next_attacker_id"] = defender["id"]
+	_set_combat_timer_wait_for_unit(defender)
 
 
 func _end_combat(winner_id: int, attacker_pos: Vector2i = Vector2i(-1, -1), loser_pos: Vector2i = Vector2i(-1, -1)) -> void:
@@ -4454,6 +4927,19 @@ func _get_unit_attack_value(unit: Dictionary) -> int:
 	if int(statuses.get("poison_weakened_turns", 0)) > 0:
 		penalty += 1
 	return maxi(0, data.atk + bonus - penalty)
+
+
+func _get_unit_attack_interval(unit: Dictionary) -> float:
+	if unit.is_empty():
+		return UNIT_ATTACK_INTERVAL
+	var data: UnitData = _get_unit_data(unit)
+	return maxf(0.1, data.attack_interval)
+
+
+func _set_combat_timer_wait_for_unit(unit: Dictionary) -> void:
+	if _combat_timer == null:
+		return
+	_combat_timer.wait_time = _get_unit_attack_interval(unit)
 
 
 func _get_unit_damage_reduction(unit: Dictionary) -> int:
@@ -4893,6 +5379,29 @@ func _append_warband_skill_actions(actions: Array, unit: Dictionary) -> void:
 		})
 		return
 	if warband_id >= 0:
+		if _is_warband_leader(unit):
+			var can_charge: bool = int(unit.get("faction", -1)) == _current_player_id() and _can_current_player_act() and _has_ap(WARBAND_CHARGE_AP_COST)
+			var charge_status: String = "可用"
+			var charge_reason: String = "点击后选择 %d 格内敌方单位，消耗 %d AP，全军免费行进并攻击。" % [WARBAND_CHARGE_RANGE, WARBAND_CHARGE_AP_COST]
+			if int(unit.get("faction", -1)) != _current_player_id():
+				can_charge = false
+				charge_status = "非当前回合"
+			elif not _can_current_player_act():
+				can_charge = false
+				charge_status = "等待中"
+			elif not _has_ap(WARBAND_CHARGE_AP_COST):
+				can_charge = false
+				charge_status = "AP 不足"
+			actions.append({
+				"id": "warband_charge",
+				"unit_id": unit_id,
+				"label": "军团冲锋",
+				"enabled": can_charge,
+				"active": _warband_charge_leader_id == unit_id,
+				"cooldown": 0,
+				"status": "选择目标" if _warband_charge_leader_id == unit_id else charge_status,
+				"reason": charge_reason,
+			})
 		actions.append({
 			"id": "warband_disband",
 			"unit_id": unit_id,

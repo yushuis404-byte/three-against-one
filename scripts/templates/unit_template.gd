@@ -10,6 +10,7 @@ enum UnitRole { WORKER, SCOUT, GUARD, ELITE, SIEGE, SPECIAL }
 @export var hp_max: int = 1
 @export var vision: int = 1
 @export var attack_range: int = 1
+@export var attack_interval: float = 1.0
 @export var damage_reduction: int = 0
 @export var food_cost: int = 1
 @export var recruit_cost: Array = []
@@ -45,6 +46,7 @@ static func make_basic(
 	template.hp_max = p_hp
 	template.vision = p_vision
 	template.attack_range = 1
+	template.attack_interval = 1.0
 	template.damage_reduction = 0
 	template.tags = p_tags.duplicate()
 	template.can_gather = p_role == UnitRole.WORKER
@@ -74,4 +76,4 @@ func to_unit_data():
 			category = UnitData.UnitCategory.SIEGE
 		UnitRole.SPECIAL:
 			category = UnitData.UnitCategory.SPECIAL
-	return UnitData.new(display_name, category, move_max, atk, hp_max, vision, food_cost, attack_range, damage_reduction)
+	return UnitData.new(display_name, category, move_max, atk, hp_max, vision, food_cost, attack_range, damage_reduction, attack_interval)

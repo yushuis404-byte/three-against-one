@@ -268,11 +268,12 @@ func make_unit_templates() -> Dictionary:
 		UnitTemplateScript.UnitRole.GUARD,
 		1,
 		1,
-		9,
+		8,
 		1,
 		["orc", "guard", "military", "melee", "tank", "shield", "damage_soak"]
 	)
 	orc_bone_shield.damage_reduction = 1
+	orc_bone_shield.attack_interval = 3.0
 	_config_recruit(orc_bone_shield, [_amount("food", 3), _amount("wood", 2)], 2, 2, 3, true)
 
 	var orc_hide_tower = _unit_basic(
@@ -280,12 +281,13 @@ func make_unit_templates() -> Dictionary:
 		"\u517d\u76ae\u5de8\u76fe\u5175",
 		UnitTemplateScript.UnitRole.GUARD,
 		1,
-		2,
-		14,
+		1,
+		12,
 		1,
 		["orc", "guard", "military", "melee", "tank", "shield", "heavy", "damage_soak"]
 	)
 	orc_hide_tower.damage_reduction = 2
+	orc_hide_tower.attack_interval = 3.0
 	_config_recruit(orc_hide_tower, [_amount("food", 5), _amount("wood", 4), _amount("stone", 2)], 3, 3, 5, true)
 
 	var orc_slinger = _unit_basic(
@@ -358,7 +360,7 @@ func make_unit_templates() -> Dictionary:
 		"neutral.dragon.progenitor",
 		"史祖龙",
 		UnitTemplateScript.UnitRole.ELITE,
-		0, 8, 100, 5,
+		0, 2, 100, 5,
 		["neutral", "dragon", "ancient_dragon", "progenitor", "boss"]
 	)
 	progenitor_dragon.ai_behavior = "progenitor_dragon"

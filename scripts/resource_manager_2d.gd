@@ -29,6 +29,7 @@ const ANCIENT_FOREST_TEXTURE: Texture2D = preload("res://assets/texture/ancient 
 const ANCIENT_TREE_TEXTURE: Texture2D = preload("res://assets/texture/Ancient giant trees.png")
 const DRAGON_CRYSTAL_TEXTURE: Texture2D = preload("res://assets/texture/Dragon Crystal Crater.png")
 const WORLD_TREE_ROOT_TEXTURE: Texture2D = preload("res://assets/texture/World Tree Root.png")
+const ANCIENT_RELIC_TEXTURE: Texture2D = preload("res://assets/texture/Ancient Dragon Ruins.png")
 const RESOURCE_TEXTURE_SIZE := 28.0
 const RESOURCE_DISTRIBUTION_SCALE := 1.5
 const RESOURCE_ACTIVE_ZONES := [7, 8, 9, 10, 11, 12, 4]
@@ -557,6 +558,8 @@ func _draw_resource_texture(resource_type: int, pos: Vector2) -> bool:
 			texture = ANCIENT_TREE_TEXTURE
 		ResourceType.MAGIC_NODE:
 			texture = MAGIC_NODE_TEXTURE
+		ResourceType.ANCIENT_RELIC:
+			texture = ANCIENT_RELIC_TEXTURE
 		_:
 			return false
 	var half := texture_size * 0.5
