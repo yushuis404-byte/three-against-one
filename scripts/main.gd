@@ -6,6 +6,9 @@ const AchievementTreePanelScript = preload("res://scripts/ui/achievement_tree_pa
 const TechnologyServiceScript = preload("res://scripts/services/technology_service.gd")
 const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_panel.gd")
 const ExpeditionManualPanelScript = preload("res://scripts/ui/expedition_manual_panel.gd")
+const EXPEDITION_MANUAL_ICON: Texture2D = preload("res://assets/ui/手册icon.png")
+const NAV_ICON_BUTTON_SIZE := 67
+const NAV_ICON_VISIBLE_SIZE := 53
 const GoblinHexServiceScript = preload("res://scripts/services/goblin_hex_service.gd")
 const GoblinHexPanelScript = preload("res://scripts/ui/goblin_hex_panel.gd")
 const VictoryServiceScript = preload("res://scripts/services/victory_service.gd")
@@ -846,6 +849,46 @@ func _on_achievement_completed(player: int, _achievement_id: String, title: Stri
 		debug_label.text = "成就达成：%s｜科技点 %d" % [title, achievement_service.get_tech_points(player)]
 
 
+func _make_normalized_nav_icon(source_texture: Texture2D) -> Texture2D:
+	if source_texture == null:
+		return null
+	var source_image: Image = source_texture.get_image()
+	if source_image == null or source_image.is_empty():
+		return source_texture
+	var bounds := Rect2i(Vector2i.ZERO, source_image.get_size())
+	var found_pixel := false
+	var min_x := source_image.get_width()
+	var min_y := source_image.get_height()
+	var max_x := -1
+	var max_y := -1
+	for y in range(source_image.get_height()):
+		for x in range(source_image.get_width()):
+			if source_image.get_pixel(x, y).a > 0.02:
+				found_pixel = true
+				min_x = mini(min_x, x)
+				min_y = mini(min_y, y)
+				max_x = maxi(max_x, x)
+				max_y = maxi(max_y, y)
+	if found_pixel:
+		bounds = Rect2i(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+	var cropped := Image.create(bounds.size.x, bounds.size.y, false, Image.FORMAT_RGBA8)
+	cropped.blit_rect(source_image, bounds, Vector2i.ZERO)
+	var scale_factor: float = float(NAV_ICON_VISIBLE_SIZE) / float(maxi(bounds.size.x, bounds.size.y))
+	var resized_size := Vector2i(
+		maxi(1, int(round(float(bounds.size.x) * scale_factor))),
+		maxi(1, int(round(float(bounds.size.y) * scale_factor)))
+	)
+	cropped.resize(resized_size.x, resized_size.y, Image.INTERPOLATE_LANCZOS)
+	var canvas := Image.create(NAV_ICON_BUTTON_SIZE, NAV_ICON_BUTTON_SIZE, false, Image.FORMAT_RGBA8)
+	canvas.fill(Color(0.0, 0.0, 0.0, 0.0))
+	var paste_pos := Vector2i(
+		int((NAV_ICON_BUTTON_SIZE - resized_size.x) * 0.5),
+		int((NAV_ICON_BUTTON_SIZE - resized_size.y) * 0.5)
+	)
+	canvas.blit_rect(cropped, Rect2i(Vector2i.ZERO, resized_size), paste_pos)
+	return ImageTexture.create_from_image(canvas)
+
+
 func _init_achievement_tree_panel() -> void:
 	achievement_tree_panel = AchievementTreePanelScript.new()
 	achievement_tree_panel.name = "AchievementTreePanel"
@@ -865,24 +908,10 @@ func _init_achievement_tree_button() -> void:
 	acontainer.z_index = 90
 	achievement_tree_button = Button.new()
 	achievement_tree_button.name = "AchievementTreeButton"
-	achievement_tree_button.icon = load("res://assets/icon_achievement.png")
+	achievement_tree_button.icon = _make_normalized_nav_icon(load("res://assets/icon_achievement.png"))
 	achievement_tree_button.expand_icon = true
-	achievement_tree_button.custom_minimum_size = Vector2(56.0, 56.0)
-	achievement_tree_button.size = Vector2(56.0, 56.0)
-	var abg := StyleBoxFlat.new()
-	abg.bg_color = Color(0.08, 0.08, 0.10, 0.85)
-	abg.set_corner_radius_all(28)
-	achievement_tree_button.add_theme_stylebox_override("normal", abg)
-	var ahover := StyleBoxFlat.new()
-	ahover.bg_color = Color(0.15, 0.15, 0.18, 0.9)
-	ahover.set_corner_radius_all(28)
-	achievement_tree_button.add_theme_stylebox_override("hover", ahover)
-	var apressed := StyleBoxFlat.new()
-	apressed.bg_color = Color(0.35, 0.30, 0.22, 0.95)
-	apressed.set_corner_radius_all(28)
-	apressed.border_width_bottom = 2
-	apressed.border_color = Color(0.82, 0.72, 0.38, 0.6)
-	achievement_tree_button.add_theme_stylebox_override("pressed", apressed)
+	achievement_tree_button.custom_minimum_size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
+	achievement_tree_button.size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	achievement_tree_button.focus_mode = Control.FOCUS_NONE
 	achievement_tree_button.pressed.connect(_on_achievement_tree_button_pressed)
 	acontainer.add_child(achievement_tree_button)
@@ -931,28 +960,14 @@ func _init_technology_tree_panel() -> void:
 func _init_technology_tree_button() -> void:
 	var tcontainer := VBoxContainer.new()
 	tcontainer.name = "TechnologyTreeContainer"
-	tcontainer.position = Vector2(92.0, 168.0)
+	tcontainer.position = Vector2(103.0, 168.0)
 	tcontainer.z_index = 90
 	technology_tree_button = Button.new()
 	technology_tree_button.name = "TechnologyTreeButton"
-	technology_tree_button.icon = load("res://assets/icon_technology.png")
+	technology_tree_button.icon = _make_normalized_nav_icon(load("res://assets/icon_technology.png"))
 	technology_tree_button.expand_icon = true
-	technology_tree_button.custom_minimum_size = Vector2(56.0, 56.0)
-	technology_tree_button.size = Vector2(56.0, 56.0)
-	var tbg := StyleBoxFlat.new()
-	tbg.bg_color = Color(0.08, 0.08, 0.10, 0.85)
-	tbg.set_corner_radius_all(28)
-	technology_tree_button.add_theme_stylebox_override("normal", tbg)
-	var thover := StyleBoxFlat.new()
-	thover.bg_color = Color(0.15, 0.15, 0.18, 0.9)
-	thover.set_corner_radius_all(28)
-	technology_tree_button.add_theme_stylebox_override("hover", thover)
-	var tpressed := StyleBoxFlat.new()
-	tpressed.bg_color = Color(0.35, 0.30, 0.22, 0.95)
-	tpressed.set_corner_radius_all(28)
-	tpressed.border_width_bottom = 2
-	tpressed.border_color = Color(0.82, 0.72, 0.38, 0.6)
-	technology_tree_button.add_theme_stylebox_override("pressed", tpressed)
+	technology_tree_button.custom_minimum_size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
+	technology_tree_button.size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	technology_tree_button.focus_mode = Control.FOCUS_NONE
 	technology_tree_button.pressed.connect(_on_technology_tree_button_pressed)
 	tcontainer.add_child(technology_tree_button)
@@ -1001,28 +1016,15 @@ func _init_expedition_manual_panel() -> void:
 func _init_expedition_manual_button() -> void:
 	var mcontainer := VBoxContainer.new()
 	mcontainer.name = "ExpeditionManualContainer"
-	mcontainer.position = Vector2(168.0, 168.0)
+	mcontainer.position = Vector2(190.0, 168.0)
 	mcontainer.z_index = 90
 	expedition_manual_button = Button.new()
 	expedition_manual_button.name = "ExpeditionManualButton"
-	expedition_manual_button.text = "\u518c"
-	expedition_manual_button.custom_minimum_size = Vector2(56.0, 56.0)
-	expedition_manual_button.size = Vector2(56.0, 56.0)
-	expedition_manual_button.add_theme_font_size_override("font_size", 24)
-	var mbg := StyleBoxFlat.new()
-	mbg.bg_color = Color(0.08, 0.08, 0.10, 0.85)
-	mbg.set_corner_radius_all(28)
-	expedition_manual_button.add_theme_stylebox_override("normal", mbg)
-	var mhover := StyleBoxFlat.new()
-	mhover.bg_color = Color(0.15, 0.15, 0.18, 0.9)
-	mhover.set_corner_radius_all(28)
-	expedition_manual_button.add_theme_stylebox_override("hover", mhover)
-	var mpressed := StyleBoxFlat.new()
-	mpressed.bg_color = Color(0.35, 0.30, 0.22, 0.95)
-	mpressed.set_corner_radius_all(28)
-	mpressed.border_width_bottom = 2
-	mpressed.border_color = Color(0.82, 0.72, 0.38, 0.6)
-	expedition_manual_button.add_theme_stylebox_override("pressed", mpressed)
+	expedition_manual_button.icon = _make_normalized_nav_icon(EXPEDITION_MANUAL_ICON)
+	expedition_manual_button.expand_icon = true
+	expedition_manual_button.text = ""
+	expedition_manual_button.custom_minimum_size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
+	expedition_manual_button.size = Vector2(float(NAV_ICON_BUTTON_SIZE), float(NAV_ICON_BUTTON_SIZE))
 	expedition_manual_button.focus_mode = Control.FOCUS_NONE
 	expedition_manual_button.pressed.connect(_on_expedition_manual_button_pressed)
 	mcontainer.add_child(expedition_manual_button)

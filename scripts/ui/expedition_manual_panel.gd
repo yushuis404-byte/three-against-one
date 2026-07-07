@@ -1,26 +1,36 @@
 class_name ExpeditionManualPanel
 extends Control
 
-const PANEL_COLOR := Color(0.035, 0.028, 0.020, 0.94)
-const BORDER_COLOR := Color(0.72, 0.56, 0.30, 0.65)
-const SIDEBAR_COLOR := Color(0.08, 0.065, 0.045, 0.88)
-const CONTENT_COLOR := Color(0.10, 0.085, 0.060, 0.86)
-const CLOSE_SIZE := Vector2(72.0, 28.0)
+const BOOK_TEXTURE: Texture2D = preload("res://assets/ui/手册底图.png")
+const PREV_ICON: Texture2D = preload("res://assets/ui/上一页.png")
+const NEXT_ICON: Texture2D = preload("res://assets/ui/下一页.png")
 
-var _category_buttons: Dictionary = {}
-var _item_buttons: Array[Button] = []
+const TEXT_DARK := Color(0.10, 0.09, 0.075)
+const TEXT_GRAY := Color(0.32, 0.30, 0.26)
+const TEXT_MUTED := Color(0.45, 0.42, 0.36)
+const SELECTED_COLOR := Color(0.06, 0.055, 0.045)
+const HOVER_COLOR := Color(0.16, 0.14, 0.11)
+const PANEL_SIZE := Vector2(1920.0, 1080.0)
+const BOOK_MARGIN := Vector2(120.0, 88.0)
+const SPINE_GAP := 114.0
+const PAGE_INSET_LEFT := 92.0
+const PAGE_INSET_RIGHT := 92.0
+const PAGE_INSET_TOP := 82.0
+const PAGE_INSET_BOTTOM := 110.0
+
 var _categories: Array[Dictionary] = []
-var _collapsed_categories: Dictionary = {}
-var _selected_category := ""
-var _selected_item := ""
-var _title_label: Label = null
-var _subtitle_label: Label = null
-var _category_box: VBoxContainer = null
+var _collapsed: Dictionary = {}
+var _item_buttons: Array[Button] = []
+var _selected_path: Array[String] = []
+var _selected_item: Dictionary = {}
+
 var _item_box: VBoxContainer = null
-var _content_label: RichTextLabel = null
+var _content_title: Label = null
+var _content_body: RichTextLabel = null
+var _entry_image: TextureRect = null
 var _close_button: Button = null
-var _prev_button: Button = null
-var _next_button: Button = null
+var _prev_button: TextureButton = null
+var _next_button: TextureButton = null
 
 
 func _ready() -> void:
@@ -33,151 +43,105 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
-	var root := PanelContainer.new()
-	root.name = "ExpeditionManualRoot"
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.mouse_filter = Control.MOUSE_FILTER_STOP
-	var root_style := StyleBoxFlat.new()
-	root_style.bg_color = PANEL_COLOR
-	root_style.border_color = BORDER_COLOR
-	root_style.set_border_width_all(2)
-	root_style.set_corner_radius_all(6)
-	root.add_theme_stylebox_override("panel", root_style)
-	add_child(root)
+	var backdrop := ColorRect.new()
+	backdrop.color = Color(0.0, 0.0, 0.0, 0.48)
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(backdrop)
 
-	var outer_margin := MarginContainer.new()
-	outer_margin.add_theme_constant_override("margin_left", 24)
-	outer_margin.add_theme_constant_override("margin_top", 18)
-	outer_margin.add_theme_constant_override("margin_right", 24)
-	outer_margin.add_theme_constant_override("margin_bottom", 18)
-	root.add_child(outer_margin)
-
-	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 10)
-	outer_margin.add_child(layout)
-
-	var header := HBoxContainer.new()
-	header.custom_minimum_size = Vector2(0.0, 32.0)
-	layout.add_child(header)
-
-	var header_text := VBoxContainer.new()
-	header_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(header_text)
-
-	_title_label = Label.new()
-	_title_label.text = "远征手册"
-	_title_label.add_theme_font_size_override("font_size", 24)
-	_title_label.add_theme_color_override("font_color", Color(0.96, 0.86, 0.58))
-	_title_label.visible = false
-	header_text.add_child(_title_label)
-
-	_subtitle_label = Label.new()
-	_subtitle_label.text = "开拓指南 / 图鉴 / 阵营档案 / 战术笔记 / 传说"
-	_subtitle_label.add_theme_font_size_override("font_size", 13)
-	_subtitle_label.add_theme_color_override("font_color", Color(0.78, 0.70, 0.58))
-	_subtitle_label.visible = false
-	header_text.add_child(_subtitle_label)
+	var book := TextureRect.new()
+	book.texture = BOOK_TEXTURE
+	book.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	book.stretch_mode = TextureRect.STRETCH_SCALE
+	book.position = BOOK_MARGIN
+	book.size = PANEL_SIZE - BOOK_MARGIN * 2.0
+	book.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(book)
 
 	_close_button = Button.new()
 	_close_button.text = "关闭"
-	_close_button.custom_minimum_size = CLOSE_SIZE
 	_close_button.focus_mode = Control.FOCUS_NONE
+	_close_button.position = Vector2(PANEL_SIZE.x - BOOK_MARGIN.x - 92.0, BOOK_MARGIN.y + 28.0)
+	_close_button.size = Vector2(68.0, 30.0)
 	_close_button.pressed.connect(_on_close_pressed)
-	header.add_child(_close_button)
+	add_child(_close_button)
 
-	var body := HBoxContainer.new()
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body.add_theme_constant_override("separation", 14)
-	layout.add_child(body)
+	var content_origin := BOOK_MARGIN + Vector2(50.0, 50.0)
+	var content_size := PANEL_SIZE - BOOK_MARGIN * 2.0 - Vector2(100.0, 100.0)
+	var page_width := (content_size.x - SPINE_GAP) * 0.5
+	var page_height := content_size.y
 
-	var category_panel := PanelContainer.new()
-	category_panel.custom_minimum_size = Vector2(380.0, 0.0)
-	var side_style := StyleBoxFlat.new()
-	side_style.bg_color = SIDEBAR_COLOR
-	side_style.border_color = Color(0.50, 0.38, 0.22, 0.55)
-	side_style.set_border_width_all(1)
-	side_style.set_corner_radius_all(4)
-	category_panel.add_theme_stylebox_override("panel", side_style)
-	body.add_child(category_panel)
+	var left_rect := Rect2(
+		content_origin + Vector2(PAGE_INSET_LEFT + 70.0, PAGE_INSET_TOP),
+		Vector2(page_width - PAGE_INSET_LEFT - 70.0 - 42.0, page_height - PAGE_INSET_TOP - PAGE_INSET_BOTTOM + 30.0)
+	)
+	var right_rect := Rect2(
+		content_origin + Vector2(page_width + SPINE_GAP + 42.0, PAGE_INSET_TOP),
+		Vector2(page_width - PAGE_INSET_RIGHT - 70.0 - 42.0, page_height - PAGE_INSET_TOP - PAGE_INSET_BOTTOM + 30.0)
+	)
 
-	var category_margin := MarginContainer.new()
-	category_margin.add_theme_constant_override("margin_left", 12)
-	category_margin.add_theme_constant_override("margin_top", 12)
-	category_margin.add_theme_constant_override("margin_right", 12)
-	category_margin.add_theme_constant_override("margin_bottom", 12)
-	category_panel.add_child(category_margin)
-
-	var left_page := VBoxContainer.new()
-	left_page.add_theme_constant_override("separation", 10)
-	category_margin.add_child(left_page)
-
-	var item_scroll := ScrollContainer.new()
-	item_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	item_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	left_page.add_child(item_scroll)
+	var left_scroll := ScrollContainer.new()
+	left_scroll.position = left_rect.position
+	left_scroll.size = left_rect.size
+	left_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	left_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(left_scroll)
 
 	_item_box = VBoxContainer.new()
 	_item_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_item_box.add_theme_constant_override("separation", 7)
-	item_scroll.add_child(_item_box)
-
-	var note_label := Label.new()
-	note_label.text = "远征者批注：先看见，再决定。"
-	note_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note_label.add_theme_font_size_override("font_size", 13)
-	note_label.add_theme_color_override("font_color", Color(0.74, 0.66, 0.50))
-	left_page.add_child(note_label)
-
-	_prev_button = Button.new()
-	_prev_button.text = "上一页"
-	_prev_button.custom_minimum_size = Vector2(96.0, 32.0)
-	_prev_button.focus_mode = Control.FOCUS_NONE
-	_prev_button.pressed.connect(_on_prev_pressed)
-	left_page.add_child(_prev_button)
-
-	var content_panel := PanelContainer.new()
-	content_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var content_style := StyleBoxFlat.new()
-	content_style.bg_color = CONTENT_COLOR
-	content_style.border_color = Color(0.58, 0.44, 0.24, 0.60)
-	content_style.set_border_width_all(1)
-	content_style.set_corner_radius_all(4)
-	content_panel.add_theme_stylebox_override("panel", content_style)
-	body.add_child(content_panel)
-
-	var content_margin := MarginContainer.new()
-	content_margin.add_theme_constant_override("margin_left", 24)
-	content_margin.add_theme_constant_override("margin_top", 22)
-	content_margin.add_theme_constant_override("margin_right", 24)
-	content_margin.add_theme_constant_override("margin_bottom", 22)
-	content_panel.add_child(content_margin)
+	_item_box.add_theme_constant_override("separation", 5)
+	left_scroll.add_child(_item_box)
 
 	var right_page := VBoxContainer.new()
-	right_page.add_theme_constant_override("separation", 10)
-	content_margin.add_child(right_page)
+	right_page.position = right_rect.position
+	right_page.size = right_rect.size
+	right_page.add_theme_constant_override("separation", 12)
+	right_page.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(right_page)
 
-	_content_label = RichTextLabel.new()
-	_content_label.bbcode_enabled = true
-	_content_label.fit_content = false
-	_content_label.scroll_active = true
-	_content_label.selection_enabled = false
-	_content_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_content_label.add_theme_font_size_override("normal_font_size", 17)
-	_content_label.add_theme_font_size_override("bold_font_size", 19)
-	_content_label.add_theme_color_override("default_color", Color(0.92, 0.86, 0.74))
-	right_page.add_child(_content_label)
+	_content_title = Label.new()
+	_content_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content_title.add_theme_font_size_override("font_size", 24)
+	_content_title.add_theme_color_override("font_color", TEXT_DARK)
+	right_page.add_child(_content_title)
 
-	var next_row := HBoxContainer.new()
-	next_row.alignment = BoxContainer.ALIGNMENT_END
-	right_page.add_child(next_row)
+	_entry_image = TextureRect.new()
+	_entry_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_entry_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_entry_image.custom_minimum_size = Vector2(0.0, 260.0)
+	_entry_image.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_entry_image.visible = false
+	right_page.add_child(_entry_image)
 
-	_next_button = Button.new()
-	_next_button.text = "下一页"
-	_next_button.custom_minimum_size = Vector2(96.0, 32.0)
+	_content_body = RichTextLabel.new()
+	_content_body.bbcode_enabled = false
+	_content_body.fit_content = false
+	_content_body.scroll_active = true
+	_content_body.selection_enabled = false
+	_content_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_content_body.add_theme_font_size_override("normal_font_size", 17)
+	_content_body.add_theme_color_override("default_color", TEXT_DARK)
+	right_page.add_child(_content_body)
+
+	_prev_button = TextureButton.new()
+	_prev_button.texture_normal = PREV_ICON
+	_prev_button.ignore_texture_size = true
+	_prev_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	_prev_button.position = Vector2(left_rect.position.x, BOOK_MARGIN.y + book.size.y - 74.0)
+	_prev_button.size = Vector2(80.0, 42.0)
+	_prev_button.focus_mode = Control.FOCUS_NONE
+	_prev_button.pressed.connect(_on_prev_pressed)
+	add_child(_prev_button)
+
+	_next_button = TextureButton.new()
+	_next_button.texture_normal = NEXT_ICON
+	_next_button.ignore_texture_size = true
+	_next_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	_next_button.position = Vector2(right_rect.position.x + right_rect.size.x - 80.0, BOOK_MARGIN.y + book.size.y - 74.0)
+	_next_button.size = Vector2(80.0, 42.0)
 	_next_button.focus_mode = Control.FOCUS_NONE
 	_next_button.pressed.connect(_on_next_pressed)
-	next_row.add_child(_next_button)
+	add_child(_next_button)
 
 
 func _build_content() -> void:
@@ -185,181 +149,326 @@ func _build_content() -> void:
 		{
 			"id": "guide",
 			"title": "开拓指南",
-			"items": [
-				{"title": "游戏目标", "body": "[b]结论[/b]\n在五个阶段内扩张、建设、战争并争取最高胜利条件。\n\n[b]规则说明[/b]\n你可以通过摧毁其他玩家主城、完成阶段结算得分，或围绕巨龙巢穴争夺高级龙族科技来接近胜利。\n\n[b]远征者经验[/b]\n边境不是只奖励最会打架的人。看见更多、站住关键位置、让资源变成军力，才是长期优势。"},
-				{"title": "回合流程", "body": "[b]规则说明[/b]\n单机模式中玩家依次行动；联机模式中三名玩家同时行动，全部确认后统一结算回合型内容。\n\n[b]远征者经验[/b]\n先结束回合意味着你进入等待，也意味着你把最后的临场调整机会交了出去。"},
-				{"title": "行动点 AP", "body": "[b]规则说明[/b]\nAP 用于移动、建造、战斗、采集、招募和部分技能。当前每回合刷新节奏偏快，用来鼓励更多主动行动。\n\n[b]远征者经验[/b]\n不要把所有 AP 都花在赶路上。真正决定局势的，往往不是你走了多远，而是你停在了哪里。"},
-				{"title": "迷雾与视野", "body": "[b]规则说明[/b]\n单位和建筑会揭示周围区域。不同玩家拥有独立视野，迷雾外的信息不会共享。\n\n[b]远征者经验[/b]\n看见敌人之前，敌人可能已经看见你。视野本身就是一种资源。"},
-				{"title": "资源采集", "body": "[b]规则说明[/b]\n单位站在可采资源点上会开始 5 秒采集。完成时消耗 1 AP 并获得资源；移动、攻击、死亡或执行其他动作会取消采集。\n\n[b]远征者经验[/b]\n快采集不等于安全采集。资源点的位置经常比它产出什么更重要。"},
-				{"title": "战斗规则", "body": "[b]规则说明[/b]\n单位进入攻击后会按攻击频率持续作战，直到目标死亡、离开或战斗被系统打断。远程单位可以在射程内攻击，近战单位需要靠近。\n\n[b]远征者经验[/b]\n战斗不是目的，而是争夺地图控制权的手段。"},
+			"children": [
+				_make_text_item("游戏目标", "在五个阶段内扩张、建设、战争并争取胜利。\n\n你可以通过摧毁其他玩家主城、阶段结束得分，或围绕巨龙巢穴取得高级龙族科技来接近胜利。\n\n边境不是只奖励最会打架的人。看见更多、站住关键位置、让资源变成军力，才是长期优势。"),
+				_make_text_item("回合流程", "单机模式中玩家依次行动；联机模式中三名玩家同时行动，全部确认后统一结算回合型内容。\n\n先结束回合意味着进入等待，也意味着把最后的临场调整机会交出去。"),
+				_make_text_item("行动点 AP", "AP 用于移动、建造、战斗、采集、招募和部分技能。\n\n不要把所有 AP 都花在赶路上。真正决定局势的，往往不是你走了多远，而是你停在了哪里。"),
+				_make_text_item("迷雾与视野", "单位和建筑会揭示周围区域。不同玩家拥有独立视野，迷雾外的信息不会共享。\n\n看见敌人之前，敌人可能已经看见你。视野本身就是一种资源。"),
+				_make_text_item("资源采集", "单位站在可采资源点上会开始 5 秒采集。完成时消耗 1 AP 并获得资源；移动、攻击、死亡或执行其他动作会取消采集。\n\n快采集不等于安全采集。资源点的位置经常比它产出什么更重要。"),
+				_make_text_item("战斗规则", "单位进入攻击后会按攻击频率持续作战，直到目标死亡、离开或战斗被系统打断。远程单位可以在射程内攻击，近战单位需要靠近。"),
 			],
 		},
 		{
 			"id": "codex",
 			"title": "图鉴",
-			"items": [
-				{"title": "单位", "body": "[b]条目结构[/b]\n名称、类型、基础数值、招募来源、战略用途、背景描述。\n\n[b]当前重点[/b]\n工人负责建设与资源，斥候负责视野与机动，守卫与盾兵负责阵线，远程单位负责压制，龙族单位属于高价值战略力量。"},
-				{"title": "建筑", "body": "[b]条目结构[/b]\n名称、类型、占地、成本、生命、入驻上限、产出或特殊效果。\n\n[b]当前重点[/b]\n主城提供核心生存，仓库扩展储量，资源建筑连接生产链，兵营承担招募，塔防建筑提供自动防御。"},
-				{"title": "资源点", "body": "[b]条目结构[/b]\n名称、类型、产出、出现位置、战略用途。\n\n[b]当前重点[/b]\n食物支撑招募，木材与石料支撑建设，铁矿进入中期工业，金币和龙族材料推动高级路线。"},
-				{"title": "中立生物", "body": "[b]当前重点[/b]\n亚龙、古龙、始祖龙共同构成巨龙巢穴玩法。击败龙族生物不仅是战斗目标，也会影响后续科技路线。"},
-				{"title": "科技", "body": "[b]当前重点[/b]\n科技树不是独立分支，而是通用、阵营、巨龙之间交错的网络。部分高级兽人科技需要龙族战利品作为前置。"},
+			"children": [
+				{
+					"id": "units",
+					"title": "单位",
+					"children": _make_unit_tree(),
+				},
+				_make_text_item("建筑", "条目结构：名称、类型、占地、成本、生命、入驻上限、产出或特殊效果。\n\n主城提供核心生存，仓库扩展储量，资源建筑连接生产链，兵营承担招募，塔防建筑提供自动防御。"),
+				_make_text_item("资源点", "条目结构：名称、类型、产出、出现位置、战略用途。\n\n食物支撑招募，木材与石料支撑建设，铁矿进入中期工业，金币和龙族材料推动高级路线。"),
+				_make_text_item("科技", "科技树不是独立分支，而是通用、阵营、巨龙之间交错的网络。部分高级兽人科技需要龙族战利品作为前置。"),
 			],
 		},
 		{
 			"id": "factions",
 			"title": "阵营档案",
-			"items": [
-				{"title": "精灵", "body": "[b]关键词[/b]\n森林、机动、视野、魔法。\n\n[b]玩法倾向[/b]\n精灵适合围绕探索、视野、机动和魔法资源展开。它们不一定拥有最强的正面战斗力，但擅长提前发现机会。"},
-				{"title": "矮人", "body": "[b]关键词[/b]\n石墙、工业、矿脉、堡垒。\n\n[b]玩法倾向[/b]\n矮人适合建筑经营、矿产开发、防御工事和重工业。发展较慢，但站稳后能形成坚固阵地。"},
-				{"title": "兽人", "body": "[b]关键词[/b]\n战争、兽群、压迫、以战养战。\n\n[b]玩法倾向[/b]\n兽人适合军事压力、资源掠夺、部队协同和快速冲突。战团行动是兽人的核心节奏。"},
+			"children": [
+				_make_text_item("精灵", "关键词：森林、机动、视野、魔法。\n\n精灵适合围绕探索、视野、机动和魔法资源展开。它们不一定拥有最强的正面战斗力，但擅长提前发现机会。"),
+				_make_text_item("矮人", "关键词：石墙、工业、矿脉、堡垒。\n\n矮人适合建筑经营、矿产开发、防御工事和重工业。发展较慢，但站稳后能形成坚固阵地。"),
+				_make_text_item("兽人", "关键词：战争、兽群、压迫、以战养战。\n\n兽人适合军事压力、资源掠夺、部队协同和快速冲突。军团行动是兽人的核心节奏。"),
 			],
 		},
 		{
 			"id": "notes",
 			"title": "战术笔记",
-			"items": [
-				{"title": "不要只看最近的资源", "body": "最近的资源能养活你。\n关键位置的资源才能保护你。\n\n一座远处的铁矿，不一定只是为了采集。它也可能是一枚钉子，迫使敌人绕路、分兵，或者提前暴露自己的意图。"},
-				{"title": "斥候不是为了活到最后", "body": "斥候的价值，不在于它能不能打赢敌人。\n\n它的价值在于：它是否替你看见了敌人不想让你看见的东西。"},
-				{"title": "种田不是安全", "body": "边境上没有真正安全的后方。\n\n当你以为自己正在稳定发展时，敌人可能已经在你的视野边缘集结了第一支部队。"},
-				{"title": "三方博弈", "body": "三人对抗里，领先者会天然吸引压力。\n\n不要只问自己能不能赢这场战斗，也要问：这场战斗结束后，第三个人会得到什么。"},
+			"children": [
+				_make_text_item("不要只看最近的资源", "最近的资源能养活你。\n关键位置的资源才能保护你。\n\n一座远处的铁矿，不一定只是为了采集。它也可能是一枚钉子，迫使敌人绕路、分兵，或者提前暴露自己的意图。"),
+				_make_text_item("斥候不是为了活到最后", "斥候的价值，不在于它能不能打赢敌人。\n\n它的价值在于：它是否替你看见了敌人不想让你看见的东西。"),
+				_make_text_item("种田不是安全", "边境上没有真正安全的后方。\n\n当你以为自己正在稳定发展时，敌人可能已经在你的视野边缘集结了第一支部队。"),
+				_make_text_item("三方博弈", "三人对抗里，领先者会天然吸引压力。\n\n不要只问自己能不能赢这场战斗，也要问：这场战斗结束后，第三个人会得到什么。"),
 			],
 		},
 		{
 			"id": "lore",
 			"title": "传说",
-			"items": [
-				{"title": "巨龙山传说", "body": "没有人知道巨龙山究竟是山，还是一具沉睡的骸骨。\n\n精灵说它仍在呼吸，矮人说它内部藏着火，兽人则相信它终有一天会醒来。\n\n三族都声称自己只是来开拓边境。但所有人的道路，最终都指向了那座山。"},
-				{"title": "符文碑残文之一", "body": "当三族的旗帜再次插入边境，\n山心之龙将听见铁与火的声音。"},
-				{"title": "古龙遗迹", "body": "这里不是一座废墟。\n至少最早的远征者不是这样称呼它的。\n\n他们说，这些石柱曾经围绕着某种比王国更古老的东西。后来，柱子倒下了，王国也倒下了，只有龙晶仍在夜里发光。"},
+			"children": [
+				_make_text_item("巨龙山传说", "没有人知道巨龙山究竟是山，还是一具沉睡的骸骨。\n\n精灵说它仍在呼吸，矮人说它内部藏着火，兽人则相信它终有一天会醒来。"),
+				_make_text_item("符文碑残文之一", "当三族的旗帜再次插入边境，\n山心之龙将听见铁与火的声音。"),
+				_make_text_item("古龙遗迹", "这里不是一座废墟。\n至少最早的远征者不是这样称呼它的。\n\n他们说，这些石柱曾经围绕着某种比王国更古老的东西。后来，柱子倒下了，王国也倒下了，只有龙晶仍在夜里发光。"),
 			],
 		},
 	]
 
 
+func _make_text_item(title: String, body: String) -> Dictionary:
+	return {
+		"id": title,
+		"title": title,
+		"body": body,
+	}
+
+
+func _make_unit_tree() -> Array[Dictionary]:
+	var groups: Dictionary = {
+		"精灵": [],
+		"矮人": [],
+		"兽人": [],
+		"中立": [],
+	}
+	for entry in _make_unit_entries():
+		var faction: String = str(entry.get("faction", "中立"))
+		if not groups.has(faction):
+			groups[faction] = []
+		groups[faction].append(entry)
+	var result: Array[Dictionary] = []
+	for faction_name in ["精灵", "矮人", "兽人", "中立"]:
+		result.append({
+			"id": "unit_" + faction_name,
+			"title": faction_name,
+			"children": groups[faction_name],
+		})
+	return result
+
+
+func _make_unit_entries() -> Array[Dictionary]:
+	return [
+		_unit_entry("精灵工人", "精灵", "工人", "采集 / 建造 / 入驻", "基础劳动力，负责资源采集、建筑建造和建筑入驻。", "res://assets/texture/character/elf/Worker/Elf-Worker-Idle.png"),
+		_unit_entry("风行斥候", "精灵", "斥候", "视野 / 侦察 / 机动", "高视野机动单位，适合探索、监控边境和远程虚弱敌人。", "res://assets/texture/character/elf/Scout/Elf-Scout-Idle.png"),
+		_unit_entry("月影刺客", "精灵", "近战", "突袭 / 收割", "擅长切入薄弱目标，依赖视野和机动创造攻击机会。", "res://assets/texture/character/elf/Moonshadow Assassin/Elf-Assassin-Idle.png"),
+		_unit_entry("林影游侠", "精灵", "远程", "压制 / 拉扯", "在安全距离输出，适合与斥候视野和森林路线配合。", "res://assets/texture/character/elf/Ranger/Elf-Ranger-Idle.png"),
+		_unit_entry("月刃舞者", "精灵", "近战", "机动 / 连续作战", "偏向中后期的精灵机动作战单位，用于撕开边境战线。", ""),
+		_unit_entry("星藤守卫", "精灵", "肉盾", "守点 / 控制", "用于守住森林关键点和保护远程单位。", ""),
+		_unit_entry("矮人工人", "矮人", "工人", "采集 / 建造 / 修复", "矮人的基础生产单位，适合入驻矿业建筑和修复防御建筑。", "res://assets/texture/character/dwarf/Worker/Dwarf-Worker-Idle.png"),
+		_unit_entry("勘探者", "矮人", "斥候", "探矿 / 视野", "用于寻找矿脉、点亮资源区并给矮人工业路线铺路。", "res://assets/texture/character/dwarf/Prospector/Dwarf-Prospector-Idle.png"),
+		_unit_entry("铁锤卫", "矮人", "近战", "前线 / 反击", "矮人基础近战卫士，适合守住防线缺口。", "res://assets/texture/character/dwarf/Hammer Guard/Dwarf-Hammer-Guard-Idle.png"),
+		_unit_entry("盾誓卫", "矮人", "肉盾", "抗线 / 护卫", "承受伤害并保护弩手和塔防建筑。", ""),
+		_unit_entry("山弩手", "矮人", "远程", "防线输出", "适合在城墙和塔防体系后方稳定输出。", "res://assets/texture/character/dwarf/Mountain Crossbow/Dwarf-Mountain-Crossbow-Idle.png"),
+		_unit_entry("爆破工", "矮人", "特殊", "破墙 / 工程", "偏向工程破坏和阵地突破的特殊单位。", ""),
+		_unit_entry("兽人工人", "兽人", "工人", "采集 / 建造", "兽人的基础劳动力，承担前期采集和战线建筑铺设。", "res://assets/texture/character/orc/Worker/Orc-Worker-Idle.png"),
+		_unit_entry("猎齿兽", "兽人", "野兽", "高速 / 冲击", "可作为快速骚扰单位，也可以配合投石兵进行特殊投掷。", "res://assets/texture/character/Hunter-Beast/Hunter-tooth Beast.png"),
+		_unit_entry("血斧兵", "兽人", "近战", "主力 / 进攻", "兽人基础进攻骨干，适合随军团冲锋压迫敌人。", "res://assets/texture/character/orc/Blood Axe Warrior/Orc-Idle.png"),
+		_unit_entry("兽人杂兵", "兽人", "近战", "廉价 / 人海", "低成本单位，用数量制造占位、包围和消耗。", ""),
+		_unit_entry("碎骨盾奴", "兽人", "肉盾", "廉价抗线", "低价肉盾单位，用来保护远程和维持军团阵型。", ""),
+		_unit_entry("兽皮巨盾兵", "兽人", "肉盾", "高血量 / 推进", "更耐打的兽人盾兵，适合扛住正面火力。", ""),
+		_unit_entry("兽人投石兵", "兽人", "远程", "远程 / 投掷猎齿兽", "射程较远，可消耗 AP 投掷猎齿兽，形成跨地形压力。", "res://assets/texture/character/orc/Orc-Slinger-Idle.png"),
+		_unit_entry("屠龙战士", "兽人", "高级近战", "对龙 / 战利品路线", "需要龙族相关前置后解锁，代表兽人对巨龙科技的军事化利用。", ""),
+		_unit_entry("龙骨巨盾兵", "兽人", "高级肉盾", "抗线 / 龙骨装备", "利用龙族材料强化防护的高阶盾兵。", ""),
+		_unit_entry("龙血狂战士", "兽人", "高级近战", "爆发 / 高风险", "通过龙血路线强化攻击性的高阶兽人单位。", ""),
+		_unit_entry("巨龙骑士", "兽人", "高级单位", "机动 / 终局压力", "兽人与龙族科技交汇后的高价值战略单位。", ""),
+		_unit_entry("火焰亚龙", "中立", "亚龙", "范围攻击 / 火焰", "巨龙巢穴外围威胁之一，击败后可推动龙族相关路线。", "res://assets/texture/character/dragon/Fire-Dragon-Idle.png"),
+		_unit_entry("冰霜亚龙", "中立", "亚龙", "控制 / 冰霜", "巨龙巢穴外围威胁之一，偏向限制和拖慢敌人。", "res://assets/texture/character/dragon/Ice-Dragon-Idle.png"),
+		_unit_entry("毒液亚龙", "中立", "亚龙", "削弱 / 毒素", "巨龙巢穴外围威胁之一，擅长持续削弱目标。", "res://assets/texture/character/dragon/Poison-Dragon-Idle.png"),
+		_unit_entry("古龙", "中立", "古龙", "高阶守卫", "守卫巨龙巢穴核心区域的强大中立单位。", "res://assets/texture/character/dragon/Ancient-Dragon-Idle.png"),
+		_unit_entry("始祖龙", "中立", "首领", "巢穴核心 / 全局威胁", "占据巨龙巢穴中心的固定首领，攻击会威胁范围内玩家单位。", "res://assets/texture/character/dragon/Progenitor-Dragon-Idle.png"),
+		_unit_entry("流浪商队", "中立", "事件", "贸易 / 机会", "阶段事件相关中立目标，用于补充资源和制造地图机会。", ""),
+		_unit_entry("哥布林复仇队", "中立", "事件", "袭扰 / 阶段压力", "大阶段开始后出现的中立压力，用来打断过度安稳的发展。", ""),
+	]
+
+
+func _unit_entry(title: String, faction: String, role: String, use_case: String, body: String, texture_path: String) -> Dictionary:
+	return {
+		"id": title,
+		"title": title,
+		"type": "unit",
+		"faction": faction,
+		"role": role,
+		"use_case": use_case,
+		"body": body,
+		"texture_path": texture_path,
+	}
+
+
 func _build_directory() -> void:
 	_clear_directory()
-	if _collapsed_categories.is_empty():
-		for i in range(_categories.size()):
-			var init_category: Dictionary = _categories[i]
-			_collapsed_categories[str(init_category.get("id", ""))] = i != 0
 	for category in _categories:
-		var category_id: String = str(category.get("id", ""))
-		var category_title: String = str(category.get("title", category_id))
-		var is_collapsed: bool = bool(_collapsed_categories.get(category_id, false))
-		var header := Button.new()
-		header.text = ("+ " if is_collapsed else "- ") + category_title
-		header.custom_minimum_size = Vector2(0.0, 34.0)
-		header.focus_mode = Control.FOCUS_NONE
-		header.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		header.add_theme_font_size_override("font_size", 16)
-		header.add_theme_color_override("font_color", Color(0.96, 0.82, 0.48))
-		header.pressed.connect(_toggle_category.bind(category_id))
-		_item_box.add_child(header)
-		if is_collapsed:
-			continue
-		var items: Array = category.get("items", [])
-		for item in items:
-			var item_data: Dictionary = item
-			var title: String = str(item_data.get("title", "未命名"))
-			var button := Button.new()
-			button.text = "    " + title
-			button.custom_minimum_size = Vector2(0.0, 34.0)
-			button.focus_mode = Control.FOCUS_NONE
-			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			button.pressed.connect(_select_item_in_category.bind(category_id, title))
-			_item_box.add_child(button)
-			_item_buttons.append(button)
+		_add_directory_item(category, [], 0)
 
 
-func _toggle_category(category_id: String) -> void:
-	var current: bool = bool(_collapsed_categories.get(category_id, false))
-	_collapsed_categories[category_id] = not current
-	_build_directory()
-	if not bool(_collapsed_categories.get(_selected_category, false)):
-		_select_item(_selected_item)
+func _add_directory_item(item: Dictionary, parent_path: Array[String], level: int) -> void:
+	var title: String = str(item.get("title", "未命名"))
+	var path := parent_path.duplicate()
+	path.append(title)
+	var has_children := item.has("children")
+	var key := "/".join(path)
+	var is_collapsed: bool = bool(_collapsed.get(key, level > 1 and has_children))
+	var button := Button.new()
+	button.focus_mode = Control.FOCUS_NONE
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.custom_minimum_size = Vector2(0.0, 32.0)
+	button.text = _directory_prefix(level, has_children, is_collapsed, key == "/".join(_selected_path)) + title
+	button.add_theme_font_size_override("font_size", _directory_font_size(level))
+	button.add_theme_color_override("font_color", _directory_color(level, key == "/".join(_selected_path)))
+	button.add_theme_stylebox_override("normal", _empty_style())
+	button.add_theme_stylebox_override("hover", _empty_style())
+	button.add_theme_stylebox_override("pressed", _empty_style())
+	button.pressed.connect(_on_directory_pressed.bind(item, path, has_children))
+	_item_box.add_child(button)
+	_item_buttons.append(button)
+	if has_children and not is_collapsed:
+		var children: Array = item.get("children", [])
+		for child in children:
+			var child_item: Dictionary = child
+			_add_directory_item(child_item, path, level + 1)
+
+
+func _directory_prefix(level: int, has_children: bool, is_collapsed: bool, selected: bool) -> String:
+	var indent := ""
+	for i in range(level):
+		indent += "   "
+	if has_children:
+		return indent + ("▸ " if is_collapsed else "▾ ")
+	if selected:
+		return indent + "▸ "
+	return indent + "  "
+
+
+func _directory_font_size(level: int) -> int:
+	if level == 0:
+		return 19
+	if level == 1:
+		return 17
+	return 15
+
+
+func _directory_color(level: int, selected: bool) -> Color:
+	if selected:
+		return SELECTED_COLOR
+	if level <= 1:
+		return TEXT_DARK
+	return TEXT_GRAY
+
+
+func _empty_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	style.content_margin_left = 0.0
+	style.content_margin_right = 0.0
+	style.content_margin_top = 0.0
+	style.content_margin_bottom = 0.0
+	return style
+
+
+func _on_directory_pressed(item: Dictionary, path: Array[String], has_children: bool) -> void:
+	var key := "/".join(path)
+	if has_children:
+		_collapsed[key] = not bool(_collapsed.get(key, false))
+		_build_directory()
+	var selectable := not has_children or item.has("body") or item.has("texture_path")
+	if selectable:
+		_select_item(item, path)
 
 
 func _select_first_item() -> void:
-	for category in _categories:
-		var items: Array = category.get("items", [])
-		if items.size() > 0:
-			var first_item: Dictionary = items[0]
-			_select_item_in_category(str(category.get("id", "")), str(first_item.get("title", "")))
-			return
-	_selected_category = ""
-	_selected_item = ""
-	_content_label.text = ""
+	var flat := _get_flat_items()
+	if flat.is_empty():
+		_content_title.text = ""
+		_content_body.text = ""
+		return
+	var first: Dictionary = flat[0]
+	_select_item(first.get("item", {}), first.get("path", []))
 
 
-func _select_item_in_category(category_id: String, title: String) -> void:
-	_selected_category = category_id
-	_select_item(title)
-
-
-func _select_category(id: String) -> void:
-	_selected_category = id
-	for key in _category_buttons.keys():
-		var button: Button = _category_buttons[key]
-		button.disabled = str(key) == id
-	_clear_item_buttons()
-	var category := _find_category(id)
-	var items: Array = category.get("items", [])
-	for item in items:
-		var item_data: Dictionary = item
-		var button := Button.new()
-		button.text = str(item_data.get("title", "未命名"))
-		button.custom_minimum_size = Vector2(0.0, 38.0)
-		button.focus_mode = Control.FOCUS_NONE
-		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.pressed.connect(_select_item.bind(str(item_data.get("title", ""))))
-		_item_box.add_child(button)
-		_item_buttons.append(button)
-	if items.size() > 0:
-		var first_item: Dictionary = items[0]
-		_select_item(str(first_item.get("title", "")))
-	else:
-		_selected_item = ""
-		_content_label.text = ""
-
-
-func _select_item(title: String) -> void:
-	_selected_item = title
-	for button in _item_buttons:
-		button.disabled = button.text.strip_edges() == title
-	var item := _find_item(_selected_category, title)
-	var category := _find_category(_selected_category)
-	var category_title: String = str(category.get("title", "远征手册"))
-	var body: String = str(item.get("body", ""))
-	_content_label.text = "[font_size=24][b]%s[/b][/font_size]\n[color=#c9b47d]%s / 已解锁[/color]\n\n[bgcolor=#2a2318][color=#d7c08a] 展示区 [/color][/bgcolor]\n这里后续可以根据条目类型显示单位立绘、建筑贴图、资源图标、阵营代表图或传说插图。\n\n[bgcolor=#322819][color=#f0d991] 摘要 [/color][/bgcolor]\n这是当前条目的规则、用途和世界观记录。\n\n%s" % [
-		title,
-		category_title,
-		body,
-	]
+func _select_item(item: Dictionary, path: Array[String]) -> void:
+	_selected_item = item
+	_selected_path = path.duplicate()
+	_expand_item_path(_selected_path)
+	_content_title.text = str(item.get("title", "未命名"))
+	_content_body.text = _format_item_text(item)
+	_update_entry_image(item)
+	_build_directory()
 	_update_page_buttons()
 
 
-func _find_category(id: String) -> Dictionary:
+func _format_item_text(item: Dictionary) -> String:
+	if str(item.get("type", "")) == "unit":
+		return _format_unit_entry_text(item)
+	return str(item.get("body", ""))
+
+
+func _format_unit_entry_text(item: Dictionary) -> String:
+	var lines: Array[String] = []
+	lines.append("阵营：" + str(item.get("faction", "未知")))
+	lines.append("类型：" + str(item.get("role", "未知")))
+	lines.append("定位：" + str(item.get("use_case", "未记录")))
+	lines.append("")
+	lines.append(str(item.get("body", "")))
+	return "\n".join(lines)
+
+
+func _update_entry_image(item: Dictionary) -> void:
+	if _entry_image == null:
+		return
+	var path: String = str(item.get("texture_path", ""))
+	if path.is_empty() or not ResourceLoader.exists(path):
+		_entry_image.texture = null
+		_entry_image.visible = false
+		return
+	_entry_image.texture = load(path)
+	_entry_image.visible = true
+
+
+func _expand_item_path(path: Array[String]) -> void:
+	var current: Array[String] = []
+	for i in range(maxi(0, path.size() - 1)):
+		current.append(path[i])
+		_collapsed["/".join(current)] = false
+
+
+func _get_flat_items() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
 	for category in _categories:
-		if str(category.get("id", "")) == id:
-			return category
-	return {}
+		_add_flat_items(category, [], result)
+	return result
 
 
-func _find_item(category_id: String, title: String) -> Dictionary:
-	var category := _find_category(category_id)
-	var items: Array = category.get("items", [])
-	for item in items:
-		var item_data: Dictionary = item
-		if str(item_data.get("title", "")) == title:
-			return item_data
-	return {}
+func _add_flat_items(item: Dictionary, parent_path: Array[String], result: Array[Dictionary]) -> void:
+	var path := parent_path.duplicate()
+	path.append(str(item.get("title", "未命名")))
+	var children: Array = item.get("children", [])
+	if item.has("body") or item.has("texture_path") or children.is_empty():
+		result.append({
+			"item": item,
+			"path": path,
+		})
+	for child in children:
+		var child_item: Dictionary = child
+		_add_flat_items(child_item, path, result)
 
 
-func _clear_item_buttons() -> void:
-	for button in _item_buttons:
-		if is_instance_valid(button):
-			button.queue_free()
-	_item_buttons.clear()
+func _select_relative_item(delta: int) -> void:
+	var flat := _get_flat_items()
+	if flat.is_empty():
+		return
+	var current_index := 0
+	var selected_key := "/".join(_selected_path)
+	for i in range(flat.size()):
+		var entry: Dictionary = flat[i]
+		var path: Array[String] = entry.get("path", [])
+		if "/".join(path) == selected_key:
+			current_index = i
+			break
+	var next_index: int = clampi(current_index + delta, 0, flat.size() - 1)
+	var next_entry: Dictionary = flat[next_index]
+	_select_item(next_entry.get("item", {}), next_entry.get("path", []))
+
+
+func _update_page_buttons() -> void:
+	var flat := _get_flat_items()
+	var current_index := -1
+	var selected_key := "/".join(_selected_path)
+	for i in range(flat.size()):
+		var entry: Dictionary = flat[i]
+		var path: Array[String] = entry.get("path", [])
+		if "/".join(path) == selected_key:
+			current_index = i
+			break
+	if _prev_button != null:
+		_prev_button.disabled = current_index <= 0
+	if _next_button != null:
+		_next_button.disabled = current_index < 0 or current_index >= flat.size() - 1
 
 
 func _clear_directory() -> void:
@@ -377,53 +486,6 @@ func _on_prev_pressed() -> void:
 
 func _on_next_pressed() -> void:
 	_select_relative_item(1)
-
-
-func _select_relative_item(delta: int) -> void:
-	var flat_items: Array[Dictionary] = _get_flat_items()
-	if flat_items.is_empty():
-		return
-	var current_index := 0
-	for i in range(flat_items.size()):
-		var entry: Dictionary = flat_items[i]
-		if str(entry.get("category_id", "")) == _selected_category and str(entry.get("title", "")) == _selected_item:
-			current_index = i
-			break
-	var next_index: int = clampi(current_index + delta, 0, flat_items.size() - 1)
-	var next_entry: Dictionary = flat_items[next_index]
-	var category_id: String = str(next_entry.get("category_id", ""))
-	var title: String = str(next_entry.get("title", ""))
-	_collapsed_categories[category_id] = false
-	_build_directory()
-	_select_item_in_category(category_id, title)
-
-
-func _get_flat_items() -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	for category in _categories:
-		var category_id: String = str(category.get("id", ""))
-		var items: Array = category.get("items", [])
-		for item in items:
-			var item_data: Dictionary = item
-			result.append({
-				"category_id": category_id,
-				"title": str(item_data.get("title", "")),
-			})
-	return result
-
-
-func _update_page_buttons() -> void:
-	var flat_items: Array[Dictionary] = _get_flat_items()
-	var current_index := -1
-	for i in range(flat_items.size()):
-		var entry: Dictionary = flat_items[i]
-		if str(entry.get("category_id", "")) == _selected_category and str(entry.get("title", "")) == _selected_item:
-			current_index = i
-			break
-	if _prev_button != null:
-		_prev_button.disabled = current_index <= 0
-	if _next_button != null:
-		_next_button.disabled = current_index < 0 or current_index >= flat_items.size() - 1
 
 
 func _on_close_pressed() -> void:
