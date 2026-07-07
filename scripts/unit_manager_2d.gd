@@ -544,11 +544,24 @@ func _cancel_gather_for_unit(unit_id: int) -> void:
 		_gathering_manager.call("cancel_gather", unit_id)
 
 
+func _cancel_active_unit_action(unit_id: int) -> void:
+	if unit_id < 0:
+		return
+	_cancel_gather_for_unit(unit_id)
+	_cancel_focus_attack_for_attacker(unit_id)
+	_pending_focus_attack_after_move.erase(unit_id)
+
+
 func _cancel_gather_for_units(unit_ids: Array) -> void:
 	if _gathering_manager == null and is_inside_tree():
 		_gathering_manager = get_parent().get_node_or_null("GatheringManager2D")
 	if _gathering_manager != null and _gathering_manager.has_method("cancel_gathers_for_units"):
 		_gathering_manager.call("cancel_gathers_for_units", unit_ids)
+
+
+func _cancel_active_unit_actions(unit_ids: Array) -> void:
+	for unit_id_variant in unit_ids:
+		_cancel_active_unit_action(int(unit_id_variant))
 
 
 func _try_start_gather_for_unit(unit: Dictionary) -> void:
@@ -780,6 +793,7 @@ func apply_building_damage(unit_id: int, attacker_faction: int, damage: int) -> 
 		_play_hit_effect(unit_id, unit.get("grid_pos", Vector2i.ZERO), final_damage)
 		if int(unit.get("hp", 0)) <= 0:
 			_cancel_gather_for_unit(unit_id)
+			_cancel_focus_attacks_involving_unit(unit_id)
 			unit_killed.emit(attacker_faction, int(unit.get("faction", -1)), unit.duplicate())
 			_move_visuals.erase(unit_id)
 			_hurt_visuals.erase(unit_id)
@@ -1510,7 +1524,7 @@ func _try_reveal_fog_at(target: Vector2i) -> bool:
 		return false
 	if _fog_manager == null or not _fog_manager.has_method("reveal_area"):
 		return false
-	_cancel_gather_for_unit(int(caster.get("id", -1)))
+	_cancel_active_unit_action(int(caster.get("id", -1)))
 	if _turn_manager != null:
 		var ok: bool = _turn_manager.spend_ap(int(_turn_manager.current_player), FOG_REVEAL_AP_COST)
 		if not ok:
@@ -1539,7 +1553,7 @@ func _try_conceal_fog_at(target: Vector2i) -> bool:
 		return false
 	if _fog_manager == null or not _fog_manager.has_method("add_magic_fog"):
 		return false
-	_cancel_gather_for_unit(int(caster.get("id", -1)))
+	_cancel_active_unit_action(int(caster.get("id", -1)))
 	if _turn_manager != null:
 		var ok: bool = _turn_manager.spend_ap(int(_turn_manager.current_player), FOG_CONCEAL_AP_COST)
 		if not ok:
@@ -1600,7 +1614,7 @@ func _confirm_warband_selection_local() -> bool:
 	var warband_id: int = _next_warband_id
 	var formed_count: int = _warband_selection_ids.size()
 	_next_warband_id += 1
-	_cancel_gather_for_units(_warband_selection_ids)
+	_cancel_active_unit_actions(_warband_selection_ids)
 	for member_id in _warband_selection_ids:
 		var member: Dictionary = _get_unit_by_id(member_id)
 		if member.is_empty():
@@ -1648,7 +1662,7 @@ func _disband_warband_local(selected_unit_id: int) -> bool:
 	for member in _units:
 		if int(member.get("warband_id", -1)) != warband_id:
 			continue
-		_cancel_gather_for_unit(int(member.get("id", -1)))
+		_cancel_active_unit_action(int(member.get("id", -1)))
 		member.erase("warband_id")
 		member.erase("warband_leader_id")
 		member.erase("warband_turn")
@@ -1997,6 +2011,156 @@ func _apply_unit_attack_damage(attacker: Dictionary, defender: Dictionary) -> bo
 	return false
 
 
+func _try_start_focus_attack_for_selected_units(target: Dictionary) -> bool:
+	if target.is_empty():
+		return false
+	var target_id: int = int(target.get("id", -1))
+	var attacker_ids: Array[int] = get_selected_unit_ids()
+	if attacker_ids.size() <= 1:
+		return false
+	var started := 0
+	for attacker_id in attacker_ids:
+		var attacker: Dictionary = _get_unit_by_id(attacker_id)
+		if attacker.is_empty():
+			continue
+		if int(attacker.get("faction", -1)) == int(target.get("faction", -2)):
+			continue
+		if _is_retreat_unselectable_for_attacker(attacker, target):
+			continue
+		if _try_start_or_move_focus_attacker(attacker, target):
+			started += 1
+	if started <= 0:
+		return false
+	_reachable_tiles = []
+	_attack_range_tiles = []
+	_throw_range_tiles = []
+	_emit_action_preview({})
+	queue_redraw()
+	return true
+
+
+func _try_start_or_move_focus_attacker(attacker: Dictionary, target: Dictionary) -> bool:
+	var attacker_id: int = int(attacker.get("id", -1))
+	var target_id: int = int(target.get("id", -1))
+	if attacker_id < 0 or target_id < 0:
+		return false
+	if _can_unit_attack_unit(attacker, target):
+		return _start_focus_attack_session(attacker_id, target_id)
+	var approach_tile: Vector2i = _find_attack_approach_tile(attacker, target)
+	if approach_tile.x < 0:
+		return false
+	return _move_focus_attacker_to_attack(attacker, target, approach_tile)
+
+
+func _move_focus_attacker_to_attack(attacker: Dictionary, target: Dictionary, approach_tile: Vector2i) -> bool:
+	var attacker_id: int = int(attacker.get("id", -1))
+	var from: Vector2i = attacker.get("grid_pos", Vector2i.ZERO)
+	var steps: int = _calc_path_length_for_unit(attacker, from, approach_tile)
+	if steps <= 0:
+		return false
+	var ap_cost: int = _get_movement_ap_cost(attacker, steps)
+	if _turn_manager:
+		var ok: bool = _turn_manager.spend_ap(_turn_manager.current_player, ap_cost)
+		if not ok:
+			return false
+	for i in range(_units.size()):
+		var unit: Dictionary = _units[i]
+		if int(unit.get("id", -1)) != attacker_id:
+			continue
+		_cancel_active_unit_action(attacker_id)
+		unit["grid_pos"] = approach_tile
+		unit["has_moved"] = true
+		_update_dragon_lair_location_after_move(unit, from, approach_tile)
+		_pending_focus_attack_after_move[attacker_id] = int(target.get("id", -1))
+		_units[i] = unit
+		_start_move_visual(attacker_id, from, approach_tile)
+		if _fog_manager and _turn_manager:
+			_fog_manager.reveal_area(_turn_manager.current_player, approach_tile.x, approach_tile.y, _get_unit_vision_value(unit))
+		return true
+	return false
+
+
+func _start_focus_attack_session(attacker_id: int, target_id: int) -> bool:
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	var target: Dictionary = _get_unit_by_id(target_id)
+	if attacker.is_empty() or target.is_empty():
+		return false
+	if int(attacker.get("faction", -1)) == int(target.get("faction", -2)):
+		return false
+	if not _can_unit_attack_unit(attacker, target):
+		return false
+	_cancel_active_unit_action(attacker_id)
+	var timer := Timer.new()
+	timer.one_shot = false
+	timer.wait_time = UNIT_ATTACK_INTERVAL
+	timer.timeout.connect(_on_focus_attack_timer_timeout.bind(attacker_id))
+	add_child(timer)
+	_focus_attack_sessions[attacker_id] = {
+		"target_id": target_id,
+		"timer": timer,
+	}
+	timer.start()
+	_perform_focus_attack_tick(attacker_id)
+	return true
+
+
+func _on_focus_attack_timer_timeout(attacker_id: int) -> void:
+	_perform_focus_attack_tick(attacker_id)
+
+
+func _perform_focus_attack_tick(attacker_id: int) -> void:
+	if not _focus_attack_sessions.has(attacker_id):
+		return
+	var session: Dictionary = _focus_attack_sessions[attacker_id]
+	var target_id: int = int(session.get("target_id", -1))
+	var attacker: Dictionary = _get_unit_by_id(attacker_id)
+	var target: Dictionary = _get_unit_by_id(target_id)
+	if attacker.is_empty() or target.is_empty():
+		_cancel_focus_attack_for_attacker(attacker_id)
+		return
+	if int(attacker.get("faction", -1)) == int(target.get("faction", -2)):
+		_cancel_focus_attack_for_attacker(attacker_id)
+		return
+	if not _can_unit_attack_unit(attacker, target):
+		_cancel_focus_attack_for_attacker(attacker_id)
+		return
+	var dead: bool = _apply_unit_attack_damage(attacker, target)
+	if dead:
+		_remove_unit_after_attack(target_id, attacker)
+		_cancel_focus_attacks_involving_unit(target_id)
+		_cancel_focus_attack_for_attacker(attacker_id)
+	queue_redraw()
+
+
+func _cancel_focus_attack_for_attacker(attacker_id: int) -> void:
+	if not _focus_attack_sessions.has(attacker_id):
+		return
+	var session: Dictionary = _focus_attack_sessions[attacker_id]
+	var timer: Timer = session.get("timer", null) as Timer
+	if timer != null:
+		timer.stop()
+		timer.queue_free()
+	_focus_attack_sessions.erase(attacker_id)
+
+
+func _cancel_focus_attacks_involving_unit(unit_id: int) -> void:
+	var to_cancel: Array[int] = []
+	for attacker_id_variant in _focus_attack_sessions.keys():
+		var attacker_id: int = int(attacker_id_variant)
+		var session: Dictionary = _focus_attack_sessions[attacker_id]
+		if attacker_id == unit_id or int(session.get("target_id", -1)) == unit_id:
+			to_cancel.append(attacker_id)
+	for attacker_id in to_cancel:
+		_cancel_focus_attack_for_attacker(attacker_id)
+	_pending_focus_attack_after_move.erase(unit_id)
+	var pending_to_cancel: Array[int] = []
+	for pending_attacker in _pending_focus_attack_after_move.keys():
+		if int(_pending_focus_attack_after_move[pending_attacker]) == unit_id:
+			pending_to_cancel.append(int(pending_attacker))
+	for pending_attacker_id in pending_to_cancel:
+		_pending_focus_attack_after_move.erase(pending_attacker_id)
+
+
 func _try_attack_building(attacker: Dictionary, building: Dictionary) -> bool:
 	if attacker.is_empty() or building.is_empty():
 		return false
@@ -2039,7 +2203,7 @@ func _start_building_attack(attacker: Dictionary, building: Dictionary) -> void:
 	var bmgr: Node = get_parent().get_node_or_null("BuildingManager2D")
 	if bmgr == null or not bmgr.has_method("damage_building") or not bmgr.has_method("get_building_by_id"):
 		return
-	_cancel_gather_for_unit(int(attacker.get("id", -1)))
+	_cancel_active_unit_action(int(attacker.get("id", -1)))
 	_in_combat = true
 	_combat_sequence_id += 1
 	_combat_data = {}
@@ -2144,6 +2308,7 @@ func _remove_unit_after_attack(target_id: int, attacker: Dictionary) -> void:
 			continue
 		var loser: Dictionary = _units[i]
 		_cancel_gather_for_unit(target_id)
+		_cancel_focus_attacks_involving_unit(target_id)
 		unit_killed.emit(int(attacker.get("faction", -1)), int(loser.get("faction", -1)), loser.duplicate())
 		_apply_kill_food_reward(attacker)
 		_move_visuals.erase(target_id)
@@ -2221,8 +2386,8 @@ func _try_throw_beast_to(target: Vector2i) -> bool:
 			print("[Unit] Not enough AP for beast throw.")
 			return false
 	var from: Vector2i = beast.get("grid_pos", Vector2i.ZERO)
-	_cancel_gather_for_unit(int(slinger.get("id", -1)))
-	_cancel_gather_for_unit(int(beast.get("id", -1)))
+	_cancel_active_unit_action(int(slinger.get("id", -1)))
+	_cancel_active_unit_action(int(beast.get("id", -1)))
 	beast["grid_pos"] = landing
 	beast["has_moved"] = true
 	_update_dragon_lair_location_after_move(beast, from, landing)
@@ -2291,7 +2456,7 @@ func _move_selected_to(target: Vector2i) -> void:
 					# AP 不足，回退
 					break
 
-			_cancel_gather_for_unit(int(u.get("id", -1)))
+			_cancel_active_unit_action(int(u.get("id", -1)))
 			u["grid_pos"] = target
 			u["has_moved"] = true
 			_update_dragon_lair_location_after_move(u, from, target)
@@ -2340,7 +2505,7 @@ func _try_move_to_attack(attacker: Dictionary, target: Dictionary) -> bool:
 
 	for u in _units:
 		if u["id"] == attacker_id:
-			_cancel_gather_for_unit(attacker_id)
+			_cancel_active_unit_action(attacker_id)
 			u["grid_pos"] = approach_tile
 			u["has_moved"] = true
 			_update_dragon_lair_location_after_move(u, from, approach_tile)
@@ -2407,7 +2572,7 @@ func _try_move_to_attack_building(attacker: Dictionary, building: Dictionary) ->
 
 	for u in _units:
 		if int(u.get("id", -1)) == attacker_id:
-			_cancel_gather_for_unit(attacker_id)
+			_cancel_active_unit_action(attacker_id)
 			u["grid_pos"] = approach_tile
 			u["has_moved"] = true
 			_update_dragon_lair_location_after_move(u, from, approach_tile)
@@ -2515,6 +2680,15 @@ func _finish_move_visual(unit_id: int) -> void:
 		var visual: Dictionary = _move_visuals[unit_id]
 		_unit_facing_flip[unit_id] = bool(visual.get("flip_x", false))
 	_move_visuals.erase(unit_id)
+	if _pending_focus_attack_after_move.has(unit_id):
+		var focus_defender_id: int = int(_pending_focus_attack_after_move.get(unit_id, -1))
+		_pending_focus_attack_after_move.erase(unit_id)
+		var focus_attacker: Dictionary = _get_unit_by_id(unit_id)
+		var focus_defender: Dictionary = _get_unit_by_id(focus_defender_id)
+		if not focus_attacker.is_empty() and not focus_defender.is_empty():
+			if _can_unit_attack_unit(focus_attacker, focus_defender):
+				_start_focus_attack_session(unit_id, focus_defender_id)
+				return
 	if _pending_attack_after_move.has(unit_id):
 		var defender_id: int = int(_pending_attack_after_move.get(unit_id, -1))
 		_pending_attack_after_move.erase(unit_id)
@@ -3428,6 +3602,7 @@ func _remove_unit_from_miasma(unit_index: int) -> void:
 	var unit: Dictionary = _units[unit_index]
 	var uid: int = int(unit.get("id", -1))
 	_cancel_gather_for_unit(uid)
+	_cancel_focus_attacks_involving_unit(uid)
 	_move_visuals.erase(uid)
 	_hurt_visuals.erase(uid)
 	_attack_visuals.erase(uid)
@@ -3470,7 +3645,7 @@ func _garrison_unit_to(building_id: int, target: Vector2i) -> void:
 				bmgr.garrison_unit(building_id, u)
 
 			# 从单位列表移除
-			_cancel_gather_for_unit(int(u.get("id", -1)))
+			_cancel_active_unit_action(int(u.get("id", -1)))
 			_units.erase(u)
 			_clear_selection()
 			queue_redraw()
@@ -3498,7 +3673,7 @@ func _move_warband_to(selected_unit: Dictionary, target: Vector2i) -> void:
 	var moving_ids: Array[int] = []
 	for member_for_cancel in members:
 		moving_ids.append(int(member_for_cancel.get("id", -1)))
-	_cancel_gather_for_units(moving_ids)
+	_cancel_active_unit_actions(moving_ids)
 	for member in members:
 		var member_from: Vector2i = member.get("grid_pos", Vector2i.ZERO)
 		var member_to: Vector2i = member_from + delta
@@ -3578,7 +3753,7 @@ func _begin_tactical_encounter(initiator_id: int, target_id: int) -> bool:
 
 
 func _start_locked_duel(first_attacker_id: int, second_unit_id: int) -> void:
-	_cancel_gather_for_unit(first_attacker_id)
+	_cancel_active_unit_action(first_attacker_id)
 	if _combat_timer:
 		_combat_timer.stop()
 		_combat_timer.queue_free()
@@ -3770,7 +3945,7 @@ func _find_forced_approach_tile(mover: Dictionary, opponent: Dictionary) -> Vect
 
 func _move_unit_without_ap(unit: Dictionary, target: Vector2i) -> void:
 	var from: Vector2i = unit.get("grid_pos", Vector2i.ZERO)
-	_cancel_gather_for_unit(int(unit.get("id", -1)))
+	_cancel_active_unit_action(int(unit.get("id", -1)))
 	unit["grid_pos"] = target
 	unit["has_moved"] = true
 	_update_dragon_lair_location_after_move(unit, from, target)
@@ -3787,7 +3962,7 @@ func _initiate_combat(attacker_id: int, defender_id: int) -> void:
 	if _in_combat:
 		return
 	## 发起决斗：创建 1 秒间隔 Timer，轮流攻击直至死亡
-	_cancel_gather_for_unit(attacker_id)
+	_cancel_active_unit_action(attacker_id)
 	_in_combat = true
 	_combat_data = {
 		"unit_a_id": attacker_id,
@@ -3815,7 +3990,7 @@ func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
 		return
 	if _in_combat:
 		return
-	_cancel_gather_for_unit(attacker_id)
+	_cancel_active_unit_action(attacker_id)
 	_in_combat = true
 	_combat_data = {
 		"mode": "ranged_unit",
@@ -3834,7 +4009,7 @@ func _initiate_ranged_combat(attacker_id: int, defender_id: int) -> void:
 func _initiate_ranged_neutral_combat(attacker_id: int, neutral_id: int, neutral_mgr: Node) -> void:
 	if attacker_id < 0 or neutral_id < 0 or neutral_mgr == null:
 		return
-	_cancel_gather_for_unit(attacker_id)
+	_cancel_active_unit_action(attacker_id)
 	_in_combat = true
 	_combat_data = {
 		"mode": "ranged_neutral",
@@ -3989,6 +4164,7 @@ func _end_combat(winner_id: int, attacker_pos: Vector2i = Vector2i(-1, -1), lose
 				if _is_orc_blood_axe(loser):
 					_start_death_visual(loser_id, loser["grid_pos"], attacker_pos, loser_pos)
 				_move_visuals.erase(loser_id)
+				_cancel_focus_attacks_involving_unit(loser_id)
 				_hurt_visuals.erase(loser_id)
 				_attack_visuals.erase(loser_id)
 				_pending_attack_after_move.erase(loser_id)
@@ -4226,6 +4402,7 @@ func remove_unit_by_id(uid: int) -> void:
 	for i in range(_units.size() - 1, -1, -1):
 		if _units[i]["id"] == uid:
 			_cancel_gather_for_unit(uid)
+			_cancel_focus_attacks_involving_unit(uid)
 			_move_visuals.erase(uid)
 			_hurt_visuals.erase(uid)
 			_attack_visuals.erase(uid)
@@ -4503,7 +4680,7 @@ func teleport_units_to_nearest_empty(unit_ids: Array, target_anchor: Vector2i, s
 		if unit.is_empty():
 			continue
 		var target_pos: Vector2i = targets[unit_id]
-		_cancel_gather_for_unit(unit_id)
+		_cancel_active_unit_action(unit_id)
 		_move_visuals.erase(unit_id)
 		_pending_attack_after_move.erase(unit_id)
 		_pending_building_attack_after_move.erase(unit_id)
