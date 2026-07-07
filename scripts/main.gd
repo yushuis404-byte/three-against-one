@@ -98,6 +98,7 @@ func _process(_delta: float) -> void:
 func _setup_game() -> void:
 	$UI.visible = true
 	_hide_civilization_debug_panel()
+	$BGMPlayer.finished.connect($BGMPlayer.play)
 	current_state = GameState.PLAYING
 	_init_stage_label()
 	_init_game_over_label()
@@ -362,13 +363,6 @@ func _relocate_resources_away_from_initial_reserved_cells() -> void:
 	if resource_manager == null or not resource_manager.has_method("relocate_resources_away_from_cells"):
 		return
 	var reserved: Array[Vector2i] = []
-	var infra_offsets: Array[Vector2i] = [
-		Vector2i(-1, 0), Vector2i(2, 0),
-		Vector2i(0, -1),
-		Vector2i(-1, 1), Vector2i(2, 1),
-		Vector2i(-1, -1), Vector2i(2, -1),
-		Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 1),
-	]
 	var camp_offsets: Array[Vector2i] = [
 		Vector2i(0, 2), Vector2i(1, 2),
 		Vector2i(-1, 0), Vector2i(2, 0),
@@ -381,7 +375,7 @@ func _relocate_resources_away_from_initial_reserved_cells() -> void:
 		for dy in range(2):
 			for dx in range(2):
 				_append_unique_cell(reserved, Vector2i(origin.x + dx, origin.y + dy))
-		for off in infra_offsets:
+		for off in _get_initial_infra_offsets():
 			_append_unique_cell(reserved, origin + off)
 		for off in camp_offsets:
 			_append_unique_cell(reserved, origin + off)
@@ -432,6 +426,27 @@ func _append_unique_cell(cells: Array[Vector2i], cell: Vector2i) -> void:
 	cells.append(cell)
 
 
+func _get_initial_infra_offsets() -> Array[Vector2i]:
+	var result: Array[Vector2i] = [
+		Vector2i(-2, -1),
+		Vector2i(3, -1),
+		Vector2i(-2, 2),
+		Vector2i(3, 2),
+		Vector2i(0, -2),
+		Vector2i(1, -2),
+	]
+	for radius in range(1, 6):
+		for dx in range(-radius, radius + 1):
+			for dy in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var off := Vector2i(dx, dy)
+				if off in result:
+					continue
+				result.append(off)
+	return result
+
+
 func _place_initial_buildings() -> void:
 	## 每阵营：1 座主城（2×2）+ 3 座经济建筑（农场/采石场/伐木场）
 	var all_infra := [BuildingData.infra_farm(), BuildingData.infra_quarry(), BuildingData.infra_lumber_camp()]
@@ -445,13 +460,7 @@ func _place_initial_buildings() -> void:
 
 		# 三座经济建筑：依次在主城旁尝试偏移放置
 		var used_cells: Array[Vector2i] = []
-		var infra_offsets := [
-			Vector2i(-1, 0), Vector2i(2, 0),
-			Vector2i(0, -1),
-			Vector2i(-1, 1), Vector2i(2, 1),
-			Vector2i(-1, -1), Vector2i(2, -1),
-			Vector2i(0, 1), Vector2i(1, -1), Vector2i(1, 1),
-		]
+		var infra_offsets: Array[Vector2i] = _get_initial_infra_offsets()
 		for infra in all_infra:
 			var placed: bool = false
 			for off in infra_offsets:

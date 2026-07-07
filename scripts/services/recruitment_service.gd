@@ -3,6 +3,7 @@ extends RefCounted
 ## Recruitment queue rules for recruit-capable buildings.
 
 const QUEUE_CAPACITY := 3
+const SPAWN_SEARCH_RADIUS := 8
 
 var buildings: Array = []
 var building_grid: Array = []
@@ -259,36 +260,100 @@ func spawn_recruited_unit(building: Dictionary, unit_template_id: String) -> boo
 	var unit_template: Resource = get_recruit_unit_template(unit_template_id)
 	if unit_template == null:
 		return false
-	var spawn_pos: Vector2i = find_empty_adjacent_pos(building)
+	var spawn_pos: Vector2i = find_nearest_spawn_pos(building)
 	if spawn_pos.x < 0:
-		print("[Recruit] No empty adjacent tile; completed unit waits.")
+		print("[Recruit] No valid spawn tile near recruit building; completed unit waits.")
 		return false
 	if unit_manager and unit_manager.has_method("add_unit_from_template"):
 		var unit_id: int = unit_manager.add_unit_from_template(building["faction"], unit_template, spawn_pos)
+		if unit_id < 0:
+			print("[Recruit] Unit manager rejected spawn at %s; completed unit waits." % str(spawn_pos))
+			return false
 		_last_spawned_unit_id = unit_id
 		print("[Recruit] Spawned %s at %s." % [unit_template_id, str(spawn_pos)])
 		return true
 	return false
 
 
-func find_empty_adjacent_pos(building: Dictionary) -> Vector2i:
+func find_nearest_spawn_pos(building: Dictionary) -> Vector2i:
+	if building.is_empty() or not building.has("origin") or not building.has("data"):
+		return Vector2i(-1, -1)
 	var origin: Vector2i = building["origin"]
 	var fp: Vector2i = building["data"].footprint
-	var dirs := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
-	for dy in range(fp.y):
-		for dx in range(fp.x):
-			for dir in dirs:
-				var n: Vector2i = Vector2i(origin.x + dx, origin.y + dy) + dir
-				if not in_bounds(n.x, n.y):
-					continue
-				if building_grid[n.y][n.x] >= 0:
-					continue
-				if unit_manager and unit_manager.has_method("get_unit_at"):
-					var unit: Dictionary = unit_manager.get_unit_at(n)
-					if not unit.is_empty():
-						continue
-				return n
+	for radius in range(1, SPAWN_SEARCH_RADIUS + 1):
+		var candidates: Array[Vector2i] = _get_spawn_ring_candidates(origin, fp, radius)
+		for candidate in candidates:
+			if _is_valid_spawn_tile(candidate):
+				return candidate
 	return Vector2i(-1, -1)
+
+
+func _get_spawn_ring_candidates(origin: Vector2i, footprint: Vector2i, radius: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var left: int = origin.x - radius
+	var right: int = origin.x + footprint.x - 1 + radius
+	var top: int = origin.y - radius
+	var bottom: int = origin.y + footprint.y - 1 + radius
+	for x in range(left, right + 1):
+		result.append(Vector2i(x, top))
+		if bottom != top:
+			result.append(Vector2i(x, bottom))
+	for y in range(top + 1, bottom):
+		result.append(Vector2i(left, y))
+		if right != left:
+			result.append(Vector2i(right, y))
+	return result
+
+
+func find_empty_adjacent_pos(building: Dictionary) -> Vector2i:
+	return find_nearest_spawn_pos(building)
+
+
+func _is_valid_spawn_tile(pos: Vector2i) -> bool:
+	if not in_bounds(pos.x, pos.y):
+		return false
+	if building_grid[pos.y][pos.x] >= 0:
+		return false
+	if not _is_passable_tile(pos):
+		return false
+	if _has_resource_at(pos):
+		return false
+	if unit_manager and unit_manager.has_method("get_unit_at"):
+		var unit: Dictionary = unit_manager.get_unit_at(pos)
+		if not unit.is_empty():
+			return false
+	if _has_neutral_unit_at(pos):
+		return false
+	return true
+
+
+func _is_passable_tile(pos: Vector2i) -> bool:
+	if unit_manager == null or not unit_manager.is_inside_tree():
+		return true
+	var grid_manager: Node = unit_manager.get_parent().get_node_or_null("GridManager2D")
+	if grid_manager == null or not grid_manager.has_method("get_terrain_at"):
+		return true
+	var terrain: int = int(grid_manager.call("get_terrain_at", pos.x, pos.y))
+	return TerrainData.is_passable(terrain)
+
+
+func _has_resource_at(pos: Vector2i) -> bool:
+	if unit_manager == null or not unit_manager.is_inside_tree():
+		return false
+	var resource_manager: Node = unit_manager.get_parent().get_node_or_null("ResourceManager2D")
+	if resource_manager == null or not resource_manager.has_method("get_resource_type"):
+		return false
+	return int(resource_manager.call("get_resource_type", pos.x, pos.y)) != 0
+
+
+func _has_neutral_unit_at(pos: Vector2i) -> bool:
+	if unit_manager == null or not unit_manager.is_inside_tree():
+		return false
+	var neutral_manager: Node = unit_manager.get_parent().get_node_or_null("NeutralUnitManager2D")
+	if neutral_manager == null or not neutral_manager.has_method("get_neutral_unit_at"):
+		return false
+	var neutral: Dictionary = neutral_manager.call("get_neutral_unit_at", pos)
+	return not neutral.is_empty()
 
 
 func get_building_by_id(building_id: int) -> Dictionary:
