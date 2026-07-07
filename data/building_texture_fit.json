@@ -1,163 +1,179 @@
 {
-	"dwarf_capital": {
-		"footprint": [
-			2.0,
-			2.0
-		],
-		"offset": [
-			0.0,
-			-0.109999999403954
-		],
-		"preview_cell": [
-			35.0,
-			43.0
-		],
-		"scale": 1.11,
-		"texture": "res://assets/texture/Dwarf Capital.png"
-	},
-	"elf_capital": {
-		"footprint": [
-			2.0,
-			2.0
-		],
-		"offset": [
-			0.0,
-			-0.0399999991059303
-		],
-		"preview_cell": [
-			35.0,
-			13.0
-		],
-		"scale": 1.04,
-		"texture": "res://assets/texture/Elven Capital.png"
-	},
-	"farm": {
-		"footprint": [
-			1.0,
-			1.0
-		],
-		"offset": [
-			0.0,
-			-0.025000000372529
-		],
-		"preview_cell": [
-			33.0,
-			11.0
-		],
-		"scale": 1.11,
-		"texture": "res://assets/texture/farm.png"
-	},
-	"lumber_camp": {
-		"footprint": [
-			1.0,
-			1.0
-		],
-		"offset": [
-			0.0,
-			0.0
-		],
-		"preview_cell": [
-			33.0,
-			11.0
-		],
-		"scale": 0.98,
-		"texture": "res://assets/texture/Logging camp.png"
-	},
-	"orc_capital": {
-		"footprint": [
-			2.0,
-			2.0
-		],
-		"offset": [
-			0.0,
-			-0.115000002086163
-		],
-		"preview_cell": [
-			62.0,
-			35.0
-		],
-		"scale": 1.14,
-		"texture": "res://assets/texture/Orc Capital.png"
-	},
-	"quarry": {
-		"footprint": [
-			1.0,
-			1.0
-		],
-		"offset": [
-			0.0,
-			0.0
-		],
-		"preview_cell": [
-			33.0,
-			11.0
-		],
-		"scale": 1.0,
-		"texture": "res://assets/texture/Quarry.png"
-	},
-	"recruit_camp": {
-		"footprint": [
-			1.0,
-			1.0
-		],
-		"offset": [
-			0.0399999991059303,
-			-0.0399999991059303
-		],
-		"preview_cell": [
-			33.0,
-			11.0
-		],
-		"scale": 1.13,
-		"texture": "res://assets/texture/Recruitment Camp.png"
-	},
-	"scout_post": {
-		"footprint": [
-			1,
-			1
-		],
-		"offset": [
-			0.0,
-			-0.340000003576279
-		],
-		"preview_cell": [
-			33,
-			11
-		],
-		"scale": 1.82,
-		"texture": "res://assets/texture/watchtower.png"
-	},
-	"stone": {
-		"footprint": [
-			1.0,
-			1.0
-		],
-		"offset": [
-			0.0350000001490116,
-			-0.0649999976158142
-		],
-		"preview_cell": [
-			35.0,
-			43.0
-		],
-		"scale": 1.4,
-		"texture": "res://assets/texture/stone.png"
-	},
-	"watch_tower": {
-		"footprint": [
-			1,
-			1
-		],
-		"offset": [
-			0.0,
-			-0.34
-		],
-		"preserve_aspect": true,
-		"preview_cell": [
-			33,
-			11
-		],
-		"scale": 1.82,
-		"texture": "res://assets/texture/watchtower.png"
-	}
+  "dwarf_capital": {
+    "footprint": [
+      2.0,
+      2.0
+    ],
+    "offset": [
+      0.0,
+      -0.109999999403954
+    ],
+    "preview_cell": [
+      35.0,
+      43.0
+    ],
+    "scale": 1.11,
+    "texture": "res://assets/texture/Dwarf Capital.png"
+  },
+  "elf_capital": {
+    "footprint": [
+      2.0,
+      2.0
+    ],
+    "offset": [
+      0.0,
+      -0.0399999991059303
+    ],
+    "preview_cell": [
+      35.0,
+      13.0
+    ],
+    "scale": 1.04,
+    "texture": "res://assets/texture/Elven Capital.png"
+  },
+  "farm": {
+    "footprint": [
+      1.0,
+      1.0
+    ],
+    "offset": [
+      0.0,
+      -0.025000000372529
+    ],
+    "preview_cell": [
+      33.0,
+      11.0
+    ],
+    "scale": 1.11,
+    "texture": "res://assets/texture/farm.png"
+  },
+  "lumber_camp": {
+    "footprint": [
+      1.0,
+      1.0
+    ],
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "preview_cell": [
+      33.0,
+      11.0
+    ],
+    "scale": 0.98,
+    "texture": "res://assets/texture/Logging camp.png"
+  },
+  "orc_capital": {
+    "footprint": [
+      2.0,
+      2.0
+    ],
+    "offset": [
+      0.0,
+      -0.115000002086163
+    ],
+    "preview_cell": [
+      62.0,
+      35.0
+    ],
+    "scale": 1.14,
+    "texture": "res://assets/texture/Orc Capital.png"
+  },
+  "quarry": {
+    "footprint": [
+      1.0,
+      1.0
+    ],
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "preview_cell": [
+      33.0,
+      11.0
+    ],
+    "scale": 1.0,
+    "texture": "res://assets/texture/Quarry.png"
+  },
+  "recruit_camp": {
+    "footprint": [
+      1.0,
+      1.0
+    ],
+    "offset": [
+      0.0399999991059303,
+      -0.0399999991059303
+    ],
+    "preview_cell": [
+      33.0,
+      11.0
+    ],
+    "scale": 1.13,
+    "texture": "res://assets/texture/Recruitment Camp.png"
+  },
+  "scout_post": {
+    "footprint": [
+      1,
+      1
+    ],
+    "offset": [
+      0.0,
+      -0.340000003576279
+    ],
+    "preview_cell": [
+      33,
+      11
+    ],
+    "scale": 1.82,
+    "texture": "res://assets/texture/watchtower.png"
+  },
+  "stone": {
+    "footprint": [
+      1.0,
+      1.0
+    ],
+    "offset": [
+      0.0350000001490116,
+      -0.0649999976158142
+    ],
+    "preview_cell": [
+      35.0,
+      43.0
+    ],
+    "scale": 1.4,
+    "texture": "res://assets/texture/stone.png"
+  },
+  "watch_tower": {
+    "footprint": [
+      1,
+      1
+    ],
+    "offset": [
+      0.0,
+      -0.34
+    ],
+    "preserve_aspect": true,
+    "preview_cell": [
+      33,
+      11
+    ],
+    "scale": 1.82,
+    "texture": "res://assets/texture/watchtower.png"
+  },
+  "warehouse": {
+    "footprint": [
+      1.0,
+      1.0
+    ],
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "preview_cell": [
+      33.0,
+      11.0
+    ],
+    "scale": 1.0,
+    "texture": "res://assets/texture/仓库.png"
+  }
 }

@@ -5,6 +5,7 @@ const AchievementServiceScript = preload("res://scripts/services/achievement_ser
 const AchievementTreePanelScript = preload("res://scripts/ui/achievement_tree_panel.gd")
 const TechnologyServiceScript = preload("res://scripts/services/technology_service.gd")
 const TechnologyTreePanelScript = preload("res://scripts/ui/technology_tree_panel.gd")
+const ExpeditionManualPanelScript = preload("res://scripts/ui/expedition_manual_panel.gd")
 const GoblinHexServiceScript = preload("res://scripts/services/goblin_hex_service.gd")
 const GoblinHexPanelScript = preload("res://scripts/ui/goblin_hex_panel.gd")
 const VictoryServiceScript = preload("res://scripts/services/victory_service.gd")
@@ -50,6 +51,8 @@ var tree_overlay_input_blocker: Control = null
 var technology_service: Node = null
 var technology_tree_panel: Control = null
 var technology_tree_button: Button = null
+var expedition_manual_panel: Control = null
+var expedition_manual_button: Button = null
 var goblin_hex_service: Node = null
 var goblin_hex_panel: Control = null
 var victory_service: Node = null
@@ -219,6 +222,8 @@ func _setup_game() -> void:
 	_init_achievement_tree_button()
 	_init_technology_tree_panel()
 	_init_technology_tree_button()
+	_init_expedition_manual_panel()
+	_init_expedition_manual_button()
 	_init_score_rule_panel()
 	_init_score_rule_button()
 	_init_civilization_route_panel()
@@ -896,6 +901,8 @@ func _on_achievement_tree_button_pressed() -> void:
 		return
 	if technology_tree_panel != null:
 		technology_tree_panel.visible = false
+	if expedition_manual_panel != null:
+		expedition_manual_panel.visible = false
 	if score_rule_panel != null:
 		score_rule_panel.visible = false
 	if civilization_route_panel != null:
@@ -964,6 +971,8 @@ func _on_technology_tree_button_pressed() -> void:
 		return
 	if achievement_tree_panel != null:
 		achievement_tree_panel.visible = false
+	if expedition_manual_panel != null:
+		expedition_manual_panel.visible = false
 	if score_rule_panel != null:
 		score_rule_panel.visible = false
 	if civilization_route_panel != null:
@@ -975,6 +984,85 @@ func _on_technology_tree_button_pressed() -> void:
 	technology_tree_panel.visible = true
 	_sync_tree_overlay_input_blocker()
 	technology_tree_panel.queue_redraw()
+
+
+func _init_expedition_manual_panel() -> void:
+	expedition_manual_panel = ExpeditionManualPanelScript.new()
+	expedition_manual_panel.name = "ExpeditionManualPanel"
+	expedition_manual_panel.size = Vector2(1920.0, 1080.0)
+	expedition_manual_panel.visible = false
+	expedition_manual_panel.z_index = 102
+	$UI.add_child(expedition_manual_panel)
+	_fit_design_overlay_panel(expedition_manual_panel)
+	_shrink_expedition_manual_panel()
+	expedition_manual_panel.visibility_changed.connect(_sync_tree_overlay_input_blocker)
+
+
+func _init_expedition_manual_button() -> void:
+	var mcontainer := VBoxContainer.new()
+	mcontainer.name = "ExpeditionManualContainer"
+	mcontainer.position = Vector2(168.0, 168.0)
+	mcontainer.z_index = 90
+	expedition_manual_button = Button.new()
+	expedition_manual_button.name = "ExpeditionManualButton"
+	expedition_manual_button.text = "\u518c"
+	expedition_manual_button.custom_minimum_size = Vector2(56.0, 56.0)
+	expedition_manual_button.size = Vector2(56.0, 56.0)
+	expedition_manual_button.add_theme_font_size_override("font_size", 24)
+	var mbg := StyleBoxFlat.new()
+	mbg.bg_color = Color(0.08, 0.08, 0.10, 0.85)
+	mbg.set_corner_radius_all(28)
+	expedition_manual_button.add_theme_stylebox_override("normal", mbg)
+	var mhover := StyleBoxFlat.new()
+	mhover.bg_color = Color(0.15, 0.15, 0.18, 0.9)
+	mhover.set_corner_radius_all(28)
+	expedition_manual_button.add_theme_stylebox_override("hover", mhover)
+	var mpressed := StyleBoxFlat.new()
+	mpressed.bg_color = Color(0.35, 0.30, 0.22, 0.95)
+	mpressed.set_corner_radius_all(28)
+	mpressed.border_width_bottom = 2
+	mpressed.border_color = Color(0.82, 0.72, 0.38, 0.6)
+	expedition_manual_button.add_theme_stylebox_override("pressed", mpressed)
+	expedition_manual_button.focus_mode = Control.FOCUS_NONE
+	expedition_manual_button.pressed.connect(_on_expedition_manual_button_pressed)
+	mcontainer.add_child(expedition_manual_button)
+	var mlabel := Label.new()
+	mlabel.name = "ExpeditionManualLabel"
+	mlabel.text = "\u8fdc\u5f81\u624b\u518c"
+	mlabel.add_theme_font_size_override("font_size", 13)
+	mlabel.add_theme_color_override("font_color", Color(0.82, 0.78, 0.65))
+	mlabel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mcontainer.add_child(mlabel)
+	$UI.add_child(mcontainer)
+
+
+func _on_expedition_manual_button_pressed() -> void:
+	if expedition_manual_panel == null:
+		return
+	if achievement_tree_panel != null:
+		achievement_tree_panel.visible = false
+	if technology_tree_panel != null:
+		technology_tree_panel.visible = false
+	if score_rule_panel != null:
+		score_rule_panel.visible = false
+	if civilization_route_panel != null:
+		civilization_route_panel.visible = false
+	_fit_design_overlay_panel(expedition_manual_panel)
+	_shrink_expedition_manual_panel()
+	_ensure_tree_overlay_input_blocker()
+	_sync_tree_overlay_input_blocker()
+	expedition_manual_panel.z_index = 112
+	expedition_manual_panel.visible = true
+	_sync_tree_overlay_input_blocker()
+
+
+func _shrink_expedition_manual_panel() -> void:
+	if expedition_manual_panel == null:
+		return
+	var current_size: Vector2 = expedition_manual_panel.size * expedition_manual_panel.scale
+	expedition_manual_panel.scale *= 0.8
+	var new_size: Vector2 = expedition_manual_panel.size * expedition_manual_panel.scale
+	expedition_manual_panel.position += (current_size - new_size) * 0.5
 
 
 func _ensure_tree_overlay_input_blocker() -> void:
@@ -998,6 +1086,8 @@ func _sync_tree_overlay_input_blocker() -> void:
 		has_tree_overlay = true
 	if technology_tree_panel != null and technology_tree_panel.visible:
 		has_tree_overlay = true
+	if expedition_manual_panel != null and expedition_manual_panel.visible:
+		has_tree_overlay = true
 	tree_overlay_input_blocker.visible = has_tree_overlay
 	if has_tree_overlay:
 		tree_overlay_input_blocker.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -1014,6 +1104,8 @@ func _raise_tree_overlay_stack() -> void:
 		ui_node.move_child(achievement_tree_panel, ui_node.get_child_count() - 1)
 	if technology_tree_panel != null and technology_tree_panel.visible:
 		ui_node.move_child(technology_tree_panel, ui_node.get_child_count() - 1)
+	if expedition_manual_panel != null and expedition_manual_panel.visible:
+		ui_node.move_child(expedition_manual_panel, ui_node.get_child_count() - 1)
 
 
 func _fit_design_overlay_panel(panel: Control) -> void:
@@ -1057,6 +1149,8 @@ func _on_score_rule_button_pressed() -> void:
 		achievement_tree_panel.visible = false
 	if technology_tree_panel != null:
 		technology_tree_panel.visible = false
+	if expedition_manual_panel != null:
+		expedition_manual_panel.visible = false
 	if civilization_route_panel != null:
 		civilization_route_panel.visible = false
 	score_rule_panel.visible = true
@@ -1093,6 +1187,8 @@ func _on_civilization_route_button_pressed() -> void:
 		achievement_tree_panel.visible = false
 	if technology_tree_panel != null:
 		technology_tree_panel.visible = false
+	if expedition_manual_panel != null:
+		expedition_manual_panel.visible = false
 	if score_rule_panel != null:
 		score_rule_panel.visible = false
 	civilization_route_panel.visible = true

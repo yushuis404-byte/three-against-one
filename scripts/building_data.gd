@@ -238,7 +238,7 @@ static func scout_post() -> BuildingData:
 
 static func watch_tower() -> BuildingData:
 	var b := BuildingData.new(
-		"\u77ad\u671b\u5854", BuildingCategory.SCOUT, Vector2i(1, 1),
+		"\u77ad\u671b\u5854", BuildingCategory.DEFENSE, Vector2i(1, 1),
 		0, 15, 20, 5, 0,
 		10, {},
 		[TerrainData.Terrain.PLAIN_DWARF, TerrainData.Terrain.MOUNTAIN_DWARF,
@@ -524,8 +524,7 @@ static func get_templates() -> Dictionary:
 	return {
 		BuildingCategory.CORE: [town_hall()],
 		BuildingCategory.ECONOMY: [infra_lumber_camp(), infra_quarry(), infra_farm(), infra_warehouse(), outpost(), gold_mine_shaft(), mint()],
-		BuildingCategory.SCOUT: [scout_post(), watch_tower()],
-		BuildingCategory.DEFENSE: [ballista_tower(), heavy_ballista_tower(), stone_cannon_tower()],
+		BuildingCategory.DEFENSE: [watch_tower(), ballista_tower(), heavy_ballista_tower(), stone_cannon_tower()],
 		BuildingCategory.RECRUITMENT: [recruit_camp()],
 		BuildingCategory.INDUSTRY: [t1_mine(), forge(), t1_extraction_tower(), t1_ancient_wood_harvest()],
 		BuildingCategory.LORD_SPECIAL: [lord_wind_speaking_tree(), lord_rootweb_shrine(), lord_moonshadow_watchtower(), lord_deep_forge_workshop(), lord_iron_oath_fortress(), lord_vein_lift(), lord_war_drum_camp(), lord_plunder_banner(), lord_flesh_pen()],

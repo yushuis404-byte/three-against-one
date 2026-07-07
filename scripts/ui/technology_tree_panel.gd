@@ -8,6 +8,11 @@ const LINE_OPEN := Color(0.34, 0.58, 0.90, 0.84)
 const LINE_DONE := Color(0.42, 0.90, 0.58, 0.90)
 const NODE_RADIUS := 34.0
 const ELF_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/精灵科技框.png")
+const DWARF_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/矮人科技框.png")
+const ORC_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/兽人科技框.png")
+const COMMON_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/通用科技框.png")
+const ROOT_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/文明起点.png")
+const DRAGON_FRAME_TEXTURE: Texture2D = preload("res://assets/ui/巨龙科技.png")
 const CLOSE_RECT := Rect2(0, 0, 72, 26)
 const DETAIL_W := 360.0
 const HEADER_H := 36.0
@@ -273,7 +278,7 @@ func _draw_connections(player: int) -> void:
 				any_color = LINE_DONE
 			elif _service.is_researched(player, any_id):
 				any_color = LINE_OPEN
-			_draw_elbow_line(any_from, to_pos, Color(any_color.r, any_color.g, any_color.b, 0.55), 1.4)
+			_draw_elbow_line(any_from, to_pos, Color(any_color.r, any_color.g, any_color.b, 0.55), 1.4, true)
 
 
 func _draw_nodes(player: int) -> void:
@@ -292,6 +297,9 @@ func _draw_nodes(player: int) -> void:
 
 func _draw_node(player: int, definition: Dictionary, center: Vector2, radius: float) -> void:
 	var id: String = str(definition["id"])
+	if id == "tech.root.civilization":
+		draw_texture_rect(ROOT_FRAME_TEXTURE, Rect2(center - Vector2(radius, radius), Vector2(radius * 2.0, radius * 2.0)), false)
+		return
 	var family: String = str(definition.get("family", "common"))
 	var family_color: Color = _family_colors.get(family, Color(0.7, 0.7, 0.8))
 	var researched: bool = _service.is_researched(player, id)
@@ -307,9 +315,18 @@ func _draw_node(player: int, definition: Dictionary, center: Vector2, radius: fl
 	if id == _selected_id:
 		ring = Color(1.0, 0.90, 0.42, 1.0)
 	draw_circle(center, radius, fill)
+	var frame_size := radius * 2.0
+	var frame_rect := Rect2(center - Vector2(radius, radius), Vector2(frame_size, frame_size))
 	if id.begins_with("tech.lord.elf"):
-		var frame_size := radius * 2.0
-		draw_texture_rect(ELF_FRAME_TEXTURE, Rect2(center - Vector2(radius, radius), Vector2(frame_size, frame_size)), false)
+		draw_texture_rect(ELF_FRAME_TEXTURE, frame_rect, false)
+	elif id.begins_with("tech.lord.dwarf"):
+		draw_texture_rect(DWARF_FRAME_TEXTURE, frame_rect, false)
+	elif id.begins_with("tech.lord.orc"):
+		draw_texture_rect(ORC_FRAME_TEXTURE, frame_rect, false)
+	elif id.begins_with("tech.common"):
+		draw_texture_rect(COMMON_FRAME_TEXTURE, frame_rect, false)
+	elif id.begins_with("tech.dragon"):
+		draw_texture_rect(DRAGON_FRAME_TEXTURE, frame_rect, false)
 	else:
 		draw_arc(center, radius, 0.0, TAU, 64, ring, 3.0 if id == _selected_id else 2.0)
 	draw_circle(center, maxi(4.0, radius * 0.16), family_color)
@@ -432,13 +449,16 @@ func _build_static_layout() -> void:
 	}
 
 
-func _draw_elbow_line(from_pos: Vector2, to_pos: Vector2, color: Color, width: float) -> void:
+func _draw_elbow_line(from_pos: Vector2, to_pos: Vector2, color: Color, width: float, dashed: bool = false) -> void:
 	var from_world := _screen_to_world(from_pos)
 	var to_world := _screen_to_world(to_pos)
 	var from_radius := from_world.length()
 	var to_radius := to_world.length()
 	if from_radius < 8.0 or to_radius < 8.0:
-		draw_line(from_pos, to_pos, color, width, true)
+		if dashed:
+			draw_dashed_line(from_pos, to_pos, color, width, 6.0, 4.0, true)
+		else:
+			draw_line(from_pos, to_pos, color, width, true)
 		return
 	var from_angle := rad_to_deg(atan2(from_world.y, from_world.x))
 	var to_angle := rad_to_deg(atan2(to_world.y, to_world.x))
@@ -451,7 +471,10 @@ func _draw_elbow_line(from_pos: Vector2, to_pos: Vector2, color: Color, width: f
 		points.append(to_pos)
 	else:
 		_append_arc_points(points, from_radius, from_angle, to_angle)
-	draw_polyline(points, color, width, true)
+	if dashed:
+		_draw_dashed_polyline(points, color, width)
+	else:
+		draw_polyline(points, color, width, true)
 
 
 func _append_arc_points(points: PackedVector2Array, radius: float, from_angle: float, to_angle: float) -> void:
@@ -461,6 +484,11 @@ func _append_arc_points(points: PackedVector2Array, radius: float, from_angle: f
 		var t := float(i) / float(steps)
 		var angle := from_angle + diff * t
 		points.append(_world_to_screen(_polar_to_world(angle, radius)))
+
+
+func _draw_dashed_polyline(points: PackedVector2Array, color: Color, width: float) -> void:
+	for i in range(points.size() - 1):
+		draw_dashed_line(points[i], points[i + 1], color, width, 6.0, 4.0, true)
 
 
 func _shortest_angle_delta(from_angle: float, to_angle: float) -> float:

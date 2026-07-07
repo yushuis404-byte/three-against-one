@@ -857,7 +857,7 @@ func _phase1_mountain() -> void:
 				if _is_corridor_path(pos, dist):
 					terrain_grid[y][x] = TerrainData.Terrain.CORRIDOR
 					zone_grid[y][x] = ZoneTag.MOUNTAIN_PATH
-				elif _simple_hash(x, y, 100) < 0.06:
+				elif _simple_hash(x, y, 100) < 0.042:
 					terrain_grid[y][x] = TerrainData.Terrain.RUINS
 					zone_grid[y][x] = ZoneTag.MOUNTAIN_BODY
 				else:

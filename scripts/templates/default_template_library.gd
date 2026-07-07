@@ -460,7 +460,7 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	watch_tower.id = "building.watch_tower"
 	watch_tower.display_name = "\u77ad\u671b\u5854"
 	watch_tower.description = "\u77ee\u4eba\u9632\u7ebf\u5efa\u7b51\uff1a\u5360\u683c\u963b\u6321\u79fb\u52a8\uff0c\u63d0\u4f9b\u66f4\u5927\u9632\u7ebf\u89c6\u91ce\u3002"
-	watch_tower.role = BuildingTemplateScript.BuildingRole.SCOUT
+	watch_tower.role = BuildingTemplateScript.BuildingRole.MILITARY
 	watch_tower.hp_max = 10
 	watch_tower.build_cost = [_amount("wood", 15), _amount("stone", 20), _amount("iron", 5)]
 	watch_tower.max_per_faction = 6
@@ -470,7 +470,7 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	ballista_tower.id = "building.ballista_tower"
 	ballista_tower.display_name = "\u5f29\u70ae\u5854"
 	ballista_tower.description = "\u77ee\u4eba\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb32\uff0c8\u79d2\u653b\u51fb\u4e00\u6b21\u3002"
-	ballista_tower.role = BuildingTemplateScript.BuildingRole.SCOUT
+	ballista_tower.role = BuildingTemplateScript.BuildingRole.MILITARY
 	ballista_tower.hp_max = 14
 	ballista_tower.build_cost = [_amount("wood", 20), _amount("stone", 35), _amount("iron", 10)]
 	ballista_tower.max_per_faction = 4
@@ -480,7 +480,7 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	heavy_ballista.id = "building.heavy_ballista"
 	heavy_ballista.display_name = "\u9ad8\u7ea7\u5f29\u70ae"
 	heavy_ballista.description = "\u77ee\u4eba\u9ad8\u7ea7\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb33\uff0c8\u79d2\u653b\u51fb\u4e00\u6b21\u3002"
-	heavy_ballista.role = BuildingTemplateScript.BuildingRole.SCOUT
+	heavy_ballista.role = BuildingTemplateScript.BuildingRole.MILITARY
 	heavy_ballista.hp_max = 18
 	heavy_ballista.build_cost = [_amount("wood", 30), _amount("stone", 55), _amount("iron", 20)]
 	heavy_ballista.max_per_faction = 3
@@ -490,7 +490,7 @@ func make_building_templates(unit_templates: Dictionary) -> Dictionary:
 	stone_cannon.id = "building.stone_cannon"
 	stone_cannon.display_name = "\u788e\u77f3\u70ae\u53f0"
 	stone_cannon.description = "\u77ee\u4eba\u8303\u56f4\u9632\u5fa1\u5efa\u7b51\uff1a\u5c04\u7a0b4\uff0c\u4f24\u5bb31\uff0c12\u79d2\u653b\u51fb\u4e00\u6b21\u3002"
-	stone_cannon.role = BuildingTemplateScript.BuildingRole.SCOUT
+	stone_cannon.role = BuildingTemplateScript.BuildingRole.MILITARY
 	stone_cannon.hp_max = 12
 	stone_cannon.build_cost = [_amount("wood", 15), _amount("stone", 45), _amount("iron", 8)]
 	stone_cannon.max_per_faction = 4

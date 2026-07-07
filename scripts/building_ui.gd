@@ -22,7 +22,6 @@ var _cat_buttons: Dictionary = {}  # BuildingCategory → Button
 const CATEGORY_NAMES := {
 	BuildingData.BuildingCategory.CORE: "\u6838\u5fc3",
 	BuildingData.BuildingCategory.ECONOMY: "\u7ecf\u6d4e",
-	BuildingData.BuildingCategory.SCOUT: "\u4fa6\u5bdf",
 	BuildingData.BuildingCategory.DEFENSE: "\u9632\u5fa1",
 	BuildingData.BuildingCategory.RECRUITMENT: "\u62db\u52df",
 	BuildingData.BuildingCategory.INDUSTRY: "\u5de5\u4e1a",
@@ -32,7 +31,6 @@ const CATEGORY_NAMES := {
 const CATEGORY_ORDER := [
 	BuildingData.BuildingCategory.CORE,
 	BuildingData.BuildingCategory.ECONOMY,
-	BuildingData.BuildingCategory.SCOUT,
 	BuildingData.BuildingCategory.DEFENSE,
 	BuildingData.BuildingCategory.RECRUITMENT,
 	BuildingData.BuildingCategory.INDUSTRY,

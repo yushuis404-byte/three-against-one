@@ -155,6 +155,20 @@ func get_recruit_options(building: Dictionary) -> Array:
 			"cost": get_unit_recruit_cost(unit_template, int(building.get("faction", -1))),
 			"ap_cost": get_unit_recruit_ap_cost(unit_template, int(building.get("faction", -1))),
 			"turns": get_unit_recruit_turns(unit_template, int(building.get("faction", -1))),
+			"move": int(unit_template.get("move_max")),
+			"atk": int(unit_template.get("atk")),
+			"hp": int(unit_template.get("hp_max")),
+			"vision": int(unit_template.get("vision")),
+			"attack_range": int(unit_template.get("attack_range")),
+			"attack_interval": float(unit_template.get("attack_interval")),
+			"damage_reduction": int(unit_template.get("damage_reduction")),
+			"food_cost": int(unit_template.get("food_cost")),
+			"role": int(unit_template.get("role")),
+			"tags": unit_template.get("tags").duplicate(),
+			"can_gather": bool(unit_template.get("can_gather")),
+			"can_garrison": bool(unit_template.get("can_garrison")),
+			"can_attack_units": bool(unit_template.get("can_attack_units")),
+			"can_attack_buildings": bool(unit_template.get("can_attack_buildings")),
 		})
 	return result
 

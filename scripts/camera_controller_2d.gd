@@ -114,7 +114,7 @@ func _is_tree_modal_open() -> bool:
 	var ui := current_scene.get_node_or_null("UI")
 	if ui == null:
 		return false
-	for panel_name in ["AchievementTreePanel", "TechnologyTreePanel"]:
+	for panel_name in ["AchievementTreePanel", "TechnologyTreePanel", "ExpeditionManualPanel"]:
 		var panel := ui.get_node_or_null(panel_name)
 		if panel != null and panel is Control and panel.visible:
 			return true
